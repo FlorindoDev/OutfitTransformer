@@ -1,0 +1,15 @@
+[
+  {
+    "outfit_id": "outfit-001",
+    "items": [
+      {
+        "image": "outfit-001/top.jpg",
+        "text": "white cotton shirt"
+      },
+      {
+        "image": "outfit-001/trousers.jpg",
+        "text": "navy tailored trousers"
+      }
+    ]
+  }
+]
