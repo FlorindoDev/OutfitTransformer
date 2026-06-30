@@ -1,14 +1,14 @@
 import json
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from .batch import OutfitExample
-from .transforms import build_image_transform
+from ..batch import OutfitExample
+from ..transforms import ImageTransform, build_image_transform
 
 
 class OutfitDataset(Dataset[OutfitExample]):
@@ -18,11 +18,13 @@ class OutfitDataset(Dataset[OutfitExample]):
         self,
         manifest_path: str | Path,
         image_root: str | Path,
-        image_transform: Callable[[Image.Image], Tensor] | None = None,
+        image_transform: ImageTransform | None = None,
     ) -> None:
         self._manifest_path = Path(manifest_path)
         self._image_root = Path(image_root)
-        self._image_transform = image_transform or build_image_transform()
+        self._image_transform: ImageTransform = (
+            image_transform or build_image_transform()
+        )
         self._records = self._load_records(self._manifest_path)
 
     def __len__(self) -> int:
