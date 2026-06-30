@@ -405,6 +405,12 @@ checkpoints/cp_epochs/cp_epoch_002.pt
 checkpoints/cp_best.pt
 ```
 
+Per riprendere da un checkpoint:
+
+```powershell
+python train_cp.py --epochs 20 --resume checkpoints\cp_epochs\cp_epoch_010.pt
+```
+
 Iperparametri principali:
 
 ```text
@@ -414,6 +420,7 @@ Iperparametri principali:
 --lr-step-size 10
 --lr-gamma 0.5
 --log-interval 50
+--resume <checkpoint opzionale>
 --max-grad-norm <valore opzionale>
 ```
 

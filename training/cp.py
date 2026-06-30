@@ -151,6 +151,8 @@ def train_cp(
     max_grad_norm: float | None = None,
     checkpoint_path: str | Path | None = None,
     epoch_checkpoint_dir: str | Path | None = None,
+    start_epoch: int = 1,
+    initial_best_loss: float = float("inf"),
     progress_interval: int | None = None,
     on_epoch_end: EpochCallback | None = None,
     on_batch_end: BatchProgressCallback | None = None,
@@ -159,13 +161,17 @@ def train_cp(
     """Train OutfitTransformer only on compatibility prediction."""
     if epochs <= 0:
         raise ValueError("epochs must be positive")
+    if start_epoch <= 0:
+        raise ValueError("start_epoch must be positive")
+    if start_epoch > epochs:
+        raise ValueError("start_epoch must be less than or equal to epochs")
     if progress_interval is not None and progress_interval <= 0:
         raise ValueError("progress_interval must be positive or None")
 
     model.to(device)
     train_history: list[CPEpochMetrics] = []
     validation_history: list[CPEpochMetrics] = []
-    best_loss = float("inf")
+    best_loss = initial_best_loss
     best_checkpoint_path = (
         Path(checkpoint_path) if checkpoint_path is not None else None
     )
@@ -173,7 +179,7 @@ def train_cp(
         Path(epoch_checkpoint_dir) if epoch_checkpoint_dir is not None else None
     )
 
-    for epoch in range(1, epochs + 1):
+    for epoch in range(start_epoch, epochs + 1):
         train_metrics = run_cp_epoch(
             model,
             train_batches,

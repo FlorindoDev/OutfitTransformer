@@ -153,6 +153,7 @@ python train_cp.py --help
 | `--cache-dir` | cache Hugging Face | percorso | Directory in cui scaricare dataset e metadati |
 | `--checkpoint` | `checkpoints/cp_best.pt` | percorso `.pt` | Destinazione del checkpoint migliore |
 | `--checkpoint-dir` | `checkpoints/cp_epochs` | directory | Salva un checkpoint per ogni epoca |
+| `--resume` | disabilitato | percorso `.pt` | Riprende pesi, optimizer e scheduler da un checkpoint |
 | `--text-model` | `sentence-transformers/all-MiniLM-L6-v2` | nome Hub o directory locale | Backbone SentenceBERT congelato |
 | `--no-pretrained-image` | falso | flag senza valore | Inizializza ResNet-18 casualmente invece che con ImageNet |
 
@@ -581,9 +582,23 @@ python -c "import torch; c=torch.load('checkpoints/cp_best.pt', map_location='cp
 Il checkpoint selezionato è quello con validation loss migliore, non
 necessariamente quello dell'ultima epoca.
 
-Il resume automatico non è ancora implementato: `train_cp.py` non accetta un
-argomento `--resume`. Il checkpoint contiene comunque gli stati necessari
-per aggiungerlo in futuro.
+### Riprendere da un checkpoint
+
+`--resume` carica `model_state_dict`, `optimizer_state_dict` e
+`scheduler_state_dict`, poi riparte dall'epoca successiva a quella salvata nel
+checkpoint.
+
+Esempio: se `cp_epoch_010.pt` contiene `epoch=10`, questo comando riparte da
+epoca 11 e arriva fino a epoca 20:
+
+```powershell
+python train_cp.py `
+  --epochs 20 `
+  --resume checkpoints\cp_epochs\cp_epoch_010.pt
+```
+
+`--epochs` indica sempre l'ultima epoca totale desiderata, non il numero di
+epoche aggiuntive. Deve quindi essere maggiore dell'epoca nel checkpoint.
 
 ## Cosa non è incluso
 
@@ -592,7 +607,6 @@ La pipeline attuale non implementa:
 - mixed precision/AMP;
 - gradient accumulation;
 - early stopping;
-- resume automatico;
 - TensorBoard o servizi di experiment tracking;
 - training multi-GPU;
 - valutazione AUC sul test set;

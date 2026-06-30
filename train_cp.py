@@ -1,6 +1,7 @@
 import argparse
 import random
 from pathlib import Path
+from typing import Any
 
 import torch
 from torch.optim import Adam
@@ -53,6 +54,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("checkpoints/cp_epochs"),
         help="directory for one checkpoint per epoch",
+    )
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        help="resume training from a saved CP checkpoint",
     )
     parser.add_argument(
         "--text-model",
@@ -124,6 +131,22 @@ def main() -> None:
         step_size=args.lr_step_size,
         gamma=args.lr_gamma,
     )
+    resume_epoch = 0
+    resume_best_loss = float("inf")
+    if args.resume is not None:
+        resume_epoch, resume_best_loss = _load_resume_checkpoint(
+            path=args.resume,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=args.device,
+        )
+        if resume_epoch >= args.epochs:
+            raise ValueError(
+                "--epochs must be greater than the resumed checkpoint epoch"
+            )
+        _print_resume(args.resume, resume_epoch, resume_best_loss)
+
     progress_interval = args.log_interval if args.log_interval > 0 else None
 
     train_cp(
@@ -138,6 +161,8 @@ def main() -> None:
         max_grad_norm=args.max_grad_norm,
         checkpoint_path=args.checkpoint,
         epoch_checkpoint_dir=args.checkpoint_dir,
+        start_epoch=resume_epoch + 1,
+        initial_best_loss=resume_best_loss,
         progress_interval=progress_interval,
         on_batch_end=_print_batch if progress_interval is not None else None,
         on_checkpoint_saved=_print_checkpoint,
@@ -208,6 +233,8 @@ def _print_startup(args: argparse.Namespace) -> None:
     print(f"device={args.device} seed={args.seed}")
     print(f"checkpoint_best={args.checkpoint.resolve()}")
     print(f"checkpoint_epochs={args.checkpoint_dir.resolve()}")
+    if args.resume is not None:
+        print(f"resume_checkpoint={args.resume.resolve()}")
     if args.log_interval == 0:
         print("batch_logs=disabled")
     else:
@@ -251,6 +278,72 @@ def _print_checkpoint(info: CPCheckpointInfo) -> None:
         f"path={info.path.resolve()} "
         f"monitored_loss={info.monitored_loss:.6f}"
     )
+
+
+def _print_resume(path: Path, epoch: int, monitored_loss: float) -> None:
+    print(
+        f"resume_loaded={path.resolve()} "
+        f"resume_epoch={epoch} "
+        f"next_epoch={epoch + 1} "
+        f"best_loss={monitored_loss:.6f}"
+    )
+
+
+def _load_resume_checkpoint(
+    path: Path,
+    model: CompatibilityPredictor,
+    optimizer: Adam,
+    scheduler: StepLR,
+    device: torch.device | str,
+) -> tuple[int, float]:
+    if not path.is_file():
+        raise FileNotFoundError(f"resume checkpoint not found: {path}")
+
+    checkpoint = torch.load(path, map_location=device, weights_only=True)
+    if not isinstance(checkpoint, dict):
+        raise ValueError("resume checkpoint must be a dictionary")
+
+    _load_required_state(
+        checkpoint,
+        "model_state_dict",
+        model.load_state_dict,
+    )
+    _load_required_state(
+        checkpoint,
+        "optimizer_state_dict",
+        optimizer.load_state_dict,
+    )
+    if "scheduler_state_dict" in checkpoint:
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+    epoch = _checkpoint_int(checkpoint, "epoch")
+    monitored_loss = _checkpoint_float(checkpoint, "monitored_loss")
+    return epoch, monitored_loss
+
+
+def _load_required_state(
+    checkpoint: dict[str, Any],
+    key: str,
+    load_state: Any,
+) -> None:
+    state = checkpoint.get(key)
+    if state is None:
+        raise ValueError(f"resume checkpoint missing {key}")
+    load_state(state)
+
+
+def _checkpoint_int(checkpoint: dict[str, Any], key: str) -> int:
+    value = checkpoint.get(key)
+    if not isinstance(value, int):
+        raise ValueError(f"resume checkpoint missing integer {key}")
+    return value
+
+
+def _checkpoint_float(checkpoint: dict[str, Any], key: str) -> float:
+    value = checkpoint.get(key)
+    if not isinstance(value, int | float):
+        raise ValueError(f"resume checkpoint missing numeric {key}")
+    return float(value)
 
 
 def _current_lr(optimizer: Adam) -> float:
