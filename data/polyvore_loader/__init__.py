@@ -1,23 +1,19 @@
-from .batch import OutfitBatch, OutfitExample, collate_outfits
-from .manifest_loader import OutfitDataset
-from .polyvore_loader import (
+from .dataset import (
     CompatibilityBatch,
     CompatibilityExample,
     PolyvoreCompatibilityDataset,
+    PolyvoreSplit,
+    PolyvoreVariant,
     collate_compatibility,
     load_polyvore_compatibility_dataset,
 )
-from .transforms import build_image_transform
 
 __all__ = [
     "CompatibilityBatch",
     "CompatibilityExample",
-    "OutfitBatch",
-    "OutfitDataset",
-    "OutfitExample",
     "PolyvoreCompatibilityDataset",
-    "build_image_transform",
+    "PolyvoreSplit",
+    "PolyvoreVariant",
     "collate_compatibility",
-    "collate_outfits",
     "load_polyvore_compatibility_dataset",
 ]

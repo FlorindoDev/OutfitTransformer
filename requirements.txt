@@ -2,3 +2,5 @@ torch>=2.2
 torchvision>=0.17
 sentence-transformers>=2.6
 Pillow>=10.0
+datasets>=2.19
+huggingface-hub>=0.23
