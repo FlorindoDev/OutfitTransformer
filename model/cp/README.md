@@ -301,6 +301,40 @@ optimizer = torch.optim.AdamW(model.classifier.parameters(), lr=1e-4)
 La Focal Loss stabilisce il segnale d'errore; `requires_grad` e l'optimizer
 stabiliscono quali parametri cambiano.
 
+## Training CP completo
+
+Lo script usa gli split ufficiali Polyvore, ADAM, Binary Focal Loss,
+validazione a ogni epoca, scheduler e checkpoint del modello con validation
+loss migliore:
+
+```powershell
+python train_cp.py --variant nondisjoint --epochs 20 --batch-size 32
+```
+
+Per lo split senza item condivisi:
+
+```powershell
+python train_cp.py --variant disjoint
+```
+
+Il checkpoint predefinito viene scritto in `checkpoints/cp_best.pt`.
+Iperparametri principali:
+
+```text
+--learning-rate 1e-4
+--focal-alpha 0.25
+--focal-gamma 2.0
+--lr-step-size 10
+--lr-gamma 0.5
+--max-grad-norm <valore opzionale>
+```
+
+Il loop riutilizzabile si trova in `training.cp`: `run_cp_epoch()` esegue una
+singola epoca, mentre `train_cp()` gestisce training, validation, scheduler e
+checkpoint. Tutti gli argomenti, gli iperparametri architetturali e i comandi
+pronti all'uso sono raccolti nella
+[guida completa al training](../../training/README.md).
+
 ## Test
 
 Dalla radice del progetto:
@@ -316,4 +350,11 @@ python -m unittest tests.test_task_models.CompatibilityPredictorTests -v
 model/cp/
   compatibility.py  outfit embedding e compatibility score
   focal_loss.py      Binary Focal Loss
+```
+
+```text
+training/
+  README.md          comandi e iperparametri
+  cp.py              loop di training e validazione CP
+train_cp.py          CLI per Polyvore Outfits
 ```

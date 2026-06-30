@@ -18,7 +18,8 @@ modellare le relazioni all'interno di un outfit. Supporta due task:
 | `model/common` | ResNet-18, SentenceBERT, item embedding, Transformer e `TaskMLP` | [Architettura comune](model/common/README.md) |
 | `model/cp` | Compatibility score e Binary Focal Loss | [Compatibility Prediction](model/cp/README.md) |
 | `model/cir` | Target embedding e Set-wise Ranking Loss | [Complementary Item Retrieval](model/cir/README.md) |
-| `data` | Manifest, preprocessing, batch e padding mask | [Dati e batching](data/README.md) |
+| `data` | Polyvore, preprocessing, batch e padding mask | [Dati e batching](data/README.md) |
+| `training` | Training CP, optimizer, scheduler e checkpoint | [Guida completa al training](training/README.md) |
 
 ## Quick start
 
@@ -224,6 +225,24 @@ for batch in loader:
 Il formato del manifest e la semantica della padding mask sono documentati nel
 [README data](data/README.md).
 
+### Training CP su Polyvore
+
+Dopo avere ottenuto l'accesso al dataset gated e avere eseguito
+`hf auth login`:
+
+```powershell
+pip install -r requirements.txt
+python train_cp.py --variant nondisjoint --epochs 20 --batch-size 32
+```
+
+Lo script legge le label dai file ufficiali `compatibility_*.txt`, stampa
+cache/dataset/progresso batch, valida a ogni epoca, salva un checkpoint per
+epoca in `checkpoints/cp_epochs/` e salva il migliore in
+`checkpoints/cp_best.pt`.
+Configurazione del loader e opzioni di training sono descritte nei
+[dati Polyvore](data/README.md#come-prepariamo-polyvore-per-compatibility-prediction)
+e nella [guida completa al training](training/README.md).
+
 ## Stato del progetto
 
 | Componente | Stato |
@@ -236,20 +255,26 @@ Il formato del manifest e la semantica della padding mask sono documentati nel
 | Binary Focal Loss | Implementata |
 | Target item token e target embedding | Implementati |
 | Set-wise Ranking Loss | Implementata |
-| Training loop e optimizer | Non implementati |
+| Training loop CP, ADAM, scheduler e checkpoint | Implementati |
 | Costruzione automatica degli outfit parziali | Non implementata |
 | Negative sampler e curriculum learning | Non implementati |
 | Indicizzazione KNN e ricerca top-k | Non implementate |
-| Training e valutazione su Polyvore | Non implementati |
+| Loader e training CP su Polyvore | Implementati |
 
 ## Struttura
 
 ```text
 data/
-  README.md             manifest, DataLoader e padding
+  README.md             Polyvore, esempi, forme e batching
   batch.py              batch e maschere
-  dataset.py            lettura del manifest
   transforms.py         preprocessing ImageNet
+  manifest_loader/
+    README.md           guida del loader JSON generico
+    dataset.py          lettura del manifest locale
+    example_manifest.json
+  polyvore_loader/
+    README.md           guida del loader Polyvore CP
+    dataset.py          Parquet, compatibility e metadati
 model/
   common/
     README.md           architettura condivisa
@@ -265,9 +290,15 @@ model/
     retrieval.py        target e candidate embedding
     ranking_loss.py     Set-wise Ranking Loss
 tests/
+  test_cp_training.py
   test_losses.py
+  test_polyvore_dataset.py
   test_task_models.py
 main.py                 esempio dell'encoder comune
+train_cp.py             training CP su Polyvore
+training/
+  README.md             comandi e iperparametri del training CP
+  cp.py                 epoche, metriche e checkpoint CP
 requirements.txt
 ```
 
@@ -286,14 +317,12 @@ from model import (
 
 ## Limiti attuali
 
-Il repository implementa modelli e loss, ma non ancora una pipeline completa
-di training e retrieval. Mancano:
+Il repository include ora la pipeline di training CP; la pipeline CIR e le
+metriche benchmark complete non sono ancora implementate. Mancano:
 
 1. costruzione automatica degli outfit parziali;
 2. selezione del positivo;
 3. negative sampling e curriculum learning;
-4. training CP e pretraining CP → CIR;
-5. optimizer, scheduler e checkpoint;
-6. indicizzazione del catalogo e ricerca KNN/top-k;
-7. metriche CP, FITB e CIR;
-8. integrazione con i dataset Polyvore.
+4. trasferimento del checkpoint CP al training CIR;
+5. indicizzazione del catalogo e ricerca KNN/top-k;
+6. metriche AUC CP, FITB e CIR.
