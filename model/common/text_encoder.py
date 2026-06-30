@@ -32,11 +32,12 @@ class TextEncoder(nn.Module):
             raise ValueError("descriptions cannot be empty")
 
         device = self.projection.weight.device
+        encode_device = str(device)
         with torch.no_grad():
             sentence_features = self.backbone.encode(
                 list(descriptions),
                 convert_to_tensor=True,
-                device=device,
+                device=encode_device,
                 show_progress_bar=False,
             )
         sentence_features = sentence_features.clone()

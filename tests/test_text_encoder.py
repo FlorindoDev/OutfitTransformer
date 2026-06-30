@@ -24,7 +24,7 @@ class FakeSentenceTransformer:
         descriptions: list[str],
         *,
         convert_to_tensor: bool,
-        device: torch.device,
+        device: str,
         show_progress_bar: bool,
     ) -> torch.Tensor:
         with torch.inference_mode():

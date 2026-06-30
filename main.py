@@ -16,15 +16,7 @@ def build_example_batch(image_size: int = 224) -> OutfitBatch:
                 "navy tailored trousers",
                 "brown leather shoes",
             ),
-        ),
-        OutfitExample(
-            outfit_id="casual-outfit",
-            images=torch.rand(2, 3, image_size, image_size),
-            descriptions=(
-                "black printed t-shirt",
-                "light blue denim jeans",
-            ),
-        ),
+        )
     ]
     return collate_outfits(examples)
 
