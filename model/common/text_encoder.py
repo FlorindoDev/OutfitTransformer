@@ -39,4 +39,5 @@ class TextEncoder(nn.Module):
                 device=device,
                 show_progress_bar=False,
             )
+        sentence_features = sentence_features.clone()
         return self.projection(sentence_features)
