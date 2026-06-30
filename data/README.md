@@ -71,6 +71,45 @@ che collega immagine, testo e outfit.
 Il repository Hugging Face è gated: prima del download bisogna accettare le
 condizioni di accesso indicate nella dataset card e autenticarsi.
 
+### La struttura rilevante del repository è:
+
+```text
+polyvore-outfits/
+  data/
+    nondisjoint/
+      train.parquet
+      validation.parquet
+      test.parquet
+    disjoint/
+      train.parquet
+      validation.parquet
+      test.parquet
+  nondisjoint/
+    compatibility_train.txt
+    compatibility_valid.txt
+    compatibility_test.txt
+    train.json
+    valid.json
+    test.json
+    fill_in_blank_*.json
+  disjoint/
+    compatibility_train.txt
+    compatibility_valid.txt
+    compatibility_test.txt
+    train.json
+    valid.json
+    test.json
+    fill_in_blank_*.json
+  polyvore_item_metadata.json
+```
+
+I Parquet del repack Hugging Face contengono soprattutto righe `item_id` +
+`image`: sono la sorgente delle immagini. I file `train.json`, `valid.json` e
+`test.json` contengono la struttura degli outfit e permettono di tradurre i
+token `set_id_index` nei relativi `item_id`. `polyvore_item_metadata.json`
+fornisce descrizioni e categorie. I JSON `fill_in_blank_*.json` appartengono
+al task FITB e non vengono usati nel training CP implementato qui.
+
 ### Cosa contiene
 
 I file che usiamo sono questi:
@@ -254,45 +293,6 @@ La label `0` dice che la combinazione è incompatibile. Il loader non decide
 da solo che questi item stanno male insieme: durante il training usa
 esclusivamente le righe negative già presenti in
 `compatibility_train.txt`.
-
-La struttura rilevante del repository è:
-
-```text
-polyvore-outfits/
-  data/
-    nondisjoint/
-      train.parquet
-      validation.parquet
-      test.parquet
-    disjoint/
-      train.parquet
-      validation.parquet
-      test.parquet
-  nondisjoint/
-    compatibility_train.txt
-    compatibility_valid.txt
-    compatibility_test.txt
-    train.json
-    valid.json
-    test.json
-    fill_in_blank_*.json
-  disjoint/
-    compatibility_train.txt
-    compatibility_valid.txt
-    compatibility_test.txt
-    train.json
-    valid.json
-    test.json
-    fill_in_blank_*.json
-  polyvore_item_metadata.json
-```
-
-I Parquet del repack Hugging Face contengono soprattutto righe `item_id` +
-`image`: sono la sorgente delle immagini. I file `train.json`, `valid.json` e
-`test.json` contengono la struttura degli outfit e permettono di tradurre i
-token `set_id_index` nei relativi `item_id`. `polyvore_item_metadata.json`
-fornisce descrizioni e categorie. I JSON `fill_in_blank_*.json` appartengono
-al task FITB e non vengono usati nel training CP implementato qui.
 
 ### Varianti del dataset
 
