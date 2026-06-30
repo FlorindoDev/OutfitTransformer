@@ -7,6 +7,13 @@ La spiegazione completa di file, identificatori, esempi reali e forme dei
 tensori si trova nella
 [guida Polyvore](../README.md#dataset-fornito-polyvore-outfits).
 
+## Indice
+
+- [Input](#input)
+- [Uso](#uso)
+- [Output](#output)
+- [Responsabilità della cartella](#responsabilità-della-cartella)
+
 ## Input
 
 Il loader combina quattro sorgenti:

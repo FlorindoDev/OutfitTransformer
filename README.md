@@ -11,6 +11,16 @@ modellare le relazioni all'interno di un outfit. Supporta due task:
 - **Complementary Item Retrieval (CIR):** genera l'embedding contestualizzato
   di un capo con cui interrogare un catalogo.
 
+## Indice
+
+- [Moduli e documentazione](#moduli-e-documentazione)
+- [Quick start](#quick-start)
+- [Architettura generale](#architettura-generale)
+- [Uso dei modelli](#uso-dei-modelli)
+- [Stato del progetto](#stato-del-progetto)
+- [Struttura](#struttura)
+- [Limiti attuali](#limiti-attuali)
+
 ## Moduli e documentazione
 
 | Modulo | Responsabilità | Documentazione |

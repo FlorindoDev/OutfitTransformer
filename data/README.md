@@ -10,6 +10,7 @@ l'[architettura comune](../model/common/README.md).
 
 - [Cosa fanno `transforms.py` e `batch.py`](#cosa-fanno-transformspy-e-batchpy)
 - [Dataset fornito: Polyvore Outfits](#dataset-fornito-polyvore-outfits)
+  - [Esempi dei file di task](#esempi-dei-file-di-task)
   - [Cosa contiene](#cosa-contiene)
   - [Esempio reale: un outfit e i suoi item](#esempio-reale-un-outfit-e-i-suoi-item)
   - [Da dove vengono presi immagini e testo](#da-dove-vengono-presi-immagini-e-testo)
@@ -109,6 +110,61 @@ I Parquet del repack Hugging Face contengono soprattutto righe `item_id` +
 token `set_id_index` nei relativi `item_id`. `polyvore_item_metadata.json`
 fornisce descrizioni e categorie. I JSON `fill_in_blank_*.json` appartengono
 al task FITB e non vengono usati nel training CP implementato qui.
+
+### Esempi dei file di task
+
+Polyvore contiene file per due task diversi:
+
+- `compatibility_*.txt`: serve per Compatibility Prediction, cioè decidere se
+  un outfit è compatibile (`1`) oppure incompatibile (`0`);
+- `fill_in_blank_*.json`: serve per Fill In The Blank, cioè scegliere quale
+  item completa un outfit con un buco.
+
+Esempio reale di `compatibility_train.txt`:
+
+```text
+1 199244701_1 199244701_2 199244701_3 199244701_4 199244701_5 199244701_6
+0 219713029_1 223118810_1 224078562_3 222231874_3 222344225_3 76483638_7
+```
+
+La prima colonna è la label:
+
+- `1`: gli item stanno bene insieme;
+- `0`: combinazione negativa già pronta nel benchmark.
+
+Gli altri valori sono token `set_id_index`. Il token non contiene immagine o
+testo: serve solo per arrivare all'`item_id`.
+
+Esempio reale di `fill_in_blank_train.json`:
+
+```json
+{
+  "question": [
+    "199244701_2",
+    "199244701_3",
+    "199244701_4",
+    "199244701_5",
+    "199244701_6"
+  ],
+  "blank_position": 1,
+  "answers": [
+    "199244701_1",
+    "207312192_1",
+    "195380234_1",
+    "224593384_1"
+  ]
+}
+```
+
+Qui `question` è l'outfit senza l'item mancante. `blank_position` dice quale
+posizione originale è stata tolta. `answers` contiene quattro candidati: uno è
+quello corretto, gli altri sono distrattori. Nell'esempio sopra manca
+`199244701_1`, quindi il candidato corretto è quello con lo stesso `set_id` e
+la posizione `1`.
+
+Questo progetto usa `compatibility_*.txt` per il training CP. I file
+`fill_in_blank_*.json` restano utili per un futuro task FITB/CIR, ma non sono
+usati da `train_cp.py`.
 
 ### Cosa contiene
 

@@ -9,6 +9,20 @@ capo che:
 Torna al [README principale](../../README.md) oppure consulta
 l'[architettura condivisa](../common/README.md).
 
+## Indice
+
+- [Concetti principali](#concetti-principali)
+- [Outfit parziale](#outfit-parziale)
+- [Flusso completo](#flusso-completo)
+- [Target token](#target-token)
+- [Utilizzo](#utilizzo)
+- [Positivi, negativi e candidati](#positivi-negativi-e-candidati)
+- [Set-wise Ranking Loss](#set-wise-ranking-loss)
+- [Training](#training)
+- [Inferenza](#inferenza)
+- [Test](#test)
+- [File](#file)
+
 ## Concetti principali
 
 Il modello non decide autonomamente quale categoria manca. La specifica del

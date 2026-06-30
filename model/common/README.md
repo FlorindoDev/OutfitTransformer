@@ -7,6 +7,16 @@ I componenti in `model/common` sono condivisi da:
 
 Torna al [README principale](../../README.md).
 
+## Indice
+
+- [Flusso](#flusso)
+- [Item embedding](#item-embedding)
+- [Transformer](#transformer)
+- [Padding mask](#padding-mask)
+- [Configurazione](#configurazione)
+- [Output dell'encoder](#output-dellencoder)
+- [File](#file)
+
 ## Flusso
 
 ```mermaid

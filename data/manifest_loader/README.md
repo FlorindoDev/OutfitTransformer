@@ -5,6 +5,13 @@ Polyvore e non contiene label di Compatibility Prediction.
 
 Torna alla [guida completa dei dati](../README.md).
 
+## Indice
+
+- [Input](#input)
+- [Uso](#uso)
+- [Output](#output)
+- [Responsabilità della cartella](#responsabilità-della-cartella)
+
 ## Input
 
 Il file [example_manifest.json](example_manifest.json) mostra il formato:

@@ -6,6 +6,17 @@ tra 0 e 1.
 Torna al [README principale](../../README.md) oppure consulta
 l'[architettura condivisa](../common/README.md).
 
+## Indice
+
+- [Flusso](#flusso)
+- [Utilizzo](#utilizzo)
+- [Binary Focal Loss](#binary-focal-loss)
+- [Quali componenti vengono aggiornati](#quali-componenti-vengono-aggiornati)
+- [Come viene allenato](#come-viene-allenato)
+- [Training CP con Polyvore](#training-cp-con-polyvore)
+- [Test](#test)
+- [File](#file)
+
 ## Flusso
 
 L'encoder antepone un token `OUTFIT` apprendibile agli item embedding:
@@ -301,11 +312,79 @@ optimizer = torch.optim.AdamW(model.classifier.parameters(), lr=1e-4)
 La Focal Loss stabilisce il segnale d'errore; `requires_grad` e l'optimizer
 stabiliscono quali parametri cambiano.
 
-## Training CP completo
+## Come viene allenato
 
-Lo script usa gli split ufficiali Polyvore, ADAM, Binary Focal Loss,
-validazione a ogni epoca, scheduler e checkpoint del modello con validation
-loss migliore:
+Il training CP è una classificazione binaria su outfit completi. Ogni esempio
+contiene:
+
+```text
+immagini degli item
+descrizioni degli item
+padding mask
+label 1/0
+```
+
+Il modello produce un logit per ogni outfit. La Binary Focal Loss confronta il
+logit con la label:
+
+```text
+label = 1  -> outfit compatibile
+label = 0  -> outfit incompatibile
+```
+
+Il ciclo generale è:
+
+1. il `DataLoader` prepara un batch di outfit;
+2. `CompatibilityPredictor` codifica immagini e testi;
+3. il Transformer costruisce l'outfit embedding;
+4. `TaskMLP` produce il logit;
+5. `BinaryFocalLoss` calcola l'errore;
+6. `loss.backward()` calcola i gradienti;
+7. l'optimizer aggiorna i pesi;
+8. a fine epoca si calcolano loss e accuracy.
+
+In forma compatta:
+
+```text
+batch -> model -> logits -> focal loss -> backward -> optimizer.step()
+```
+
+Durante la validation il modello fa solo forward e metriche: niente backward,
+niente aggiornamento dei pesi.
+
+Il loop riutilizzabile sta in `training.cp`:
+
+| Funzione | Ruolo |
+|---|---|
+| `run_cp_epoch()` | Esegue una epoca di train o validation |
+| `train_cp()` | Gestisce più epoche, validation, scheduler e checkpoint |
+
+## Training CP con Polyvore
+
+Lo script [train_cp.py](../../train_cp.py) allena il modello usando gli split
+ufficiali di `mvasil/polyvore-outfits`.
+
+Per Polyvore gli esempi arrivano così:
+
+```text
+compatibility_*.txt      -> label + token set_id_index
+<split>.json             -> token set_id_index -> item_id
+Parquet                  -> item_id -> immagine
+polyvore_item_metadata   -> item_id -> descrizione
+```
+
+Il dataset restituisce:
+
+```text
+CompatibilityExample(
+    images=[N,3,224,224],
+    descriptions=tuple di N stringhe,
+    label=1.0 oppure 0.0,
+)
+```
+
+Il training usa ADAM, Binary Focal Loss, validation a ogni epoca, scheduler,
+log di avanzamento e checkpoint:
 
 ```powershell
 python train_cp.py --variant nondisjoint --epochs 20 --batch-size 32
@@ -317,7 +396,15 @@ Per lo split senza item condivisi:
 python train_cp.py --variant disjoint
 ```
 
-Il checkpoint predefinito viene scritto in `checkpoints/cp_best.pt`.
+I checkpoint predefiniti sono:
+
+```text
+checkpoints/cp_epochs/cp_epoch_001.pt
+checkpoints/cp_epochs/cp_epoch_002.pt
+...
+checkpoints/cp_best.pt
+```
+
 Iperparametri principali:
 
 ```text
@@ -326,14 +413,12 @@ Iperparametri principali:
 --focal-gamma 2.0
 --lr-step-size 10
 --lr-gamma 0.5
+--log-interval 50
 --max-grad-norm <valore opzionale>
 ```
 
-Il loop riutilizzabile si trova in `training.cp`: `run_cp_epoch()` esegue una
-singola epoca, mentre `train_cp()` gestisce training, validation, scheduler e
-checkpoint. Tutti gli argomenti, gli iperparametri architetturali e i comandi
-pronti all'uso sono raccolti nella
-[guida completa al training](../../training/README.md).
+Tutti gli argomenti, i log stampati, la cache Hugging Face e i checkpoint sono
+descritti nella [guida completa al training](../../training/README.md).
 
 ## Test
 

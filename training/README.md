@@ -8,6 +8,22 @@ Il comando principale è [train_cp.py](../train_cp.py). Il ciclo riutilizzabile
 si trova in [cp.py](cp.py), mentre formato e preparazione di Polyvore sono
 descritti nel [README dei dati](../data/README.md).
 
+## Indice
+
+- [Cosa viene allenato](#cosa-viene-allenato)
+- [Prerequisiti](#prerequisiti)
+- [Comando minimo](#comando-minimo)
+- [Tutti gli argomenti della CLI](#tutti-gli-argomenti-della-cli)
+- [Iperparametri dell'architettura](#iperparametri-dellarchitettura)
+- [Iperparametri fissi del preprocessing](#iperparametri-fissi-del-preprocessing)
+- [Altre scelte fisse del training](#altre-scelte-fisse-del-training)
+- [Comandi di training](#comandi-di-training)
+- [Output durante il training](#output-durante-il-training)
+- [Checkpoint](#checkpoint)
+- [Cosa non è incluso](#cosa-non-è-incluso)
+- [Errori comuni](#errori-comuni)
+- [Controllo rapido prima di una run lunga](#controllo-rapido-prima-di-una-run-lunga)
+
 ## Cosa viene allenato
 
 Il forward usato durante il training è:
