@@ -1,5 +1,6 @@
 import argparse
 import random
+from collections.abc import Sized
 from pathlib import Path
 from typing import Any
 
@@ -22,15 +23,15 @@ def parse_args() -> argparse.Namespace:
         choices=("nondisjoint", "disjoint"),
         default="disjoint",
     )
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--learning-rate", type=float, default=1e-4)
-    parser.add_argument("--weight-decay", type=float, default=0.0)
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--learning-rate", type=float, default=5e-5)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--lr-step-size", type=int, default=10)
     parser.add_argument("--lr-gamma", type=float, default=0.5)
-    parser.add_argument("--focal-alpha", type=float, default=0.25)
+    parser.add_argument("--focal-alpha", type=float, default=0.5)
     parser.add_argument("--focal-gamma", type=float, default=2.0)
-    parser.add_argument("--max-grad-norm", type=float, default=None)
+    parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -242,8 +243,8 @@ def _print_startup(args: argparse.Namespace) -> None:
 
 
 def _print_data_summary(
-    train_dataset: object,
-    validation_dataset: object,
+    train_dataset: Sized,
+    validation_dataset: Sized,
     train_loader: DataLoader,
     validation_loader: DataLoader,
 ) -> None:
