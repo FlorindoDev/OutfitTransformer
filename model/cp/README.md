@@ -4,7 +4,8 @@ Il modulo `model/cp` assegna a un outfit un punteggio di compatibilità compreso
 tra 0 e 1.
 
 Torna al [README principale](../../README.md) oppure consulta
-l'[architettura condivisa](../common/README.md).
+l'[architettura condivisa](../common/README.md) e la
+[guida alla valutazione](../../evaluate/README.md).
 
 ## Indice
 
@@ -405,9 +406,9 @@ python -m training.cp.train_cp --epochs 20 --resume checkpoints\cp_epochs\cp_epo
 Iperparametri principali:
 
 ```text
---learning-rate 1e-4
+--learning-rate 1e-5
 --focal-alpha 0.5
---focal-gamma 2.0
+--focal-gamma 1.0
 --lr-step-size 10
 --lr-gamma 0.5
 --log-interval 50
@@ -449,7 +450,7 @@ Durante l'inferenza vengono caricati soltanto i pesi `model_state_dict`:
 python main.py --checkpoint checkpoints\cp_best.pt --images "shirt.jpg" "pants.jpg"
 
 # Valutazione finale sullo split test, avviata solo su richiesta
-python evaluate_cp.py --variant disjoint --checkpoint checkpoints\cp_best.pt
+python -m evaluate.cp --variant disjoint --checkpoint checkpoints\cp_best.pt --focal-gamma 1.0
 ```
 
 Il test set non seleziona né modifica il checkpoint. Serve esclusivamente per

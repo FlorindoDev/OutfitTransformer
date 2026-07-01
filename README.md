@@ -30,6 +30,8 @@ modellare le relazioni all'interno di un outfit. Supporta due task:
 | `model/cir` | Target embedding e Set-wise Ranking Loss | [Complementary Item Retrieval](model/cir/README.md) |
 | `data` | Polyvore, preprocessing, batch e padding mask | [Dati e batching](data/README.md) |
 | `training` | Training separato per task CP e CIR | [Panoramica del training](training/README.md) |
+| `evaluate` | Valutazione dei checkpoint sul test set | [Guida alla valutazione](evaluate/README.md) |
+| `metrics` | Accuracy e ROC AUC condivise | [Guida alle metriche](metrics/README.md) |
 
 ## Quick start
 
@@ -255,15 +257,19 @@ epoca in `checkpoints/cp_epochs/` e salva il migliore in
 La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
 
 ```powershell
-python evaluate_cp.py `
+python -m evaluate.cp `
   --variant disjoint `
-  --checkpoint checkpoints\cp_best.pt
+  --checkpoint checkpoints\cp_best.pt `
+  --focal-gamma 1.0
 ```
 
-Il comando non aggiorna i pesi e stampa test loss, accuracy e numero di esempi.
+Il comando non aggiorna i pesi e stampa test loss, accuracy, ROC AUC e numero
+di esempi.
 Configurazione del loader e opzioni di training sono descritte nei
 [dati Polyvore](data/README.md#come-prepariamo-polyvore-per-compatibility-prediction)
 e nella [guida completa al training CP](training/cp/README.md).
+Le metriche e tutte le opzioni sono descritte nella
+[guida alla valutazione](evaluate/README.md).
 
 ## Stato del progetto
 
@@ -312,7 +318,12 @@ model/
     retrieval.py        target e candidate embedding
     ranking_loss.py     Set-wise Ranking Loss
 main.py                 inferenza CP su immagini
-evaluate_cp.py          valutazione CP sul test set
+evaluate/
+  README.md             comandi e metriche di valutazione
+  cp.py                 valutazione CP sul test set
+metrics/
+  README.md             definizioni ed esempi delle metriche
+  classification.py     BinaryAccuracy e ROC AUC
 training/
   README.md             panoramica Training CP e Training CIR
   cp/

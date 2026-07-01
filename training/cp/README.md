@@ -7,6 +7,8 @@ incompatibile (`0`).
 - Torna alla [panoramica Training CP/CIR](../README.md).
 - Consulta il [modello CP](../../model/cp/README.md).
 - Consulta il [formato dei dati Polyvore](../../data/README.md).
+- Consulta la [guida alla valutazione](../../evaluate/README.md).
+- Consulta la [guida alle metriche](../../metrics/README.md).
 
 ## Indice
 
@@ -78,7 +80,7 @@ python -m training.cp.train_cp
 ```
 
 La configurazione predefinita usa la variante `disjoint`, 30 epoche, batch da
-16 e il device CUDA quando disponibile.
+32 e il device CUDA quando disponibile.
 
 ## Flag della CLI
 
@@ -91,13 +93,13 @@ python -m training.cp.train_cp --help
 | `-h`, `--help` | — | Mostra l'help |
 | `--variant` | `disjoint` | Variante Polyvore: `disjoint` o `nondisjoint` |
 | `--epochs` | `30` | Ultima epoca da eseguire |
-| `--batch-size` | `16` | Numero di outfit per batch |
-| `--learning-rate` | `5e-5` | Learning rate iniziale di Adam |
+| `--batch-size` | `32` | Numero di outfit per batch |
+| `--learning-rate` | `1e-5` | Learning rate iniziale di Adam |
 | `--weight-decay` | `1e-4` | Regolarizzazione L2 di Adam |
 | `--lr-step-size` | `10` | Epoche tra due riduzioni del learning rate |
 | `--lr-gamma` | `0.5` | Fattore moltiplicativo dello scheduler |
 | `--focal-alpha` | `0.5` | Bilanciamento della classe positiva |
-| `--focal-gamma` | `2.0` | Riduzione del peso degli esempi facili |
+| `--focal-gamma` | `1.0` | Riduzione del peso degli esempi facili |
 | `--max-grad-norm` | `1.0` | Limite della norma globale dei gradienti |
 | `--workers` | `0` | Processi del DataLoader |
 | `--seed` | `42` | Seed Python, PyTorch e CUDA |
@@ -117,13 +119,13 @@ python -m training.cp.train_cp --help
 | Iperparametro | Default |
 |---|---:|
 | optimizer | Adam |
-| learning rate | `5e-5` |
+| learning rate | `1e-5` |
 | weight decay | `1e-4` |
-| batch size | `16` |
+| batch size | `32` |
 | epoche | `30` |
 | gradient clipping | `1.0` |
 | Focal Loss alpha | `0.5` |
-| Focal Loss gamma | `2.0` |
+| Focal Loss gamma | `1.0` |
 
 La Focal Loss concentra il training sugli outfit incerti o classificati male.
 Il clipping viene applicato dopo `loss.backward()` e prima
@@ -175,9 +177,9 @@ scheduler = StepLR(
 Con il learning rate predefinito:
 
 ```text
-epoche 1–10:   0.000050
-epoche 11–20:  0.000025
-epoche 21–30:  0.0000125
+epoche 1–10:   0.000010
+epoche 11–20:  0.000005
+epoche 21–30:  0.0000025
 ```
 
 Alla fine di ogni epoca viene chiamato `scheduler.step()`. Lo scheduler:
@@ -245,14 +247,19 @@ Il test set non viene usato durante il training. Dopo avere scelto
 `cp_best.pt`:
 
 ```powershell
-python evaluate_cp.py `
+python -m evaluate.cp `
   --variant disjoint `
-  --checkpoint checkpoints\cp_best.pt
+  --checkpoint checkpoints\cp_best.pt `
+  --focal-gamma 1.0
 ```
 
-La valutazione non aggiorna i pesi e stampa test loss, accuracy ed esempi.
+La valutazione non aggiorna i pesi e stampa test loss, accuracy, ROC AUC ed
+esempi. L'AUC usa i logits per misurare quanto spesso un outfit compatibile
+riceve un punteggio superiore a uno incompatibile.
 Variante, SentenceBERT e parametri della Focal Loss devono coincidere con il
 training.
+Per tutte le opzioni e la descrizione delle metriche consulta la
+[guida alla valutazione](../../evaluate/README.md).
 
 ## Comandi utili
 
@@ -282,6 +289,6 @@ python -m training.cp.train_cp --log-interval 0
 ```text
 training/cp/
   train_cp.py   CLI e configurazione della run
-  trainer.py    epoche, metriche, validation e checkpoint
+  trainer.py    epoche, validation e checkpoint
   README.md     questa guida
 ```
