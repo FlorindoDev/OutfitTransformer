@@ -103,7 +103,7 @@ def main() -> None:
     )
     validation_loader = DataLoader(
         validation_dataset,
-        shuffle=False,
+        shuffle=True,
         **loader_options,
     )
     _print_data_summary(

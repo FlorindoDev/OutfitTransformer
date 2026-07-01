@@ -365,8 +365,8 @@ e item sono presenti negli split.
 | Split del loader | File di label | Uso nel progetto |
 |---|---|---|
 | `train` | `compatibility_train.txt` | Batch mescolati, Focal Loss, backward e aggiornamento dei pesi |
-| `validation` | `compatibility_valid.txt` | Valutazione senza aggiornare i pesi e scelta del checkpoint migliore |
-| `test` | `compatibility_test.txt` | Valutazione finale su dati mai usati per ottimizzare il modello |
+| `validation` | `compatibility_valid.txt` | Batch mescolati, valutazione senza aggiornare i pesi e scelta del checkpoint migliore |
+| `test` | `compatibility_test.txt` | Batch mescolati e valutazione finale su dati mai usati per ottimizzare il modello |
 
 `train_cp.py` usa automaticamente train e validation. Il test non viene usato
 durante il training: `evaluate_cp.py` lo esegue separatamente, solo quando

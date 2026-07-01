@@ -169,7 +169,7 @@ python train_cp.py --help
 - un batch più grande usa più VRAM e produce gradienti mediamente più stabili;
 - un batch più piccolo usa meno memoria, ma esegue più aggiornamenti per epoca.
 
-Il training loader usa `shuffle=True`; la validation usa `shuffle=False`.
+Training e validation usano entrambi `shuffle=True`.
 
 ### Ottimizzatore
 
@@ -363,7 +363,7 @@ agli encoder degli item né all'attenzione.
 | riduzione loss | media | Una loss scalare per batch |
 | soglia classe positiva | `logit >= 0` | Equivale a score sigmoid `>= 0.5` |
 | training shuffle | attivo | Ordine diverso degli esempi a ogni epoca |
-| validation shuffle | disattivo | Ordine stabile durante la valutazione |
+| validation shuffle | attivo | Ordine casuale anche durante la validation |
 | checkpoint monitorato | validation loss | Salva il minimo osservato |
 | gradient accumulation | assente | Un optimizer step per batch |
 | mixed precision | assente | Forward e backward standard |

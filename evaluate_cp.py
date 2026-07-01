@@ -64,7 +64,7 @@ def main() -> None:
     batches = DataLoader(
         dataset,
         batch_size=args.batch_size,
-        shuffle=False,
+        shuffle=True,
         num_workers=args.workers,
         pin_memory=str(args.device).startswith("cuda"),
         collate_fn=collate_compatibility,
