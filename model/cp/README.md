@@ -263,14 +263,23 @@ calcolo separato di sigmoid e logaritmo.
 La loss viene calcolata sul logit prodotto dal classificatore, ma il gradiente
 può attraversare tutta la rete:
 
-```text
-immagini e testi
-    → encoder
-    → Transformer
-    → outfit token
-    → classifier
-    → logit
-    → Binary Focal Loss
+```mermaid
+flowchart TD
+    A["Binary Focal Loss<br/>"] -->|gradiente| B["TaskMLP CP<br/>aggiornato"]
+    B --> C["Transformer encoder-only<br/>aggiornato"]
+
+    C --> D["Token OUTFIT<br/>aggiornato"]
+    C --> E["ResNet-18 + FC visuale<br/>aggiornate"]
+    C --> F["Proiezione testuale FC<br/>aggiornata"]
+    F -.->|"gradiente interrotto"| G["SentenceBERT<br/>congelato"]
+
+    classDef trained fill:#d5f5e3,stroke:#239b56,color:#17202a
+    classDef frozen fill:#f2f3f4,stroke:#7b7d7d,color:#17202a
+    classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
+
+    class B,C,D,E,F trained
+    class G frozen
+    class A loss
 ```
 
 Un passo di training tipico è:
@@ -293,24 +302,6 @@ optimizer.step()
 `requires_grad=True`; `optimizer.step()` aggiorna soltanto i parametri
 registrati nell'optimizer.
 
-Con `model.parameters()` vengono aggiornati:
-
-- classificatore `TaskMLP`;
-- outfit token;
-- Transformer;
-- ResNet-18;
-- proiezione FC del text encoder.
-
-Il backbone SentenceBERT rimane congelato.
-
-Per allenare soltanto il classificatore:
-
-```python
-optimizer = torch.optim.AdamW(model.classifier.parameters(), lr=1e-4)
-```
-
-La Focal Loss stabilisce il segnale d'errore; `requires_grad` e l'optimizer
-stabiliscono quali parametri cambiano.
 
 ## Come viene allenato
 
@@ -336,7 +327,7 @@ Il ciclo generale è:
 
 1. il `DataLoader` prepara un batch di outfit;
 2. `CompatibilityPredictor` codifica immagini e testi;
-3. il Transformer costruisce l'outfit embedding;
+3. il Transformer encoder-only costruisce l'outfit embedding;
 4. `TaskMLP` produce il logit;
 5. `BinaryFocalLoss` calcola l'errore;
 6. `loss.backward()` calcola i gradienti;

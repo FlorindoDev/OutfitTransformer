@@ -89,16 +89,6 @@ python main.py `
   --descriptions "white cotton shirt" "navy trousers" "brown leather shoes"
 ```
 
-`--no-pretrained-image` riguarda soltanto ResNet-18. Per evitare il download di
-SentenceBERT è necessario passare un checkpoint già presente in locale.
-I checkpoint passati con `--checkpoint` devono essere stati prodotti da
-`training.cp.train_cp`; se il training usava un modello SentenceBERT diverso dal
-predefinito, occorre specificare lo stesso valore con `--text-model`.
-Quando viene fornito un checkpoint, tutti i pesi CP salvati sostituiscono le
-inizializzazioni del modello e lo score rappresenta l'inferenza addestrata.
-`--images` accetta uno o più percorsi e li considera capi dello stesso outfit.
-Ogni immagine viene convertita in RGB e preprocessata come nel training. Se
-`--descriptions` viene omesso, le descrizioni sono ricavate dai nomi dei file.
 
 #### GPU NVIDIA e AMD
 
@@ -258,8 +248,7 @@ pip install -r requirements.txt
 python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 32
 ```
 
-Lo script legge le label dai file ufficiali `compatibility_*.txt`, stampa
-cache/dataset/progresso batch, valida a ogni epoca, salva un checkpoint per
+usa il dataset per allenare il modello e salva un checkpoint per
 epoca in `checkpoints/cp_epochs/` e salva il migliore in
 `checkpoints/cp_best.pt`.
 

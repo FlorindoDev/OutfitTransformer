@@ -9,6 +9,8 @@ l'[architettura comune](../model/common/README.md).
 ## Indice
 
 - [Cosa fanno `transforms.py` e `batch.py`](#cosa-fanno-transformspy-e-batchpy)
+- [Batch composizione](#batch-composizione)
+  - [Piccolo esempio di batch](#piccolo-esempio-di-batch)
 - [Dataset fornito: Polyvore Outfits](#dataset-fornito-polyvore-outfits)
   - [Esempi dei file di task](#esempi-dei-file-di-task)
   - [Cosa contiene](#cosa-contiene)
@@ -29,6 +31,7 @@ l'[architettura comune](../model/common/README.md).
   - [Uso prima del Transformer](#uso-prima-del-transformer)
   - [Uso nel Transformer](#uso-nel-transformer)
 - [File](#file)
+
 
 ## Cosa fanno `transforms.py` e `batch.py`
 
@@ -61,6 +64,82 @@ padding a zero agli outfit più corti e crea `padding_mask`:
 Questa maschera viene poi usata dal Transformer del modello come
 `src_key_padding_mask`, così l'attenzione considera solo gli item reali e non
 impara informazioni artificiali dalle posizioni vuote.
+
+
+## Batch composizione
+
+Un **outfit** è un singolo esempio del dataset. Un **batch** è semplicemente
+un gruppo di outfit che il modello analizza contemporaneamente.
+
+Con `batch_size=2`, per esempio:
+
+```text
+Batch
+├── Outfit 1: cardigan, maglietta, jeans     label = 1
+└── Outfit 2: camicia, pantaloni             label = 0
+```
+
+Il primo outfit ha tre capi, mentre il secondo ne ha due. Per ottenere una
+forma rettangolare viene aggiunta una posizione vuota al secondo:
+
+```text
+Outfit 1: cardigan   maglietta   jeans
+Outfit 2: camicia    pantaloni   PAD
+```
+
+`PAD` non è un vero capo. La `padding_mask` comunica al Transformer di
+ignorarlo:
+
+```text
+padding_mask = [
+    [False, False, False],
+    [False, False, True],
+]
+```
+
+Il batch CP contiene quindi:
+
+| Campo | Significato |
+|---|---|
+| `images` | Immagini di tutti i capi |
+| `descriptions` | Una descrizione per ogni capo reale |
+| `padding_mask` | Indica quali posizioni sono vuote |
+| `labels` | Una label `1` o `0` per ogni outfit |
+| `outfit_ids` | Identificativo di ogni esempio |
+
+Le immagini hanno forma:
+
+```text
+[B, L, 3, 224, 224]
+```
+
+dove `B` è il numero di outfit nel batch e `L` è il numero massimo di capi
+contenuti in uno degli outfit del batch. Nell'esempio: `B=2` e `L=3`.
+
+Il modello esegue un solo forward per tutto il batch, ma produce una
+predizione separata per ciascun outfit.
+
+### Piccolo esempio di batch
+
+```python
+batch.images.shape
+# torch.Size([2, 3, 3, 224, 224])
+
+batch.descriptions
+# (
+#   ("burgundy cardigan", "white t-shirt", "gray jeans"),
+#   ("blue shirt", "black trousers"),
+# )
+
+batch.padding_mask
+# tensor([
+#   [False, False, False],
+#   [False, False,  True],
+# ])
+
+batch.labels
+# tensor([1.0, 0.0])
+```
 
 ## Dataset fornito: Polyvore Outfits
 
@@ -328,27 +407,7 @@ CompatibilityExample(
 )
 ```
 
-### Esempio esplicativo: una domanda negativa
 
-La riga seguente è illustrativa e serve a mostrare la relazione tra item
-provenienti da outfit diversi:
-
-```text
-0 199244701_1 200742384_2 206955877_3
-```
-
-Il loader la interpreta così:
-
-| Token | Outfit sorgente | Posizione |
-|---|---|---:|
-| `199244701_1` | `199244701` | 1 |
-| `200742384_2` | `200742384` | 2 |
-| `206955877_3` | `206955877` | 3 |
-
-La label `0` dice che la combinazione è incompatibile. Il loader non decide
-da solo che questi item stanno male insieme: durante il training usa
-esclusivamente le righe negative già presenti in
-`compatibility_train.txt`.
 
 ### Varianti del dataset
 
@@ -410,93 +469,7 @@ Per il testo, il loader prova questi campi: `description`, `text`, `title`,
 `name`, `url_name`, `semantic_category`. Se non trova nulla, usa
 `"fashion item"`.
 
-### Forma di un singolo esempio
 
-Se la riga di compatibility contiene `N` item:
-
-| Campo | Tipo/forma | Contenuto |
-|---|---|---|
-| `outfit_id` | `str` | ID tecnico della domanda, per esempio `compatibility_train:42` |
-| `images` | `[N,3,224,224]`, `float32` | Un'immagine normalizzata per item |
-| `descriptions` | tupla di `N` stringhe | Una descrizione per ciascuna immagine |
-| `label` | scalare `float` | `1.0` compatibile oppure `0.0` incompatibile |
-
-Le dimensioni significano:
-
-```text
-N   numero di item nell'outfit
-3   canali RGB
-224 altezza dell'immagine
-224 larghezza dell'immagine
-```
-
-Esempio già risolto dal loader:
-
-```text
-compatibility_train.txt:
-1 199244701_1 199244701_2 199244701_3
-
-risoluzione dei token:
-199244701_1 -> item_id 132621870
-199244701_2 -> item_id 153967122
-199244701_3 -> item_id 171169800
-
-output dell'esempio:
-images.shape = [3, 3, 224, 224]
-descriptions = (
-    "<testo letto da polyvore_item_metadata.json per 132621870>",
-    "<testo letto da polyvore_item_metadata.json per 153967122>",
-    "<testo letto da polyvore_item_metadata.json per 171169800>",
-)
-label = 1.0
-```
-
-### Forma di un batch
-
-Gli outfit hanno lunghezze differenti. Dato un batch di `B` outfit, `L` è il
-numero di item dell'outfit più lungo nel batch:
-
-| Campo | Forma | Contenuto |
-|---|---|---|
-| `images` | `[B,L,3,224,224]`, `float32` | Immagini reali più eventuali immagini di padding a zero |
-| `descriptions` | `B` tuple di lunghezza variabile | Solo i testi degli item reali |
-| `padding_mask` | `[B,L]`, `bool` | `False` per item reali, `True` per padding |
-| `labels` | `[B]`, `float32` | Label binaria di ciascun outfit |
-| `outfit_ids` | tupla di `B` stringhe | Identificativi delle domande |
-
-Esempio con due outfit da tre e due item:
-
-```text
-images.shape       = [2, 3, 3, 224, 224]
-labels.shape       = [2]
-labels             = [1.0, 0.0]
-padding_mask       = [
-    [False, False, False],
-    [False, False, True ],
-]
-```
-
-### Dal batch agli input del modello
-
-Il dataset non contiene embedding già pronti. Vengono calcolati durante il
-forward:
-
-```text
-images                         [B,L,3,224,224]
-  → ResNet-18                  [B,L,64]
-descriptions
-  → SentenceBERT + FC          [B,L,64]
-concatenazione                 [B,L,128]
-aggiunta token OUTFIT          [B,L+1,128]
-Transformer                   [B,L+1,128]
-output token OUTFIT            [B,128]
-classifier logit               [B]
-sigmoid compatibility score    [B]
-```
-
-Il training confronta i logits `[B]` con `labels [B]` tramite Binary Focal
-Loss. Le descrizioni restano sequenze Python perché SentenceBERT riceve testo;
-non vengono convertite in ID dal dataset loader.
 
 ## Caricamento da Hugging Face
 
