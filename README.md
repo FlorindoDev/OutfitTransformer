@@ -29,7 +29,7 @@ modellare le relazioni all'interno di un outfit. Supporta due task:
 | `model/cp` | Compatibility score e Binary Focal Loss | [Compatibility Prediction](model/cp/README.md) |
 | `model/cir` | Target embedding e Set-wise Ranking Loss | [Complementary Item Retrieval](model/cir/README.md) |
 | `data` | Polyvore, preprocessing, batch e padding mask | [Dati e batching](data/README.md) |
-| `training` | Training CP, optimizer, scheduler e checkpoint | [Guida completa al training](training/README.md) |
+| `training` | Training separato per task CP e CIR | [Panoramica del training](training/README.md) |
 
 ## Quick start
 
@@ -89,7 +89,7 @@ python main.py `
 `--no-pretrained-image` riguarda soltanto ResNet-18. Per evitare il download di
 SentenceBERT è necessario passare un checkpoint già presente in locale.
 I checkpoint passati con `--checkpoint` devono essere stati prodotti da
-`train_cp.py`; se il training usava un modello SentenceBERT diverso dal
+`training.cp.train_cp`; se il training usava un modello SentenceBERT diverso dal
 predefinito, occorre specificare lo stesso valore con `--text-model`.
 `--images` accetta uno o più percorsi e li considera capi dello stesso outfit.
 Ogni immagine viene convertita in RGB e preprocessata come nel training. Se
@@ -250,7 +250,7 @@ Dopo avere ottenuto l'accesso al dataset gated e avere eseguito
 
 ```powershell
 pip install -r requirements.txt
-python train_cp.py --variant nondisjoint --epochs 20 --batch-size 32
+python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 32
 ```
 
 Lo script legge le label dai file ufficiali `compatibility_*.txt`, stampa
@@ -269,7 +269,7 @@ python evaluate_cp.py `
 Il comando non aggiorna i pesi e stampa test loss, accuracy e numero di esempi.
 Configurazione del loader e opzioni di training sono descritte nei
 [dati Polyvore](data/README.md#come-prepariamo-polyvore-per-compatibility-prediction)
-e nella [guida completa al training](training/README.md).
+e nella [guida completa al training CP](training/cp/README.md).
 
 ## Stato del progetto
 
@@ -317,16 +317,16 @@ model/
     README.md           Complementary Item Retrieval
     retrieval.py        target e candidate embedding
     ranking_loss.py     Set-wise Ranking Loss
-tests/
-  test_cp_training.py
-  test_losses.py
-  test_polyvore_dataset.py
-  test_task_models.py
-main.py                 esempio dell'encoder comune
-train_cp.py             training CP su Polyvore
+main.py                 inferenza CP su immagini
+evaluate_cp.py          valutazione CP sul test set
 training/
-  README.md             comandi e iperparametri del training CP
-  cp.py                 epoche, metriche e checkpoint CP
+  README.md             panoramica Training CP e Training CIR
+  cp/
+    README.md           comandi e iperparametri del training CP
+    train_cp.py         CLI training CP su Polyvore
+    trainer.py          epoche, metriche e checkpoint CP
+  cir/
+    README.md           training CIR previsto, non ancora implementato
 requirements.txt
 ```
 

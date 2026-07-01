@@ -164,7 +164,7 @@ la posizione `1`.
 
 Questo progetto usa `compatibility_*.txt` per il training CP. I file
 `fill_in_blank_*.json` restano utili per un futuro task FITB/CIR, ma non sono
-usati da `train_cp.py`.
+usati da `training.cp.train_cp`.
 
 ### Cosa contiene
 
@@ -368,7 +368,7 @@ e item sono presenti negli split.
 | `validation` | `compatibility_valid.txt` | Batch mescolati, valutazione senza aggiornare i pesi e scelta del checkpoint migliore |
 | `test` | `compatibility_test.txt` | Batch mescolati e valutazione finale su dati mai usati per ottimizzare il modello |
 
-`train_cp.py` usa automaticamente train e validation. Il test non viene usato
+`training.cp.train_cp` usa automaticamente train e validation. Il test non viene usato
 durante il training: `evaluate_cp.py` lo esegue separatamente, solo quando
 richiesto, dopo avere scelto il checkpoint.
 
@@ -541,7 +541,7 @@ di Hugging Face:
   `~/.cache/huggingface/hub` per file come `compatibility_*.txt`,
   `<split>.json` e `polyvore_item_metadata.json`.
 
-`train_cp.py` stampa questi percorsi all'avvio.
+`training.cp.train_cp` stampa questi percorsi all'avvio.
 
 Per test locali o layout personalizzati, `PolyvoreCompatibilityDataset`
 accetta direttamente le righe outfit, il percorso del file

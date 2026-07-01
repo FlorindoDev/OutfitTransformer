@@ -352,7 +352,7 @@ batch -> model -> logits -> focal loss -> backward -> optimizer.step()
 Durante la validation il modello fa solo forward e metriche: niente backward,
 niente aggiornamento dei pesi.
 
-Il loop riutilizzabile sta in `training.cp`:
+Il loop riutilizzabile sta in `training.cp.trainer`:
 
 | Funzione | Ruolo |
 |---|---|
@@ -361,7 +361,7 @@ Il loop riutilizzabile sta in `training.cp`:
 
 ## Training CP con Polyvore
 
-Lo script [train_cp.py](../../train_cp.py) allena il modello usando gli split
+Il modulo [train_cp.py](../../training/cp/train_cp.py) allena il modello usando gli split
 ufficiali di `mvasil/polyvore-outfits`.
 
 Per Polyvore gli esempi arrivano così:
@@ -387,13 +387,13 @@ Il training usa ADAM, Binary Focal Loss, validation a ogni epoca, scheduler,
 log di avanzamento e checkpoint:
 
 ```powershell
-python train_cp.py --variant nondisjoint --epochs 20 --batch-size 32
+python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 32
 ```
 
 Per lo split senza item condivisi:
 
 ```powershell
-python train_cp.py --variant disjoint
+python -m training.cp.train_cp --variant disjoint
 ```
 
 I checkpoint predefiniti sono:
@@ -408,7 +408,7 @@ checkpoints/cp_best.pt
 Per riprendere da un checkpoint:
 
 ```powershell
-python train_cp.py --epochs 20 --resume checkpoints\cp_epochs\cp_epoch_010.pt
+python -m training.cp.train_cp --epochs 20 --resume checkpoints\cp_epochs\cp_epoch_010.pt
 ```
 
 Iperparametri principali:
@@ -425,7 +425,7 @@ Iperparametri principali:
 ```
 
 Tutti gli argomenti, i log stampati, la cache Hugging Face e i checkpoint sono
-descritti nella [guida completa al training](../../training/README.md).
+descritti nella [guida completa al training CP](../../training/cp/README.md).
 
 ## Checkpoint
 
@@ -468,7 +468,7 @@ Con `--resume`, invece, vengono ripristinati anche optimizer, scheduler ed
 epoca, così il training può continuare:
 
 ```powershell
-python train_cp.py --epochs 20 --resume checkpoints\cp_best.pt
+python -m training.cp.train_cp --epochs 20 --resume checkpoints\cp_best.pt
 ```
 
 Il modello SentenceBERT e la configurazione dell'architettura devono essere
@@ -486,7 +486,9 @@ model/cp/
 
 ```text
 training/
-  README.md          comandi e iperparametri
-  cp.py              loop di training e validazione CP
-train_cp.py          CLI per Polyvore Outfits
+  README.md          panoramica Training CP e Training CIR
+  cp/
+    README.md        comandi e iperparametri CP
+    trainer.py       loop di training e validazione CP
+    train_cp.py      CLI per Polyvore Outfits
 ```
