@@ -127,19 +127,6 @@ python -c "import torch; print('GPU:', torch.cuda.is_available()); print('CUDA:'
 - nessun backend compatibile: `GPU=False`, quindi conviene omettere
   `--device` oppure usare `--device cpu`.
 
-### 3. Eseguire i test
-
-```powershell
-python -m unittest discover -s tests -v
-```
-
-È anche possibile eseguire le suite dei singoli task:
-
-```powershell
-python -m unittest tests.test_task_models.CompatibilityPredictorTests -v
-python -m unittest tests.test_task_models.ComplementaryItemRetrieverTests -v
-python -m unittest tests.test_losses -v
-```
 
 ## Architettura generale
 
