@@ -11,10 +11,11 @@ Torna al [README principale](../../README.md).
 
 - [Flusso](#flusso)
 - [Item embedding](#item-embedding)
-- [Transformer](#transformer)
+- [Transformer encoder-only](#transformer-encoder-only)
 - [Padding mask](#padding-mask)
 - [Configurazione](#configurazione)
 - [Output dell'encoder](#output-dellencoder)
+- [Uso dell'output in CP e CIR](#uso-delloutput-in-cp-e-cir)
 - [File](#file)
 
 ## Flusso
@@ -33,7 +34,7 @@ flowchart TD
     E --> F
     F --> G["Item embeddings<br/>B × L × 128"]
 
-    G --> H["Task token + Transformer"]
+    G --> H["Task token + Transformer encoder-only"]
     H --> I["Compatibility Prediction"]
     H --> J["Complementary Item Retrieval"]
 ```
@@ -61,9 +62,9 @@ item_embedding = torch.cat(
 )
 ```
 
-Prima del Transformer, le prime 64 feature sono visive e le successive 64
-sono testuali. Dopo il Transformer, attenzione e proiezioni lineari mescolano
-le due modalità.
+Prima del Transformer encoder-only, le prime 64 feature sono visive e le
+successive 64 sono testuali. Dopo il Transformer, attenzione e proiezioni
+lineari mescolano le due modalità.
 
 ### Image encoder
 
@@ -77,7 +78,11 @@ addestrabili.
 proiezione lineare addestrabile per portarle a 64 dimensioni. Il backbone
 SentenceBERT è congelato; la proiezione viene aggiornata durante il training.
 
-## Transformer
+## Transformer encoder-only
+
+L'architettura comune usa soltanto lo stack encoder del Transformer. Non è
+presente un decoder e non avviene generazione autoregressiva: ogni layer
+contestualizza gli item embedding e il task token tramite self-attention.
 
 La configurazione predefinita usa:
 
@@ -158,10 +163,25 @@ output = model(
 
 | Campo | Forma | Significato |
 |---|---|---|
-| `item_embeddings` | `[B,L,128]` | Feature multimodali prima del Transformer |
-| `contextual_embeddings` | `[B,L,128]` | Capi contestualizzati |
+| `item_embeddings` | `[B,L,128]` | Feature multimodali prima del Transformer encoder-only |
+| `contextual_embeddings` | `[B,L,128]` | Output contestualizzati del Transformer encoder-only |
 | `outfit_embedding` | `[B,128]` | Output del token in posizione zero |
 | `padding_mask` | `[B,L]` | Maschera degli item restituita dall'encoder |
+
+## Uso dell'output in CP e CIR
+
+L'output contestualizzato del Transformer encoder-only è condiviso dai due
+task, che ne utilizzano la posizione zero in modo diverso:
+
+- **CP:** antepone il token `OUTFIT`, usa il relativo output contestualizzato
+  come `outfit_embedding` e lo passa a `TaskMLP` per ottenere logit e score di
+  compatibilità;
+- **CIR:** antepone il token `TARGET`, usa il relativo output contestualizzato
+  e lo passa alla proiezione del task per ottenere il `target_embedding`, poi
+  impiegato dalla ranking loss o per cercare gli item complementari.
+
+Gli output degli altri token rappresentano invece i capi contestualizzati
+rispetto all'intero outfit.
 
 ## File
 
@@ -170,7 +190,7 @@ model/common/
   config.py               configurazione del modello
   image_encoder.py        ResNet-18
   text_encoder.py         SentenceBERT + FC
-  transformer_encoder.py  self-attention
+  transformer_encoder.py  Transformer encoder-only con self-attention
   outfit_encoder.py       item embedding, outfit token e contesto
   heads.py                TaskMLP condiviso
   loss_reduction.py       riduzione comune delle loss

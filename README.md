@@ -25,7 +25,7 @@ modellare le relazioni all'interno di un outfit. Supporta due task:
 
 | Modulo | Responsabilità | Documentazione |
 |---|---|---|
-| `model/common` | ResNet-18, SentenceBERT, item embedding, Transformer e `TaskMLP` | [Architettura comune](model/common/README.md) |
+| `model/common` | ResNet-18, SentenceBERT, item embedding, Transformer encoder-only e `TaskMLP` | [Architettura comune](model/common/README.md) |
 | `model/cp` | Compatibility score e Binary Focal Loss | [Compatibility Prediction](model/cp/README.md) |
 | `model/cir` | Target embedding e Set-wise Ranking Loss | [Complementary Item Retrieval](model/cir/README.md) |
 | `data` | Polyvore, preprocessing, batch e padding mask | [Dati e batching](data/README.md) |
@@ -144,7 +144,7 @@ flowchart TD
     E --> F
     F --> G["Item embeddings<br/>B × L × 128"]
 
-    G --> H["Task token + Transformer<br/>6 layer · 16 teste"]
+    G --> H["Task token + Transformer encoder-only<br/>6 layer · 16 teste"]
 
     H --> I["CP<br/>OUTFIT token → logit"]
     I --> J["Compatibility score<br/>Binary Focal Loss"]
@@ -157,7 +157,11 @@ Per ogni capo, ResNet-18 genera 64 feature visive e SentenceBERT con una
 proiezione FC genera 64 feature testuali. La concatenazione produce un item
 embedding da 128 dimensioni.
 
-Il Transformer:
+Il modello usa un Transformer **encoder-only**: non contiene un decoder e non
+genera sequenze autoregressive. Il suo compito è contestualizzare insieme i
+token dei capi e il task token.
+
+Il Transformer encoder-only:
 
 - riceve un insieme di item embedding;
 - non usa positional encoding, perché l'ordine dei capi non deve modificare il
@@ -274,7 +278,7 @@ e nella [guida completa al training](training/README.md).
 | ResNet-18 ImageNet → 64 feature | Implementato |
 | SentenceBERT congelato + FC → 64 feature | Implementato |
 | Item embedding multimodale da 128 feature | Implementato |
-| Transformer, 6 layer e 16 teste | Implementato |
+| Transformer encoder-only, 6 layer e 16 teste | Implementato |
 | Outfit token e compatibility score | Implementato |
 | Binary Focal Loss | Implementata |
 | Target item token e target embedding | Implementati |
@@ -304,7 +308,7 @@ model/
     README.md           architettura condivisa
     image_encoder.py    ResNet-18
     text_encoder.py     SentenceBERT + FC
-    outfit_encoder.py   item embedding e Transformer
+    outfit_encoder.py   item embedding e Transformer encoder-only
   cp/
     README.md           Compatibility Prediction
     compatibility.py    compatibility score
