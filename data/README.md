@@ -368,9 +368,9 @@ e item sono presenti negli split.
 | `validation` | `compatibility_valid.txt` | Valutazione senza aggiornare i pesi e scelta del checkpoint migliore |
 | `test` | `compatibility_test.txt` | Valutazione finale su dati mai usati per ottimizzare il modello |
 
-`train_cp.py` usa automaticamente train e validation. Il test è esposto dal
-loader, ma deve essere eseguito separatamente dopo avere scelto il checkpoint:
-non viene usato durante il training.
+`train_cp.py` usa automaticamente train e validation. Il test non viene usato
+durante il training: `evaluate_cp.py` lo esegue separatamente, solo quando
+richiesto, dopo avere scelto il checkpoint.
 
 ## Come prepariamo Polyvore per Compatibility Prediction
 

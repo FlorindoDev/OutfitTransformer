@@ -20,6 +20,7 @@ descritti nel [README dei dati](../data/README.md).
 - [Comandi di training](#comandi-di-training)
 - [Output durante il training](#output-durante-il-training)
 - [Checkpoint](#checkpoint)
+- [Valutazione finale sul test set](#valutazione-finale-sul-test-set)
 - [Cosa non è incluso](#cosa-non-è-incluso)
 - [Errori comuni](#errori-comuni)
 - [Controllo rapido prima di una run lunga](#controllo-rapido-prima-di-una-run-lunga)
@@ -107,14 +108,15 @@ Equivale a:
 ```powershell
 python train_cp.py `
   --variant disjoint `
-  --epochs 20 `
-  --batch-size 32 `
-  --learning-rate 1e-4 `
-  --weight-decay 0 `
+  --epochs 30 `
+  --batch-size 16 `
+  --learning-rate 5e-5 `
+  --weight-decay 1e-4 `
   --lr-step-size 10 `
   --lr-gamma 0.5 `
-  --focal-alpha 0.25 `
+  --focal-alpha 0.5 `
   --focal-gamma 2 `
+  --max-grad-norm 1.0 `
   --workers 0 `
   --seed 42 `
   --log-interval 50 `
@@ -136,16 +138,16 @@ python train_cp.py --help
 
 | Argomento | Default | Valori/vincoli | Effetto |
 |---|---:|---|---|
-| `--variant` | `nondisjoint` | `nondisjoint`, `disjoint` | Seleziona la variante Polyvore |
-| `--epochs` | `20` | intero `> 0` | Numero completo di passaggi sul training set |
-| `--batch-size` | `32` | intero `> 0` | Numero di outfit per aggiornamento |
-| `--learning-rate` | `1e-4` | float `> 0` | Learning rate iniziale di ADAM |
-| `--weight-decay` | `0.0` | float | Regolarizzazione L2 applicata da ADAM |
+| `--variant` | `disjoint` | `nondisjoint`, `disjoint` | Seleziona la variante Polyvore |
+| `--epochs` | `30` | intero `> 0` | Numero completo di passaggi sul training set |
+| `--batch-size` | `16` | intero `> 0` | Numero di outfit per aggiornamento |
+| `--learning-rate` | `5e-5` | float `> 0` | Learning rate iniziale di ADAM |
+| `--weight-decay` | `1e-4` | float | Regolarizzazione L2 applicata da ADAM |
 | `--lr-step-size` | `10` | intero `> 0` | Epoche tra due riduzioni del learning rate |
 | `--lr-gamma` | `0.5` | float in `(0,1]` | Fattore moltiplicativo di ogni riduzione |
-| `--focal-alpha` | `0.25` | float in `[0,1]` | Peso relativo della classe positiva |
+| `--focal-alpha` | `0.5` | float in `[0,1]` | Peso relativo della classe positiva |
 | `--focal-gamma` | `2.0` | float `>= 0` | Intensità con cui la loss riduce gli esempi facili |
-| `--max-grad-norm` | disabilitato | float `> 0` | Abilita il gradient clipping sulla norma globale |
+| `--max-grad-norm` | `1.0` | float `> 0` | Gradient clipping sulla norma globale |
 | `--workers` | `0` | intero `>= 0` | Processi DataLoader per caricare i dati |
 | `--seed` | `42` | intero | Seed per `random`, PyTorch e CUDA |
 | `--log-interval` | `50` | intero `>= 0` | Stampa avanzamento ogni N batch; `0` disabilita i log batch |
@@ -599,6 +601,29 @@ python train_cp.py `
 
 `--epochs` indica sempre l'ultima epoca totale desiderata, non il numero di
 epoche aggiuntive. Deve quindi essere maggiore dell'epoca nel checkpoint.
+
+## Valutazione finale sul test set
+
+Il test set non viene mai letto da `train_cp.py`. Dopo avere scelto il
+checkpoint tramite validation, la valutazione finale si avvia esplicitamente:
+
+```powershell
+python evaluate_cp.py `
+  --variant disjoint `
+  --checkpoint checkpoints\cp_best.pt `
+  --batch-size 16
+```
+
+Il comando usa lo split ufficiale `test`, disabilita gradienti e aggiornamenti
+dei pesi e stampa Binary Focal Loss, accuracy e numero di esempi. La variante,
+il modello SentenceBERT e i parametri della Focal Loss devono coincidere con
+quelli usati durante il training.
+
+Per disabilitare i log intermedi:
+
+```powershell
+python evaluate_cp.py --log-interval 0
+```
 
 ## Cosa non è incluso
 

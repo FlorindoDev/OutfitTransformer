@@ -14,7 +14,7 @@ l'[architettura condivisa](../common/README.md).
 - [Quali componenti vengono aggiornati](#quali-componenti-vengono-aggiornati)
 - [Come viene allenato](#come-viene-allenato)
 - [Training CP con Polyvore](#training-cp-con-polyvore)
-- [Test](#test)
+- [Checkpoint](#checkpoint)
 - [File](#file)
 
 ## Flusso
@@ -415,7 +415,7 @@ Iperparametri principali:
 
 ```text
 --learning-rate 1e-4
---focal-alpha 0.25
+--focal-alpha 0.5
 --focal-gamma 2.0
 --lr-step-size 10
 --lr-gamma 0.5
@@ -427,19 +427,59 @@ Iperparametri principali:
 Tutti gli argomenti, i log stampati, la cache Hugging Face e i checkpoint sono
 descritti nella [guida completa al training](../../training/README.md).
 
-## Test
+## Checkpoint
 
-Dalla radice del progetto:
+Un checkpoint è una fotografia dello stato del training salvata alla fine di
+un'epoca. Contiene:
+
+```text
+epoch                   epoca completata
+model_state_dict        pesi di encoder, Transformer e classificatore CP
+optimizer_state_dict    stato di ADAM
+scheduler_state_dict    stato dello scheduler, se presente
+monitored_loss          validation loss usata per confrontare i modelli
+train_metrics           loss e accuracy di training
+validation_metrics      loss e accuracy di validation
+```
+
+Vengono salvati due tipi di checkpoint:
+
+- `checkpoints/cp_epochs/cp_epoch_NNN.pt` conserva i pesi di ogni epoca;
+- `checkpoints/cp_best.pt` viene sovrascritto soltanto quando la validation
+  loss è strettamente inferiore al miglior valore ottenuto fino a quel momento.
+
+Di conseguenza, `cp_best.pt` contiene il modello selezionato tramite validation,
+non necessariamente quello dell'ultima epoca.
+
+Durante l'inferenza vengono caricati soltanto i pesi `model_state_dict`:
 
 ```powershell
-python -m unittest tests.test_losses.BinaryFocalLossTests -v
-python -m unittest tests.test_task_models.CompatibilityPredictorTests -v
+# Inferenza su immagini scelte manualmente
+python main.py --checkpoint checkpoints\cp_best.pt --images "shirt.jpg" "pants.jpg"
+
+# Valutazione finale sullo split test, avviata solo su richiesta
+python evaluate_cp.py --variant disjoint --checkpoint checkpoints\cp_best.pt
 ```
+
+Il test set non seleziona né modifica il checkpoint. Serve esclusivamente per
+misurare le prestazioni finali di un modello già scelto tramite validation.
+
+Con `--resume`, invece, vengono ripristinati anche optimizer, scheduler ed
+epoca, così il training può continuare:
+
+```powershell
+python train_cp.py --epochs 20 --resume checkpoints\cp_best.pt
+```
+
+Il modello SentenceBERT e la configurazione dell'architettura devono essere
+gli stessi usati per creare il checkpoint; in caso contrario il caricamento
+strict dei pesi segnala l'incompatibilità.
 
 ## File
 
 ```text
 model/cp/
+  checkpoint.py     caricamento dei pesi CP per inferenza e test
   compatibility.py  outfit embedding e compatibility score
   focal_loss.py      Binary Focal Loss
 ```

@@ -48,12 +48,12 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-Il comando costruisce due outfit dimostrativi, esegue l'encoder comune e
-stampa le forme di immagini, maschera, item embedding, output del Transformer
-e outfit embedding.
+Il comando costruisce un outfit dimostrativo, esegue il modello CP e stampa
+le forme di immagini, maschera, outfit embedding e score di compatibilità.
+Per impostazione predefinita carica `checkpoints/cp_best.pt`.
 
-Al primo avvio vengono scaricati i pesi ImageNet e il checkpoint
-SentenceBERT. Per vedere tutte le opzioni:
+Il modello SentenceBERT viene caricato dal percorso o dalla cache locale e,
+se non è già disponibile, scaricato al primo avvio. Per vedere tutte le opzioni:
 
 ```powershell
 python main.py --help
@@ -73,10 +73,27 @@ python main.py --no-pretrained-image
 
 # Usa un checkpoint SentenceBERT locale
 python main.py --text-model "C:\modelli\sentence-bert"
+
+# Carica un checkpoint CP addestrato
+python main.py --checkpoint checkpoints\cp_best.pt
+
+# Inferenza su una singola immagine
+python main.py --images "C:\outfit\shirt.jpg"
+
+# Inferenza su un outfit con più immagini e descrizioni
+python main.py `
+  --images "C:\outfit\shirt.jpg" "C:\outfit\trousers.jpg" "C:\outfit\shoes.jpg" `
+  --descriptions "white cotton shirt" "navy trousers" "brown leather shoes"
 ```
 
 `--no-pretrained-image` riguarda soltanto ResNet-18. Per evitare il download di
 SentenceBERT è necessario passare un checkpoint già presente in locale.
+I checkpoint passati con `--checkpoint` devono essere stati prodotti da
+`train_cp.py`; se il training usava un modello SentenceBERT diverso dal
+predefinito, occorre specificare lo stesso valore con `--text-model`.
+`--images` accetta uno o più percorsi e li considera capi dello stesso outfit.
+Ogni immagine viene convertita in RGB e preprocessata come nel training. Se
+`--descriptions` viene omesso, le descrizioni sono ricavate dai nomi dei file.
 
 #### GPU NVIDIA e AMD
 
@@ -249,6 +266,16 @@ Lo script legge le label dai file ufficiali `compatibility_*.txt`, stampa
 cache/dataset/progresso batch, valida a ogni epoca, salva un checkpoint per
 epoca in `checkpoints/cp_epochs/` e salva il migliore in
 `checkpoints/cp_best.pt`.
+
+La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
+
+```powershell
+python evaluate_cp.py `
+  --variant disjoint `
+  --checkpoint checkpoints\cp_best.pt
+```
+
+Il comando non aggiorna i pesi e stampa test loss, accuracy e numero di esempi.
 Configurazione del loader e opzioni di training sono descritte nei
 [dati Polyvore](data/README.md#come-prepariamo-polyvore-per-compatibility-prediction)
 e nella [guida completa al training](training/README.md).
