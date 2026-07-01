@@ -50,10 +50,13 @@ python main.py
 
 Il comando costruisce un outfit dimostrativo, esegue il modello CP e stampa
 le forme di immagini, maschera, outfit embedding e score di compatibilità.
-Per impostazione predefinita carica `checkpoints/cp_best.pt`.
+Per impostazione predefinita non carica un checkpoint CP: la testa di
+classificazione, il Transformer e il token `OUTFIT` hanno quindi pesi casuali
+e lo score serve soltanto a verificare il flusso di inferenza.
 
-Il modello SentenceBERT viene caricato dal percorso o dalla cache locale e,
-se non è già disponibile, scaricato al primo avvio. Per vedere tutte le opzioni:
+Senza checkpoint vengono caricati i pesi ImageNet di ResNet-18 e il modello
+SentenceBERT; se non sono già disponibili vengono scaricati al primo avvio.
+Per vedere tutte le opzioni:
 
 ```powershell
 python main.py --help
@@ -91,6 +94,8 @@ SentenceBERT è necessario passare un checkpoint già presente in locale.
 I checkpoint passati con `--checkpoint` devono essere stati prodotti da
 `training.cp.train_cp`; se il training usava un modello SentenceBERT diverso dal
 predefinito, occorre specificare lo stesso valore con `--text-model`.
+Quando viene fornito un checkpoint, tutti i pesi CP salvati sostituiscono le
+inizializzazioni del modello e lo score rappresenta l'inferenza addestrata.
 `--images` accetta uno o più percorsi e li considera capi dello stesso outfit.
 Ogni immagine viene convertita in RGB e preprocessata come nel training. Se
 `--descriptions` viene omesso, le descrizioni sono ricavate dai nomi dei file.

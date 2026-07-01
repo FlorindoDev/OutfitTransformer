@@ -88,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path("checkpoints/cp_best.pt"),
+        default=None,
         help="CP checkpoint produced by training.cp.train_cp",
     )
     parser.add_argument(
