@@ -10,6 +10,7 @@ from torch import nn
 from torch.optim import Optimizer
 
 from data import CompatibilityBatch
+from metrics import BinaryAccuracy, binary_roc_auc
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class CPEpochMetrics:
     loss: float
     accuracy: float
     examples: int
+    auc: float | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,7 @@ def run_cp_epoch(
     phase: str = "train",
     progress_interval: int | None = None,
     on_batch_end: BatchProgressCallback | None = None,
+    calculate_auc: bool = False,
 ) -> CPEpochMetrics:
     """Run one CP epoch; an optimizer switches evaluation to training."""
     if max_grad_norm is not None and max_grad_norm <= 0.0:
@@ -75,9 +78,11 @@ def run_cp_epoch(
     is_training = optimizer is not None
     model.train(is_training)
     total_loss = 0.0
-    total_correct = 0
     total_examples = 0
     total_batches = _safe_len(batches)
+    accuracy = BinaryAccuracy()
+    auc_scores: list[torch.Tensor] = []
+    auc_targets: list[torch.Tensor] = []
 
     with torch.set_grad_enabled(is_training):
         for batch_index, batch in enumerate(batches, start=1):
@@ -107,10 +112,12 @@ def run_cp_epoch(
 
             example_count = batch.labels.numel()
             total_loss += loss.detach().item() * example_count
-            predictions = logits.detach() >= 0.0
             targets = batch.labels >= 0.5
-            total_correct += int((predictions == targets).sum().item())
+            accuracy.update(logits, batch.labels)
             total_examples += example_count
+            if calculate_auc:
+                auc_scores.append(logits.detach().reshape(-1).cpu())
+                auc_targets.append(targets.detach().reshape(-1).cpu())
             if _should_report_progress(
                 batch_index,
                 total_batches,
@@ -124,7 +131,7 @@ def run_cp_epoch(
                         batches=total_batches,
                         loss=loss.detach().item(),
                         running_loss=total_loss / total_examples,
-                        running_accuracy=total_correct / total_examples,
+                        running_accuracy=accuracy.compute(),
                         examples=total_examples,
                     )
                 )
@@ -133,8 +140,16 @@ def run_cp_epoch(
         raise ValueError("CP data loader produced no examples")
     return CPEpochMetrics(
         loss=total_loss / total_examples,
-        accuracy=total_correct / total_examples,
+        accuracy=accuracy.compute(),
         examples=total_examples,
+        auc=(
+            binary_roc_auc(
+                torch.cat(auc_scores),
+                torch.cat(auc_targets),
+            )
+            if calculate_auc
+            else None
+        ),
     )
 
 
@@ -322,11 +337,14 @@ def _epoch_checkpoint_path(directory: Path, epoch: int, epochs: int) -> Path:
 def _metrics_payload(metrics: CPEpochMetrics | None) -> dict[str, float | int] | None:
     if metrics is None:
         return None
-    return {
+    payload: dict[str, float | int] = {
         "loss": metrics.loss,
         "accuracy": metrics.accuracy,
         "examples": metrics.examples,
     }
+    if metrics.auc is not None:
+        payload["auc"] = metrics.auc
+    return payload
 
 
 def _notify_checkpoint_saved(

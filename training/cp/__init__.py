@@ -1,3 +1,4 @@
+from metrics import BinaryAccuracy, binary_roc_auc
 from .trainer import (
     CPBatchProgress,
     CPCheckpointInfo,
@@ -12,6 +13,8 @@ __all__ = [
     "CPCheckpointInfo",
     "CPEpochMetrics",
     "CPTrainingHistory",
+    "BinaryAccuracy",
+    "binary_roc_auc",
     "run_cp_epoch",
     "train_cp",
 ]

@@ -1,3 +1,5 @@
+"""Evaluate a CP checkpoint on the Polyvore test split."""
+
 import argparse
 from collections.abc import Sized
 from pathlib import Path
@@ -95,10 +97,14 @@ def main() -> None:
         phase="test",
         progress_interval=progress_interval,
         on_batch_end=_print_batch if progress_interval is not None else None,
+        calculate_auc=True,
     )
+    if metrics.auc is None:
+        raise RuntimeError("CP evaluation did not calculate ROC AUC")
     print(
         f"test_loss={metrics.loss:.6f} "
         f"test_accuracy={metrics.accuracy:.4f} "
+        f"test_auc={metrics.auc:.4f} "
         f"test_examples={metrics.examples}"
     )
 
