@@ -11,7 +11,12 @@ from torch.utils.data import DataLoader
 
 from data import collate_compatibility, load_polyvore_compatibility_dataset
 from model import BinaryFocalLoss, CompatibilityPredictor, OutfitEncoderConfig
-from training import CPBatchProgress, CPCheckpointInfo, CPEpochMetrics, train_cp
+from .trainer import (
+    CPBatchProgress,
+    CPCheckpointInfo,
+    CPEpochMetrics,
+    train_cp,
+)
 
 
 def parse_args() -> argparse.Namespace:
