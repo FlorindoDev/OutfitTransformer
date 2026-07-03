@@ -132,7 +132,7 @@ flowchart TD
     A["OutfitBatch<br/>immagini, descrizioni, padding mask"]
 
     A --> B["ResNet-18 + FC"]
-    A --> C["SentenceBERT congelato<br/>+ FC"]
+    A --> C["SentenceBERT<br/>+ FC"]
 
     B --> D["Image embedding<br/>64 feature"]
     C --> E["Text embedding<br/>64 feature"]
