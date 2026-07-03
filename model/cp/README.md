@@ -5,17 +5,16 @@ tra 0 e 1.
 
 Torna al [README principale](../../README.md) oppure consulta
 l'[architettura condivisa](../common/README.md) e la
-[guida alla valutazione](../../evaluate/README.md).
+[guida alla valutazione](../../evaluate/README.md). Per avviare o riprendere
+l'addestramento consulta la [guida al training CP](../../training/cp/README.md).
 
 ## Indice
 
 - [Flusso](#flusso)
+- [Token OUTFIT](#token-outfit)
+- [Transformer encoder-only](#transformer-encoder-only)
 - [Utilizzo](#utilizzo)
 - [Binary Focal Loss](#binary-focal-loss)
-- [Quali componenti vengono aggiornati](#quali-componenti-vengono-aggiornati)
-- [Come viene allenato](#come-viene-allenato)
-- [Training CP con Polyvore](#training-cp-con-polyvore)
-- [Checkpoint](#checkpoint)
 - [File](#file)
 
 ## Flusso
@@ -32,7 +31,7 @@ flowchart LR
     B["Outfit token<br/>B × 1 × 128"]
     A --> C["Prepend"]
     B --> C
-    C --> D["Transformer"]
+    C --> D["Transformer encoder-only"]
     D --> E["Output OUTFIT<br/>B × 128"]
     E --> F["TaskMLP<br/>128 → 128 → 1"]
     F --> G["Logit"]
@@ -44,6 +43,65 @@ flowchart LR
 L'output del token in posizione zero è la rappresentazione globale
 dell'outfit. `TaskMLP` la trasforma in un logit; la sigmoid produce il
 compatibility score.
+
+## Token OUTFIT
+
+`OUTFIT` svolge un ruolo simile al token `[CLS]`: offre al Transformer una
+posizione dedicata nella quale raccogliere le informazioni sull'intero outfit.
+È un unico `nn.Parameter` di forma `[1, 1, 128]`, inizializzato una volta e
+condiviso da tutti gli esempi. I suoi 128 valori sono direttamente parametri
+del modello, non sono generati dall'attenzione o da un'altra rete.
+
+Nel forward la stessa base viene espansa per il batch e anteposta agli item:
+
+```text
+token OUTFIT base condiviso + item dell'outfit
+                       ↓ Transformer
+outfit embedding contestualizzato e specifico dell'outfit
+```
+
+È quindi importante distinguere:
+
+| Elemento | Significato |
+|---|---|
+| `outfit_token` | Parametro base globale appreso e salvato nel checkpoint |
+| `outfit_embedding` | Output in posizione zero, ricalcolato per ciascun outfit |
+
+Il Transformer non crea il token base: usa self-attention, feed-forward e
+connessioni residue per trasformarlo in una rappresentazione dipendente dagli
+item presenti. Il modo in cui il token riceve il gradiente e viene aggiornato
+da Adam è descritto nella sezione
+[Cosa aggiorna la backpropagation](../../training/cp/README.md#cosa-aggiorna-la-backpropagation).
+
+## Transformer encoder-only
+
+Il CP usa esclusivamente un **Transformer encoder-only**, implementato con
+`nn.TransformerEncoderLayer` e `nn.TransformerEncoder`. Non sono presenti un
+decoder, cross-attention o generazione autoregressiva: tutti i token validi
+dell'outfit interagiscono tramite self-attention bidirezionale.
+
+Gli embedding visivi e testuali, entrambi di dimensione 64, vengono concatenati
+in un item embedding di dimensione 128. Prima dell'encoder viene aggiunto il
+token apprendibile `OUTFIT`; la sua rappresentazione finale riassume l'intero
+outfit ed è passata alla testa di classificazione.
+
+| Iperparametro | Valore |
+|---|---:|
+| Tipo | Encoder-only |
+| Dimensione embedding (`d_model`) | 128 |
+| Layer encoder | 6 |
+| Teste di attenzione (`nhead`) | 16 |
+| Dimensione feed-forward | 512 |
+| Dropout | 0.1 |
+| Attivazione | ReLU |
+| `batch_first` | `True` |
+| `norm_first` | `False` |
+| Positional embedding | Nessuno |
+| Mascheramento | Solo padding, non causale |
+
+L'assenza di positional embedding rende l'encoder equivariante alle
+permutazioni: cambiare l'ordine dei capi non cambia il significato
+dell'outfit.
 
 ## Utilizzo
 
@@ -259,214 +317,6 @@ L'implementazione riceve direttamente i logits e usa
 `binary_cross_entropy_with_logits`, evitando instabilità numeriche dovute al
 calcolo separato di sigmoid e logaritmo.
 
-## Quali componenti vengono aggiornati
-
-La loss viene calcolata sul logit prodotto dal classificatore, ma il gradiente
-può attraversare tutta la rete:
-
-```mermaid
-flowchart TD
-    A["Binary Focal Loss<br/>"] -->|gradiente| B["TaskMLP CP<br/>aggiornato"]
-    B --> C["Transformer encoder-only<br/>aggiornato"]
-
-    C --> D["Token OUTFIT<br/>aggiornato"]
-    C --> E["ResNet-18 + FC visuale<br/>aggiornate"]
-    C --> F["Proiezione testuale FC<br/>aggiornata"]
-    F -.->|"gradiente interrotto"| G["SentenceBERT<br/>congelato"]
-
-    classDef trained fill:#d5f5e3,stroke:#239b56,color:#17202a
-    classDef frozen fill:#f2f3f4,stroke:#7b7d7d,color:#17202a
-    classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
-
-    class B,C,D,E,F trained
-    class G frozen
-    class A loss
-```
-
-Un passo di training tipico è:
-
-```python
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-
-optimizer.zero_grad()
-output = model(
-    batch.images,
-    batch.descriptions,
-    batch.padding_mask,
-)
-loss = criterion(output.logits, compatibility_labels)
-loss.backward()
-optimizer.step()
-```
-
-`loss.backward()` calcola i gradienti per i parametri con
-`requires_grad=True`; `optimizer.step()` aggiorna soltanto i parametri
-registrati nell'optimizer.
-
-
-## Come viene allenato
-
-Il training CP è una classificazione binaria su outfit completi. Ogni esempio
-contiene:
-
-```text
-immagini degli item
-descrizioni degli item
-padding mask
-label 1/0
-```
-
-Il modello produce un logit per ogni outfit. La Binary Focal Loss confronta il
-logit con la label:
-
-```text
-label = 1  -> outfit compatibile
-label = 0  -> outfit incompatibile
-```
-
-Il ciclo generale è:
-
-1. il `DataLoader` prepara un batch di outfit;
-2. `CompatibilityPredictor` codifica immagini e testi;
-3. il Transformer encoder-only costruisce l'outfit embedding;
-4. `TaskMLP` produce il logit;
-5. `BinaryFocalLoss` calcola l'errore;
-6. `loss.backward()` calcola i gradienti;
-7. l'optimizer aggiorna i pesi;
-8. a fine epoca si calcolano loss e accuracy.
-
-In forma compatta:
-
-```text
-batch -> model -> logits -> focal loss -> backward -> optimizer.step()
-```
-
-Durante la validation il modello fa solo forward e metriche: niente backward,
-niente aggiornamento dei pesi.
-
-Il loop riutilizzabile sta in `training.cp.trainer`:
-
-| Funzione | Ruolo |
-|---|---|
-| `run_cp_epoch()` | Esegue una epoca di train o validation |
-| `train_cp()` | Gestisce più epoche, validation, scheduler e checkpoint |
-
-## Training CP con Polyvore
-
-Il modulo [train_cp.py](../../training/cp/train_cp.py) allena il modello usando gli split
-ufficiali di `mvasil/polyvore-outfits`.
-
-Per Polyvore gli esempi arrivano così:
-
-```text
-compatibility_*.txt      -> label + token set_id_index
-<split>.json             -> token set_id_index -> item_id
-Parquet                  -> item_id -> immagine
-polyvore_item_metadata   -> item_id -> descrizione
-```
-
-Il dataset restituisce:
-
-```text
-CompatibilityExample(
-    images=[N,3,224,224],
-    descriptions=tuple di N stringhe,
-    label=1.0 oppure 0.0,
-)
-```
-
-Il training usa ADAM, Binary Focal Loss, validation a ogni epoca, scheduler,
-log di avanzamento e checkpoint:
-
-```powershell
-python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 32
-```
-
-Per lo split senza item condivisi:
-
-```powershell
-python -m training.cp.train_cp --variant disjoint
-```
-
-I checkpoint predefiniti sono:
-
-```text
-checkpoints/cp_epochs/cp_epoch_001.pt
-checkpoints/cp_epochs/cp_epoch_002.pt
-...
-checkpoints/cp_best.pt
-```
-
-Per riprendere da un checkpoint:
-
-```powershell
-python -m training.cp.train_cp --epochs 20 --resume checkpoints\cp_epochs\cp_epoch_010.pt
-```
-
-Iperparametri principali:
-
-```text
---learning-rate 1e-5
---focal-alpha 0.5
---focal-gamma 1.0
---lr-step-size 10
---lr-gamma 0.5
---log-interval 50
---resume <checkpoint opzionale>
---max-grad-norm <valore opzionale>
-```
-
-Tutti gli argomenti, i log stampati, la cache Hugging Face e i checkpoint sono
-descritti nella [guida completa al training CP](../../training/cp/README.md).
-
-## Checkpoint
-
-Un checkpoint è una fotografia dello stato del training salvata alla fine di
-un'epoca. Contiene:
-
-```text
-epoch                   epoca completata
-model_state_dict        pesi di encoder, Transformer e classificatore CP
-optimizer_state_dict    stato di ADAM
-scheduler_state_dict    stato dello scheduler, se presente
-monitored_loss          validation loss usata per confrontare i modelli
-train_metrics           loss e accuracy di training
-validation_metrics      loss e accuracy di validation
-```
-
-Vengono salvati due tipi di checkpoint:
-
-- `checkpoints/cp_epochs/cp_epoch_NNN.pt` conserva i pesi di ogni epoca;
-- `checkpoints/cp_best.pt` viene sovrascritto soltanto quando la validation
-  loss è strettamente inferiore al miglior valore ottenuto fino a quel momento.
-
-Di conseguenza, `cp_best.pt` contiene il modello selezionato tramite validation,
-non necessariamente quello dell'ultima epoca.
-
-Durante l'inferenza vengono caricati soltanto i pesi `model_state_dict`:
-
-```powershell
-# Inferenza su immagini scelte manualmente
-python main.py --checkpoint checkpoints\cp_best.pt --images "shirt.jpg" "pants.jpg"
-
-# Valutazione finale sullo split test, avviata solo su richiesta
-python -m evaluate.cp --variant disjoint --checkpoint checkpoints\cp_best.pt --focal-gamma 1.0
-```
-
-Il test set non seleziona né modifica il checkpoint. Serve esclusivamente per
-misurare le prestazioni finali di un modello già scelto tramite validation.
-
-Con `--resume`, invece, vengono ripristinati anche optimizer, scheduler ed
-epoca, così il training può continuare:
-
-```powershell
-python -m training.cp.train_cp --epochs 20 --resume checkpoints\cp_best.pt
-```
-
-Il modello SentenceBERT e la configurazione dell'architettura devono essere
-gli stessi usati per creare il checkpoint; in caso contrario il caricamento
-strict dei pesi segnala l'incompatibilità.
-
 ## File
 
 ```text
@@ -474,13 +324,4 @@ model/cp/
   checkpoint.py     caricamento dei pesi CP per inferenza e test
   compatibility.py  outfit embedding e compatibility score
   focal_loss.py      Binary Focal Loss
-```
-
-```text
-training/
-  README.md          panoramica Training CP e Training CIR
-  cp/
-    README.md        comandi e iperparametri CP
-    trainer.py       loop di training e validazione CP
-    train_cp.py      CLI per Polyvore Outfits
 ```

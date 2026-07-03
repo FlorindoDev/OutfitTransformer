@@ -18,7 +18,6 @@ incompatibile (`0`).
 - [Flag della CLI](#flag-della-cli)
 - [Iperparametri](#iperparametri)
   - [Ottimizzazione](#ottimizzazione)
-  - [Architettura](#architettura)
   - [Preprocessing](#preprocessing)
 - [Scheduler](#scheduler)
 - [Training e validation](#training-e-validation)
@@ -69,6 +68,32 @@ flowchart TD
 SentenceBERT produce le feature testuali dentro `torch.no_grad()`: il suo
 backbone non cambia, mentre la proiezione FC successiva viene allenata.
 
+Il token `OUTFIT` è un unico `nn.Parameter` di forma `[1, 1, 128]`, condiviso
+da tutti gli outfit. I suoi 128 valori sono essi stessi pesi allenabili: non
+sono prodotti dall'attenzione o da un'altra rete. Vengono inizializzati una
+sola volta con valori casuali e diventano una rappresentazione base appresa.
+
+Durante il forward questa stessa base viene espansa alla dimensione del batch
+e inserita davanti agli item. Il Transformer ne produce poi una versione
+contestualizzata diversa per ciascun outfit:
+
+```text
+token OUTFIT base condiviso + item dell'outfit
+                       ↓ Transformer
+outfit embedding contestualizzato e specifico dell'outfit
+```
+
+La loss dipende dall'outfit embedding; di conseguenza `loss.backward()` fa
+passare il gradiente attraverso classificatore e Transformer fino anche ai 128
+valori del token base. `optimizer.step()` aggiorna direttamente sia il token
+base sia i pesi del Transformer. Il token non viene ricreato a ogni forward e,
+durante validation e inferenza, rimane fisso.
+
+| Elemento | Che cos'è | Come cambia |
+|---|---|---|
+| `outfit_token` | Parametro base globale, salvato nel checkpoint | Aggiornato direttamente da Adam |
+| `outfit_embedding` | Output contestualizzato per un singolo outfit | Ricalcolato a ogni forward, non è un parametro |
+
 ## Avvio rapido
 
 Eseguire dalla root del progetto:
@@ -94,7 +119,7 @@ python -m training.cp.train_cp --help
 | `--variant` | `disjoint` | Variante Polyvore: `disjoint` o `nondisjoint` |
 | `--epochs` | `30` | Ultima epoca da eseguire |
 | `--batch-size` | `32` | Numero di outfit per batch |
-| `--learning-rate` | `1e-5` | Learning rate iniziale di Adam |
+| `--learning-rate` | `5e-5` | Learning rate iniziale di Adam |
 | `--weight-decay` | `1e-4` | Regolarizzazione L2 di Adam |
 | `--lr-step-size` | `10` | Epoche tra due riduzioni del learning rate |
 | `--lr-gamma` | `0.5` | Fattore moltiplicativo dello scheduler |
@@ -119,7 +144,7 @@ python -m training.cp.train_cp --help
 | Iperparametro | Default |
 |---|---:|
 | optimizer | Adam |
-| learning rate | `1e-5` |
+| learning rate | `5e-5` |
 | weight decay | `1e-4` |
 | batch size | `32` |
 | epoche | `30` |
@@ -131,23 +156,9 @@ La Focal Loss concentra il training sugli outfit incerti o classificati male.
 Il clipping viene applicato dopo `loss.backward()` e prima
 di `optimizer.step()`.
 
-### Architettura
-
-| Iperparametro | Valore |
-|---|---:|
-| image embedding | `64` |
-| text embedding | `64` |
-| item embedding | `128` |
-| Transformer encoder layer | `6` |
-| teste di self-attention | `16` |
-| feed-forward interno | `512` |
-| dropout | `0.1` |
-| attivazione Transformer | ReLU |
-| TaskMLP | `128 → 128 → 1` |
-| positional encoding | assente |
-
-Questi valori arrivano da `OutfitEncoderConfig` e non sono esposti come flag
-della CLI.
+Gli iperparametri dell'architettura sono documentati una sola volta nella
+sezione [Transformer encoder-only](../../model/cp/README.md#transformer-encoder-only)
+del modello CP.
 
 ### Preprocessing
 
@@ -177,9 +188,9 @@ scheduler = StepLR(
 Con il learning rate predefinito:
 
 ```text
-epoche 1–10:   0.000010
-epoche 11–20:  0.000005
-epoche 21–30:  0.0000025
+epoche 1–10:   0.000050
+epoche 11–20:  0.000025
+epoche 21–30:  0.0000125
 ```
 
 Alla fine di ogni epoca viene chiamato `scheduler.step()`. Lo scheduler:
@@ -192,6 +203,29 @@ Alla fine di ogni epoca viene chiamato `scheduler.step()`. Lo scheduler:
 Il suo stato viene salvato nei checkpoint e ripristinato con `--resume`.
 
 ## Training e validation
+
+Il training usa gli split ufficiali di `mvasil/polyvore-outfits`. Ogni
+esempio viene ricostruito attraverso questi mapping:
+
+```text
+compatibility_*.txt      -> label + token set_id_index
+<split>.json             -> token set_id_index -> item_id
+Parquet                  -> item_id -> immagine
+polyvore_item_metadata   -> item_id -> descrizione
+```
+
+Il dataset lo restituisce come:
+
+```text
+CompatibilityExample(
+    images=[N, 3, 224, 224],
+    descriptions=tuple di N stringhe,
+    label=1.0 oppure 0.0,
+)
+```
+
+Il dettaglio di file, mapping e caricamento è raccolto nella
+[guida ai dati Polyvore](../../data/README.md).
 
 Ogni epoca esegue:
 
@@ -214,6 +248,13 @@ loss=... running_loss=... running_accuracy=... examples=...
 A fine epoca vengono stampate `train_loss`, `train_accuracy`, `val_loss`,
 `val_accuracy` e learning rate.
 
+Il loop riutilizzabile espone:
+
+| Funzione | Ruolo |
+|---|---|
+| `run_cp_epoch()` | Esegue un'epoca di training o validation |
+| `train_cp()` | Gestisce epoche, validation, scheduler e checkpoint |
+
 ## Checkpoint e resume
 
 Vengono salvati:
@@ -229,7 +270,17 @@ checkpoints/cp_best.pt
 - `cp_best.pt` viene aggiornato solo quando la validation loss raggiunge un
   nuovo minimo.
 
-Ogni checkpoint contiene modello, optimizer, scheduler, epoca e metriche.
+Ogni checkpoint contiene:
+
+| Campo | Contenuto |
+|---|---|
+| `epoch` | Ultima epoca completata |
+| `model_state_dict` | Pesi di encoder, Transformer e classificatore |
+| `optimizer_state_dict` | Stato di Adam |
+| `scheduler_state_dict` | Stato dello scheduler, se presente |
+| `monitored_loss` | Validation loss usata per selezionare il modello |
+| `train_metrics` | Loss, accuracy ed esempi di training |
+| `validation_metrics` | Loss, accuracy ed esempi di validation |
 
 Per riprendere:
 
@@ -240,6 +291,9 @@ python -m training.cp.train_cp `
 ```
 
 `--epochs` indica l'ultima epoca totale, non quante epoche aggiungere.
+Il modello SentenceBERT e la configurazione architetturale devono coincidere
+con quelli del checkpoint; altrimenti il caricamento strict dei pesi segnala
+l'incompatibilità.
 
 ## Valutazione sul test set
 
