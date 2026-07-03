@@ -68,10 +68,20 @@ lineari mescolano le due modalità.
 
 ### Image encoder
 
-`ImageEncoder` usa ResNet-18 inizializzata con pesi ImageNet e sostituisce la
-testa di classificazione originale con una FC `Linear(512, 64)`. Il backbone
-estrae 512 feature visive; la FC le comprime e adatta in un image embedding da
-64 valori destinato al Transformer:
+`ImageEncoder` non inizializza normalmente ResNet-18 da zero: carica i pesi
+pre-addestrati su ImageNet tramite `ResNet18_Weights.DEFAULT`. Al primo utilizzo
+Torchvision scarica il file dei pesi, non l'intero dataset ImageNet.
+
+Durante il training questi pesi sono soltanto il punto di partenza. Il backbone
+ResNet-18 non viene congelato: riceve i gradienti della loss e viene
+**fine-tunato end-to-end** sul task di compatibilità degli outfit. Soltanto
+quando `pretrained_image_encoder=False` corrispondente al flag CLI
+`--no-pretrained-image` ResNet-18 parte da pesi casuali.
+
+La testa di classificazione ImageNet originale viene sostituita con una nuova
+FC `Linear(512, 64)`, inizializzata casualmente. Il backbone estrae 512 feature
+visive; la FC le comprime e adatta in un image embedding da 64 valori destinato
+al Transformer:
 
 ```text
 immagine → ResNet-18 → feature visive 512 → FC 512→64 → image embedding 64
@@ -79,7 +89,8 @@ immagine → ResNet-18 → feature visive 512 → FC 512→64 → image embeddin
 
 Questa FC non predice una classe ImageNet: è una proiezione addestrabile che
 impara quali caratteristiche visive sono utili ai task CP e CIR. Anche i
-parametri del backbone ResNet-18 sono addestrabili.
+parametri pre-addestrati del backbone ResNet-18 vengono aggiornati dal
+fine-tuning.
 
 ### Text encoder
 

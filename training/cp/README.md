@@ -13,6 +13,7 @@ incompatibile (`0`).
 ## Indice
 
 - [Flusso](#flusso)
+  - [Inizializzazione e fine-tuning di ResNet-18](#inizializzazione-e-fine-tuning-di-resnet-18)
   - [Cosa aggiorna la backpropagation](#cosa-aggiorna-la-backpropagation)
 - [Avvio rapido](#avvio-rapido)
 - [Flag della CLI](#flag-della-cli)
@@ -43,6 +44,23 @@ Binary Focal Loss
         ↓
 backpropagation + Adam
 ```
+
+### Inizializzazione e fine-tuning di ResNet-18
+
+Per impostazione predefinita, ResNet-18 **non viene addestrata da zero**. Il
+training carica i pesi pre-addestrati su ImageNet tramite Torchvision e li usa
+come inizializzazione. Non è necessario scaricare il dataset ImageNet: al primo
+avvio viene scaricato soltanto il file dei pesi.
+
+Il backbone non rimane congelato. Durante il training la Binary Focal Loss
+propaga i gradienti fino a tutti i layer di ResNet-18 e Adam ne aggiorna i pesi:
+si tratta quindi di **fine-tuning end-to-end su Polyvore**. La nuova proiezione
+visuale `Linear(512, 64)`, il Transformer e la testa CP vengono invece
+inizializzati per il task e addestrati insieme al backbone.
+
+Il flag `--no-pretrained-image` disabilita esplicitamente questa
+inizializzazione e fa partire ResNet-18 da pesi casuali. Senza il flag, vengono
+sempre usati i pesi ImageNet come base.
 
 ### Cosa aggiorna la backpropagation
 
@@ -135,7 +153,7 @@ python -m training.cp.train_cp --help
 | `--checkpoint-dir` | `checkpoints/cp_epochs` | Directory dei checkpoint per epoca |
 | `--resume` | disabilitato | Riprende training, optimizer e scheduler |
 | `--text-model` | `sentence-transformers/all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
-| `--no-pretrained-image` | falso | Non usa i pesi ImageNet di ResNet-18 |
+| `--no-pretrained-image` | falso | Inizializza ResNet-18 casualmente invece di partire dai pesi ImageNet |
 
 ## Iperparametri
 
@@ -166,7 +184,7 @@ del modello CP.
 |---|---|
 | dimensione immagine | `224 × 224` |
 | normalizzazione | media e deviazione standard ImageNet |
-| ResNet-18 | pesi ImageNet, salvo `--no-pretrained-image` |
+| ResNet-18 | pesi ImageNet iniziali + fine-tuning end-to-end, salvo `--no-pretrained-image` |
 | SentenceBERT | congelato |
 | padding | a destra |
 | train shuffle | attivo |
