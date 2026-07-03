@@ -24,8 +24,8 @@ Torna al [README principale](../../README.md).
 flowchart TD
     A["OutfitBatch<br/>immagini, descrizioni, padding mask"]
 
-    A --> B["ResNet-18<br/>addestrabile"]
-    A --> C["SentenceBERT congelato<br/>+ FC addestrabile"]
+    A --> B["ResNet-18 + FC"]
+    A --> C["SentenceBERT congelato<br/>+ FC"]
 
     B --> D["Image embedding<br/>64 feature"]
     C --> E["Text embedding<br/>64 feature"]
@@ -50,7 +50,7 @@ Nel diagramma:
 Per ogni capo vengono unite informazioni visive e testuali:
 
 ```text
-immagine ──> ResNet-18 ─────────> 64 feature ──┐
+immagine ──> ResNet-18 + FC ────> 64 feature ──┐
                                                ├──> item embedding: 128 feature
 testo ─────> SentenceBERT + FC ─> 64 feature ──┘
 ```
@@ -69,14 +69,38 @@ lineari mescolano le due modalità.
 ### Image encoder
 
 `ImageEncoder` usa ResNet-18 inizializzata con pesi ImageNet e sostituisce la
-testa originale con una proiezione a 64 feature. I suoi parametri sono
-addestrabili.
+testa di classificazione originale con una FC `Linear(512, 64)`. Il backbone
+estrae 512 feature visive; la FC le comprime e adatta in un image embedding da
+64 valori destinato al Transformer:
+
+```text
+immagine → ResNet-18 → feature visive 512 → FC 512→64 → image embedding 64
+```
+
+Questa FC non predice una classe ImageNet: è una proiezione addestrabile che
+impara quali caratteristiche visive sono utili ai task CP e CIR. Anche i
+parametri del backbone ResNet-18 sono addestrabili.
 
 ### Text encoder
 
 `TextEncoder` usa SentenceBERT per estrarre le feature linguistiche e una
-proiezione lineare addestrabile per portarle a 64 dimensioni. Il backbone
-SentenceBERT è congelato; la proiezione viene aggiornata durante il training.
+FC `Linear(384, 64)` per trasformarle nel text embedding richiesto dal
+Transformer:
+
+```text
+descrizione → SentenceBERT → feature testuali 384 → FC 384→64 → text embedding 64
+```
+
+SentenceBERT è congelato e conserva le sue rappresentazioni linguistiche. La
+FC è invece addestrabile: riduce la dimensionalità e adatta le feature
+generiche di SentenceBERT alla compatibilità e al retrieval degli outfit.
+
+Le due FC producono embedding della stessa dimensione, che vengono
+concatenati:
+
+```text
+image embedding 64 + text embedding 64 = item embedding 128
+```
 
 ## Transformer encoder-only
 

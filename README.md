@@ -131,8 +131,8 @@ python -c "import torch; print('GPU:', torch.cuda.is_available()); print('CUDA:'
 flowchart TD
     A["OutfitBatch<br/>immagini, descrizioni, padding mask"]
 
-    A --> B["ResNet-18<br/>addestrabile"]
-    A --> C["SentenceBERT congelato<br/>+ FC addestrabile"]
+    A --> B["ResNet-18 + FC"]
+    A --> C["SentenceBERT congelato<br/>+ FC"]
 
     B --> D["Image embedding<br/>64 feature"]
     C --> E["Text embedding<br/>64 feature"]
@@ -150,7 +150,7 @@ flowchart TD
     K --> L["Set-wise Ranking Loss<br/>o ricerca KNN"]
 ```
 
-Per ogni capo, ResNet-18 genera 64 feature visive e SentenceBERT con una
+Per ogni capo, ResNet-18 con una proiezione FC genera 64 feature visive e SentenceBERT con una
 proiezione FC genera 64 feature testuali. La concatenazione produce un item
 embedding da 128 dimensioni.
 
