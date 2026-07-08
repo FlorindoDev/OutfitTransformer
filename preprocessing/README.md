@@ -114,6 +114,8 @@ veramente bianco: e' soprattutto "ignorato" grazie alla trasparenza/maschera.
 | Cache sessioni `rembg` | Implementato | `background.py` |
 | Estrazione maschera da canale alpha | Implementato | `mask.py` |
 | Pulizia maschera | Implementato | `mask.py` |
+| Selezione capo principale | Implementato | `mask.py` |
+| Bounding box del capo | Da fare | `crop.py` |
 | Ritaglio capo | Da fare | `crop.py` |
 | Sfondo bianco | Da fare | `canvas.py` |
 | Canvas quadrato | Da fare | `canvas.py` |
@@ -168,6 +170,7 @@ Responsabilita:
 - prende canale alpha da immagine `RGBA`;
 - trasforma la trasparenza in una maschera binaria `L`;
 - pulisce la maschera con OpenCV + numpy;
+- tiene solo la componente principale della maschera;
 - usa soglie configurabili per decidere cosa e' capo e cosa e' sfondo;
 - combina rimozione sfondo + maschera in un solo helper.
 
@@ -176,6 +179,7 @@ API principali:
 ```python
 mask = extract_alpha_mask(image_no_bg, AlphaMaskConfig(alpha_threshold=0))
 clean_mask = clean_binary_mask(mask, MaskCleaningConfig())
+main_mask = keep_main_component(clean_mask, MainComponentConfig())
 image_no_bg, mask = remove_background_and_extract_mask(image)
 ```
 
@@ -331,17 +335,46 @@ Maschera dopo:
 ]
 ```
 
+#### Selezione capo principale
+
+Questa parte riceve una maschera binaria e tiene solo la componente con area
+maggiore:
+
+```python
+main_mask = keep_main_component(
+    clean_mask,
+    MainComponentConfig(
+        mask_threshold=127,
+        min_component_area=1,
+    ),
+)
+```
+
+Serve quando `rembg` lascia piu' aree foreground nella stessa immagine:
+
+```text
+maschera pulita con piu' componenti
+-> connected components con OpenCV
+-> componente foreground piu' grande
+-> nuova maschera 0/255 con solo capo principale
+```
+
+Se non esiste nessun pixel foreground, oppure la componente piu' grande e'
+piu' piccola di `min_component_area`, la funzione ritorna una maschera vuota.
+
 ## Uso rapido
 
 ```python
 from preprocessing import (
     AlphaMaskConfig,
     BackgroundRemovalConfig,
+    MainComponentConfig,
     MaskCleaningConfig,
     clean_binary_mask,
     load_image_from_path,
     remove_background,
     extract_alpha_mask,
+    keep_main_component,
 )
 
 image = load_image_from_path("shirt.jpg", mode="RGBA")
@@ -354,22 +387,23 @@ mask = extract_alpha_mask(
     AlphaMaskConfig(alpha_threshold=0),
 )
 clean_mask = clean_binary_mask(mask, MaskCleaningConfig())
+main_mask = keep_main_component(clean_mask, MainComponentConfig())
 
 image_no_bg.save("shirt.no-bg.png")
 mask.save("shirt.mask.png")
 clean_mask.save("shirt.clean-mask.png")
+main_mask.save("shirt.main-mask.png")
 ```
 
 ## Prossimi passi
 
 Ordine consigliato:
 
-1. tenere capo principale;
-2. calcolare bounding box;
-3. ritagliare capo;
-4. aggiungere margine;
-5. mettere sfondo bianco;
-6. centrare in quadrato.
+1. calcolare bounding box;
+2. ritagliare capo;
+3. aggiungere margine;
+4. mettere sfondo bianco;
+5. centrare in quadrato.
 
 ## Note
 

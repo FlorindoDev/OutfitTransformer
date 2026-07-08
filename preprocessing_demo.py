@@ -7,9 +7,11 @@ from preprocessing import (
     AlphaMaskConfig,
     BackgroundRemovalConfig,
     BackgroundRemovalDependencyError,
+    MainComponentConfig,
     MaskCleaningConfig,
     clean_binary_mask,
     extract_alpha_mask,
+    keep_main_component,
     load_image_from_path,
     remove_background,
 )
@@ -47,6 +49,12 @@ def parse_args() -> argparse.Namespace:
         help="optional output path for cleaned alpha mask PNG",
     )
     parser.add_argument(
+        "--main-mask-output",
+        type=Path,
+        default=None,
+        help="optional output path for main foreground component mask PNG",
+    )
+    parser.add_argument(
         "--alpha-threshold",
         type=int,
         default=0,
@@ -76,6 +84,12 @@ def parse_args() -> argparse.Namespace:
         default=64,
         help="minimum foreground component area kept in cleaned mask",
     )
+    parser.add_argument(
+        "--main-component-min-area",
+        type=int,
+        default=1,
+        help="minimum area required for the selected main foreground component",
+    )
     return parser.parse_args()
 
 
@@ -90,12 +104,17 @@ def main() -> None:
     output.save(output_path)
     mask_path = None
     clean_mask_path = None
-    if args.mask_output is not None or args.clean_mask_output is not None:
+    main_mask_path = None
+    if (
+        args.mask_output is not None
+        or args.clean_mask_output is not None
+        or args.main_mask_output is not None
+    ):
         mask = _extract_mask(output, args.alpha_threshold)
         mask_path = args.mask_output
         if mask_path is not None:
             mask.save(mask_path)
-        if args.clean_mask_output is not None:
+        if args.clean_mask_output is not None or args.main_mask_output is not None:
             clean_mask = _clean_mask(
                 mask,
                 mask_threshold=args.mask_threshold,
@@ -103,8 +122,17 @@ def main() -> None:
                 closing_kernel_size=args.closing_kernel_size,
                 min_component_area=args.min_component_area,
             )
-            clean_mask_path = args.clean_mask_output
-            clean_mask.save(clean_mask_path)
+            if args.clean_mask_output is not None:
+                clean_mask_path = args.clean_mask_output
+                clean_mask.save(clean_mask_path)
+            if args.main_mask_output is not None:
+                main_mask = _keep_main_component(
+                    clean_mask,
+                    mask_threshold=args.mask_threshold,
+                    min_component_area=args.main_component_min_area,
+                )
+                main_mask_path = args.main_mask_output
+                main_mask.save(main_mask_path)
 
     print(f"input:  {args.image.resolve()}")
     print(f"output: {output_path.resolve()}")
@@ -112,6 +140,8 @@ def main() -> None:
         print(f"mask:   {mask_path.resolve()}")
     if clean_mask_path is not None:
         print(f"clean:  {clean_mask_path.resolve()}")
+    if main_mask_path is not None:
+        print(f"main:   {main_mask_path.resolve()}")
     print(f"mode:   {output.mode}")
     print(f"size:   {output.size}")
     if not args.only_normalize:
@@ -146,6 +176,16 @@ def _clean_mask(
             mask_threshold=mask_threshold,
             opening_kernel_size=opening_kernel_size,
             closing_kernel_size=closing_kernel_size,
+            min_component_area=min_component_area,
+        ),
+    )
+
+
+def _keep_main_component(mask, mask_threshold: int, min_component_area: int):
+    return keep_main_component(
+        mask,
+        MainComponentConfig(
+            mask_threshold=mask_threshold,
             min_component_area=min_component_area,
         ),
     )

@@ -8,10 +8,12 @@ from .background import (
 from .image_loader import ColorMode, load_image_from_bytes, load_image_from_path, normalize_image
 from .mask import (
     AlphaMaskConfig,
+    MainComponentConfig,
     MaskCleaningConfig,
     MaskCleaningDependencyError,
     clean_binary_mask,
     extract_alpha_mask,
+    keep_main_component,
     remove_background_and_extract_mask,
 )
 
@@ -20,6 +22,7 @@ __all__ = [
     "BackgroundRemovalConfig",
     "BackgroundRemovalDependencyError",
     "ColorMode",
+    "MainComponentConfig",
     "MaskCleaningConfig",
     "MaskCleaningDependencyError",
     "clean_binary_mask",
@@ -28,6 +31,7 @@ __all__ = [
     "load_image_from_path",
     "normalize_image",
     "extract_alpha_mask",
+    "keep_main_component",
     "remove_background",
     "remove_background_and_extract_mask",
     "remove_background_from_bytes",

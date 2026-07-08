@@ -36,6 +36,18 @@ class MaskCleaningConfig:
             raise ValueError("min_component_area must be greater than or equal to 0")
 
 
+@dataclass(frozen=True)
+class MainComponentConfig:
+    mask_threshold: int = 127
+    min_component_area: int = 1
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.mask_threshold <= 255:
+            raise ValueError("mask_threshold must be between 0 and 255")
+        if self.min_component_area < 0:
+            raise ValueError("min_component_area must be greater than or equal to 0")
+
+
 class MaskCleaningDependencyError(RuntimeError):
     pass
 
@@ -84,6 +96,23 @@ def clean_binary_mask(
     )
 
     return Image.fromarray(mask_array)
+
+
+def keep_main_component(
+    mask: Image.Image,
+    config: MainComponentConfig | None = None,
+) -> Image.Image:
+    config = config or MainComponentConfig()
+    cv2, np = _load_mask_cleaning_dependencies()
+    mask_array = _to_binary_mask_array(mask, config.mask_threshold, np)
+    main_component_array = _keep_largest_component(
+        mask_array,
+        min_component_area=config.min_component_area,
+        cv2=cv2,
+        np=np,
+    )
+
+    return Image.fromarray(main_component_array)
 
 
 def remove_background_and_extract_mask(
@@ -153,3 +182,30 @@ def _remove_small_components(
             cleaned_mask[labels == component_label] = 255
 
     return cleaned_mask
+
+
+def _keep_largest_component(
+    mask_array: Any,
+    min_component_area: int,
+    cv2: Any,
+    np: Any,
+) -> Any:
+    component_count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        mask_array,
+        connectivity=8,
+    )
+    if component_count <= 1:
+        return np.zeros_like(mask_array)
+
+    largest_label = max(
+        range(1, component_count),
+        key=lambda component_label: stats[component_label, cv2.CC_STAT_AREA],
+    )
+    largest_area = stats[largest_label, cv2.CC_STAT_AREA]
+    if largest_area < min_component_area:
+        return np.zeros_like(mask_array)
+
+    main_component_mask = np.zeros_like(mask_array)
+    main_component_mask[labels == largest_label] = 255
+
+    return main_component_mask
