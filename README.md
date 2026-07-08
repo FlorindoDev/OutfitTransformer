@@ -29,6 +29,7 @@ modellare le relazioni all'interno di un outfit. Supporta due task:
 | `model/cp` | Compatibility score e Binary Focal Loss | [Compatibility Prediction](model/cp/README.md) |
 | `model/cir` | Target embedding e Set-wise Ranking Loss | [Complementary Item Retrieval](model/cir/README.md) |
 | `data` | Polyvore, preprocessing, batch e padding mask | [Dati e batching](data/README.md) |
+| `preprocessing` | Preparazione immagini utente: EXIF, RGB/RGBA, rimozione sfondo e maschera alpha | [Preprocessing immagini](preprocessing/README.md) |
 | `training` | Training separato per task CP e CIR | [Panoramica del training](training/README.md) |
 | `evaluate` | Valutazione dei checkpoint sul test set | [Guida alla valutazione](evaluate/README.md) |
 | `metrics` | Accuracy e ROC AUC condivise | [Guida alle metriche](metrics/README.md) |
@@ -324,6 +325,11 @@ evaluate/
 metrics/
   README.md             definizioni ed esempi delle metriche
   classification.py     BinaryAccuracy e ROC AUC
+preprocessing/
+  README.md             flusso preprocessing immagini utente
+  image_loader.py       EXIF e conversione RGB/RGBA
+  background.py         rimozione sfondo con rembg
+  mask.py               maschera binaria da canale alpha
 training/
   README.md             panoramica Training CP e Training CIR
   cp/

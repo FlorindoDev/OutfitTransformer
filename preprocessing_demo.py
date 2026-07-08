@@ -1,0 +1,160 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from preprocessing import (
+    AlphaMaskConfig,
+    BackgroundRemovalConfig,
+    BackgroundRemovalDependencyError,
+    MaskCleaningConfig,
+    clean_binary_mask,
+    extract_alpha_mask,
+    load_image_from_path,
+    remove_background,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Temporary preprocessing demo")
+    parser.add_argument("image", type=Path, help="input image path")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="output PNG path",
+    )
+    parser.add_argument(
+        "--model",
+        default="isnet-general-use",
+        help="rembg model name",
+    )
+    parser.add_argument(
+        "--only-normalize",
+        action="store_true",
+        help="only apply EXIF orientation and RGBA conversion",
+    )
+    parser.add_argument(
+        "--mask-output",
+        type=Path,
+        default=None,
+        help="optional output path for alpha mask PNG",
+    )
+    parser.add_argument(
+        "--clean-mask-output",
+        type=Path,
+        default=None,
+        help="optional output path for cleaned alpha mask PNG",
+    )
+    parser.add_argument(
+        "--alpha-threshold",
+        type=int,
+        default=0,
+        help="alpha value threshold used to build binary mask",
+    )
+    parser.add_argument(
+        "--mask-threshold",
+        type=int,
+        default=127,
+        help="mask value threshold used before cleaning",
+    )
+    parser.add_argument(
+        "--opening-kernel-size",
+        type=int,
+        default=3,
+        help="kernel size used to remove small white noise from mask",
+    )
+    parser.add_argument(
+        "--closing-kernel-size",
+        type=int,
+        default=5,
+        help="kernel size used to close small black holes in mask",
+    )
+    parser.add_argument(
+        "--min-component-area",
+        type=int,
+        default=64,
+        help="minimum foreground component area kept in cleaned mask",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if not args.image.is_file():
+        raise FileNotFoundError(f"image not found: {args.image}")
+
+    image = load_image_from_path(args.image, mode="RGBA")
+    output = image if args.only_normalize else _remove_background(image, args.model)
+    output_path = args.output or _default_output_path(args.image, args.only_normalize)
+    output.save(output_path)
+    mask_path = None
+    clean_mask_path = None
+    if args.mask_output is not None or args.clean_mask_output is not None:
+        mask = _extract_mask(output, args.alpha_threshold)
+        mask_path = args.mask_output
+        if mask_path is not None:
+            mask.save(mask_path)
+        if args.clean_mask_output is not None:
+            clean_mask = _clean_mask(
+                mask,
+                mask_threshold=args.mask_threshold,
+                opening_kernel_size=args.opening_kernel_size,
+                closing_kernel_size=args.closing_kernel_size,
+                min_component_area=args.min_component_area,
+            )
+            clean_mask_path = args.clean_mask_output
+            clean_mask.save(clean_mask_path)
+
+    print(f"input:  {args.image.resolve()}")
+    print(f"output: {output_path.resolve()}")
+    if mask_path is not None:
+        print(f"mask:   {mask_path.resolve()}")
+    if clean_mask_path is not None:
+        print(f"clean:  {clean_mask_path.resolve()}")
+    print(f"mode:   {output.mode}")
+    print(f"size:   {output.size}")
+    if not args.only_normalize:
+        print(f"model:  {args.model}")
+
+
+def _remove_background(image, model_name: str):
+    try:
+        config = BackgroundRemovalConfig(model_name=model_name)
+        return remove_background(image, config)
+    except BackgroundRemovalDependencyError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def _extract_mask(image, alpha_threshold: int):
+    return extract_alpha_mask(
+        image,
+        AlphaMaskConfig(alpha_threshold=alpha_threshold),
+    )
+
+
+def _clean_mask(
+    mask,
+    mask_threshold: int,
+    opening_kernel_size: int,
+    closing_kernel_size: int,
+    min_component_area: int,
+):
+    return clean_binary_mask(
+        mask,
+        MaskCleaningConfig(
+            mask_threshold=mask_threshold,
+            opening_kernel_size=opening_kernel_size,
+            closing_kernel_size=closing_kernel_size,
+            min_component_area=min_component_area,
+        ),
+    )
+
+
+def _default_output_path(input_path: Path, only_normalize: bool) -> Path:
+    suffix = ".normalized.png" if only_normalize else ".no-bg.png"
+    return input_path.with_name(f"{input_path.stem}{suffix}")
+
+
+if __name__ == "__main__":
+    main()
