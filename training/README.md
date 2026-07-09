@@ -54,3 +54,52 @@ Set-wise Ranking Loss.
 
 Consulta la [pagina del futuro training CIR](cir/README.md) e il
 [README del modello CIR](../model/cir/README.md).
+
+## Come il batch usa i pesi
+
+Durante il forward il modello riceve un batch di outfit, non un singolo outfit
+alla volta. Dopo l'encoding visuale e testuale, gli item del batch hanno una
+forma di questo tipo:
+
+```python
+X.shape = [B, L, D]
+```
+
+Dove:
+
+- `B` e il numero di outfit nel batch;
+- `L` e il numero massimo di item per outfit, dopo padding;
+- `D` e la dimensione dell'embedding di ogni item.
+
+Per esempio, con 4 outfit, 6 item massimi per outfit e embedding da 128:
+
+```python
+X.shape = [4, 6, 128]
+```
+
+Nel Transformer gli stessi pesi vengono applicati a tutti gli item di tutti gli
+outfit. Per la matrice delle query:
+
+```python
+Wq.shape = [128, 128]
+Q = X @ Wq
+Q.shape = [4, 6, 128]
+```
+
+Questa operazione equivale concettualmente a:
+
+```python
+Q[0] = X[0] @ Wq
+Q[1] = X[1] @ Wq
+Q[2] = X[2] @ Wq
+Q[3] = X[3] @ Wq
+```
+
+Ogni `X[i]` ha forma `[6, 128]`, quindi ogni prodotto produce una matrice
+`[6, 128]`. PyTorch esegue tutto insieme in modo vettorializzato e restituisce
+un unico tensore `Q` di forma `[4, 6, 128]`.
+
+I pesi `Wq` sono quindi condivisi: non esiste una matrice diversa per ogni
+outfit. La dimensione `B` serve a processare piu outfit in parallelo, mentre la
+dimensione `L` mantiene separati gli item di ciascun outfit. Lo stesso schema
+vale per `Wk` e `Wv`, usati per costruire key e value.
