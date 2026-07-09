@@ -5,6 +5,22 @@ from .background import (
     remove_background,
     remove_background_from_bytes,
 )
+from .canvas import (
+    CanvasConfig,
+    center_on_square_canvas,
+    compose_on_background,
+    create_square_garment_image,
+)
+from .crop import (
+    BoundingBox,
+    CropDependencyError,
+    CropResult,
+    EmptyMaskError,
+    GarmentCropConfig,
+    crop_garment_with_margin,
+    crop_to_bounding_box,
+    find_foreground_bounding_box,
+)
 from .image_loader import ColorMode, load_image_from_bytes, load_image_from_path, normalize_image
 from .mask import (
     AlphaMaskConfig,
@@ -21,12 +37,24 @@ __all__ = [
     "AlphaMaskConfig",
     "BackgroundRemovalConfig",
     "BackgroundRemovalDependencyError",
+    "BoundingBox",
+    "CanvasConfig",
     "ColorMode",
+    "CropDependencyError",
+    "CropResult",
+    "EmptyMaskError",
+    "GarmentCropConfig",
     "MainComponentConfig",
     "MaskCleaningConfig",
     "MaskCleaningDependencyError",
+    "center_on_square_canvas",
     "clean_binary_mask",
     "clear_background_session_cache",
+    "compose_on_background",
+    "create_square_garment_image",
+    "crop_garment_with_margin",
+    "crop_to_bounding_box",
+    "find_foreground_bounding_box",
     "load_image_from_bytes",
     "load_image_from_path",
     "normalize_image",

@@ -11,7 +11,7 @@ from .image_loader import normalize_image
 
 @dataclass(frozen=True)
 class AlphaMaskConfig:
-    alpha_threshold: int = 0
+    alpha_threshold: int = 40
 
     def __post_init__(self) -> None:
         if not 0 <= self.alpha_threshold <= 255:

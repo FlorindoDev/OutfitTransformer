@@ -115,10 +115,11 @@ veramente bianco: e' soprattutto "ignorato" grazie alla trasparenza/maschera.
 | Estrazione maschera da canale alpha | Implementato | `mask.py` |
 | Pulizia maschera | Implementato | `mask.py` |
 | Selezione capo principale | Implementato | `mask.py` |
-| Bounding box del capo | Da fare | `crop.py` |
-| Ritaglio capo | Da fare | `crop.py` |
-| Sfondo bianco | Da fare | `canvas.py` |
-| Canvas quadrato | Da fare | `canvas.py` |
+| Bounding box del capo | Implementato | `crop.py` |
+| Ritaglio capo | Implementato | `crop.py` |
+| Margine controllato | Implementato | `crop.py` |
+| Sfondo bianco | Implementato | `canvas.py` |
+| Canvas quadrato | Implementato | `canvas.py` |
 
 ## Moduli
 
@@ -362,15 +363,128 @@ maschera pulita con piu' componenti
 Se non esiste nessun pixel foreground, oppure la componente piu' grande e'
 piu' piccola di `min_component_area`, la funzione ritorna una maschera vuota.
 
+### `crop.py`
+
+Responsabilita:
+
+- calcola il minimo bounding box da una maschera con OpenCV;
+- ritaglia immagine e maschera con `Pillow.crop`;
+- aggiunge un margine percentuale attorno al capo;
+- mantiene la maschera allineata all'immagine ritagliata.
+
+API principali:
+
+```python
+bounding_box = find_foreground_bounding_box(main_mask)
+crop_result = crop_garment_with_margin(
+    image_no_bg,
+    main_mask,
+    GarmentCropConfig(margin_ratio=0.10),
+)
+```
+
+`crop_result.image` contiene il capo ritagliato con margine.
+`crop_result.mask` contiene la maschera ritagliata con lo stesso margine.
+`crop_result.bounding_box` contiene le coordinate originali del capo.
+
+### `canvas.py`
+
+Responsabilita:
+
+- compone il capo sopra uno sfondo RGB, bianco di default;
+- usa la maschera opzionale per rimuovere residui fuori dal capo principale;
+- preserva alpha morbido del capo quando disponibile;
+- ridimensiona senza deformare;
+- centra l'immagine in un canvas quadrato.
+
+Questo modulo fa gli ultimi due step visivi del preprocessing:
+
+```text
+capo ritagliato con alpha + maschera
+-> capo su sfondo bianco
+-> immagine quadrata centrata
+```
+
+L'obiettivo e' ottenere una immagine finale `RGB`, senza trasparenza, pronta
+per le transform del modello.
+
+`compose_on_background()` prende il capo `RGBA`, usa l'alpha per fonderlo sopra
+uno sfondo bianco e ritorna un'immagine `RGB`:
+
+```python
+compose_on_background(image, mask=None, background_color=(255, 255, 255))
+```
+
+Se viene passata anche la maschera, questa viene applicata all'alpha. Cosi'
+eventuali residui fuori dal capo principale spariscono, mentre i bordi morbidi
+del capo restano piu' naturali.
+
+`center_on_square_canvas()` ridimensiona senza deformare e centra l'immagine in
+un quadrato bianco:
+
+```python
+center_on_square_canvas(image, CanvasConfig(size=512))
+```
+
+Esempi:
+
+```text
+crop 300x600 -> resize 256x512 -> canvas 512x512
+crop 700x350 -> resize 512x256 -> canvas 512x512
+```
+
+`CanvasConfig` controlla dimensione, colore dello sfondo e upscale:
+
+```python
+CanvasConfig(
+    size=512,
+    background_color=(255, 255, 255),
+    allow_upscale=True,
+)
+```
+
+Nel flusso normale si usa direttamente:
+
+```python
+create_square_garment_image(
+    crop_result.image,
+    crop_result.mask,
+    CanvasConfig(size=512),
+)
+```
+
+che combina:
+
+```text
+compose_on_background()
+-> center_on_square_canvas()
+```
+
+API principali:
+
+```python
+image_on_white = compose_on_background(crop_result.image, crop_result.mask)
+square_image = center_on_square_canvas(image_on_white, CanvasConfig(size=512))
+square_image = create_square_garment_image(
+    crop_result.image,
+    crop_result.mask,
+    CanvasConfig(size=512),
+)
+```
+
 ## Uso rapido
 
 ```python
 from preprocessing import (
     AlphaMaskConfig,
     BackgroundRemovalConfig,
+    CanvasConfig,
+    GarmentCropConfig,
     MainComponentConfig,
     MaskCleaningConfig,
     clean_binary_mask,
+    crop_garment_with_margin,
+    create_square_garment_image,
     load_image_from_path,
     remove_background,
     extract_alpha_mask,
@@ -388,22 +502,32 @@ mask = extract_alpha_mask(
 )
 clean_mask = clean_binary_mask(mask, MaskCleaningConfig())
 main_mask = keep_main_component(clean_mask, MainComponentConfig())
+crop_result = crop_garment_with_margin(
+    image_no_bg,
+    main_mask,
+    GarmentCropConfig(margin_ratio=0.10),
+)
+square_image = create_square_garment_image(
+    crop_result.image,
+    crop_result.mask,
+    CanvasConfig(size=512),
+)
 
 image_no_bg.save("shirt.no-bg.png")
 mask.save("shirt.mask.png")
 clean_mask.save("shirt.clean-mask.png")
 main_mask.save("shirt.main-mask.png")
+crop_result.image.save("shirt.crop.png")
+crop_result.mask.save("shirt.crop-mask.png")
+square_image.save("shirt.square.png")
 ```
 
 ## Prossimi passi
 
 Ordine consigliato:
 
-1. calcolare bounding box;
-2. ritagliare capo;
-3. aggiungere margine;
-4. mettere sfondo bianco;
-5. centrare in quadrato.
+1. collegare tutti gli step in una `pipeline.py`;
+2. aggiungere controlli qualita' su maschera vuota, capo troppo piccolo o crop troppo estremo.
 
 ## Note
 

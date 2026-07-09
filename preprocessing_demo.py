@@ -7,9 +7,13 @@ from preprocessing import (
     AlphaMaskConfig,
     BackgroundRemovalConfig,
     BackgroundRemovalDependencyError,
+    CanvasConfig,
+    GarmentCropConfig,
     MainComponentConfig,
     MaskCleaningConfig,
     clean_binary_mask,
+    crop_garment_with_margin,
+    create_square_garment_image,
     extract_alpha_mask,
     keep_main_component,
     load_image_from_path,
@@ -55,6 +59,35 @@ def parse_args() -> argparse.Namespace:
         help="optional output path for main foreground component mask PNG",
     )
     parser.add_argument(
+        "--crop-output",
+        type=Path,
+        default=None,
+        help="optional output path for cropped garment PNG",
+    )
+    parser.add_argument(
+        "--crop-mask-output",
+        type=Path,
+        default=None,
+        help="optional output path for cropped garment mask PNG",
+    )
+    parser.add_argument(
+        "--square-output",
+        type=Path,
+        default=None,
+        help="optional output path for white square garment PNG",
+    )
+    parser.add_argument(
+        "--canvas-size",
+        type=int,
+        default=512,
+        help="square canvas size in pixels",
+    )
+    parser.add_argument(
+        "--no-canvas-upscale",
+        action="store_true",
+        help="do not upscale images smaller than the square canvas",
+    )
+    parser.add_argument(
         "--alpha-threshold",
         type=int,
         default=0,
@@ -90,6 +123,18 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="minimum area required for the selected main foreground component",
     )
+    parser.add_argument(
+        "--crop-margin-ratio",
+        type=float,
+        default=0.10,
+        help="margin ratio added around the cropped garment",
+    )
+    parser.add_argument(
+        "--crop-min-margin-pixels",
+        type=int,
+        default=0,
+        help="minimum margin pixels added around the cropped garment",
+    )
     return parser.parse_args()
 
 
@@ -105,16 +150,28 @@ def main() -> None:
     mask_path = None
     clean_mask_path = None
     main_mask_path = None
+    crop_path = None
+    crop_mask_path = None
+    square_path = None
     if (
         args.mask_output is not None
         or args.clean_mask_output is not None
         or args.main_mask_output is not None
+        or args.crop_output is not None
+        or args.crop_mask_output is not None
+        or args.square_output is not None
     ):
         mask = _extract_mask(output, args.alpha_threshold)
         mask_path = args.mask_output
         if mask_path is not None:
             mask.save(mask_path)
-        if args.clean_mask_output is not None or args.main_mask_output is not None:
+        if (
+            args.clean_mask_output is not None
+            or args.main_mask_output is not None
+            or args.crop_output is not None
+            or args.crop_mask_output is not None
+            or args.square_output is not None
+        ):
             clean_mask = _clean_mask(
                 mask,
                 mask_threshold=args.mask_threshold,
@@ -125,14 +182,49 @@ def main() -> None:
             if args.clean_mask_output is not None:
                 clean_mask_path = args.clean_mask_output
                 clean_mask.save(clean_mask_path)
-            if args.main_mask_output is not None:
+            if (
+                args.main_mask_output is not None
+                or args.crop_output is not None
+                or args.crop_mask_output is not None
+                or args.square_output is not None
+            ):
                 main_mask = _keep_main_component(
                     clean_mask,
                     mask_threshold=args.mask_threshold,
                     min_component_area=args.main_component_min_area,
                 )
-                main_mask_path = args.main_mask_output
-                main_mask.save(main_mask_path)
+                if args.main_mask_output is not None:
+                    main_mask_path = args.main_mask_output
+                    main_mask.save(main_mask_path)
+            if (
+                args.crop_output is not None
+                or args.crop_mask_output is not None
+                or args.square_output is not None
+            ):
+                crop_result = _crop_garment(
+                    output,
+                    main_mask,
+                    mask_threshold=args.mask_threshold,
+                    margin_ratio=args.crop_margin_ratio,
+                    min_margin_pixels=args.crop_min_margin_pixels,
+                )
+                if args.crop_output is not None:
+                    crop_path = args.crop_output
+                    crop_result.image.save(crop_path)
+                if args.crop_mask_output is not None:
+                    crop_mask_path = args.crop_mask_output
+                    crop_result.mask.save(crop_mask_path)
+                if args.square_output is not None:
+                    square_path = args.square_output
+                    square_image = create_square_garment_image(
+                        crop_result.image,
+                        crop_result.mask,
+                        CanvasConfig(
+                            size=args.canvas_size,
+                            allow_upscale=not args.no_canvas_upscale,
+                        ),
+                    )
+                    square_image.save(square_path)
 
     print(f"input:  {args.image.resolve()}")
     print(f"output: {output_path.resolve()}")
@@ -142,6 +234,12 @@ def main() -> None:
         print(f"clean:  {clean_mask_path.resolve()}")
     if main_mask_path is not None:
         print(f"main:   {main_mask_path.resolve()}")
+    if crop_path is not None:
+        print(f"crop:   {crop_path.resolve()}")
+    if crop_mask_path is not None:
+        print(f"crop-m: {crop_mask_path.resolve()}")
+    if square_path is not None:
+        print(f"square: {square_path.resolve()}")
     print(f"mode:   {output.mode}")
     print(f"size:   {output.size}")
     if not args.only_normalize:
@@ -187,6 +285,24 @@ def _keep_main_component(mask, mask_threshold: int, min_component_area: int):
         MainComponentConfig(
             mask_threshold=mask_threshold,
             min_component_area=min_component_area,
+        ),
+    )
+
+
+def _crop_garment(
+    image,
+    mask,
+    mask_threshold: int,
+    margin_ratio: float,
+    min_margin_pixels: int,
+):
+    return crop_garment_with_margin(
+        image,
+        mask,
+        GarmentCropConfig(
+            mask_threshold=mask_threshold,
+            margin_ratio=margin_ratio,
+            min_margin_pixels=min_margin_pixels,
         ),
     )
 
