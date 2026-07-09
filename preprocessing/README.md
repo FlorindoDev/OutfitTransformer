@@ -164,6 +164,39 @@ BackgroundRemovalConfig(model_name="u2net")
 BackgroundRemovalConfig(model_name="u2netp")
 ```
 
+#### Cache sessioni `rembg`
+
+`background.py` usa una cache per non ricaricare il modello `rembg` a ogni
+immagine.
+
+Senza cache:
+
+```text
+immagine 1 -> carica modello -> rimuove sfondo
+immagine 2 -> ricarica modello -> rimuove sfondo
+immagine 3 -> ricarica modello -> rimuove sfondo
+```
+
+Con cache:
+
+```text
+immagine 1 -> carica modello -> salva sessione in memoria
+immagine 2 -> riusa sessione gia' pronta
+immagine 3 -> riusa sessione gia' pronta
+```
+
+La cache e' legata al nome del modello:
+
+```python
+BackgroundRemovalConfig(model_name="isnet-general-use")
+```
+
+Se viene usato lo stesso modello, la sessione viene riusata. Se viene scelto un
+altro modello, viene creata una nuova sessione per quel modello.
+
+`clear_background_session_cache()` svuota la cache, utile nei test o quando si
+vuole liberare memoria.
+
 ### `mask.py`
 
 Responsabilita:
