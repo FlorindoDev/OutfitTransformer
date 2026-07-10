@@ -264,6 +264,9 @@ python -m training.cp.train_cp --image-fine-tune-mode fc_only
 
 # Allena layer4 e FC visuale
 python -m training.cp.train_cp --image-fine-tune-mode fc_and_layer4
+
+# Fine-tuning completo della ResNet
+python -m training.cp.train_cp --image-fine-tune-mode full
 ```
 
 La valutazione sul test set è separata e viene eseguita soltanto su richiesta:

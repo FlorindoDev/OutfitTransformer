@@ -2,10 +2,11 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-ImageFineTuneMode = Literal["fc_only", "fc_and_layer4"]
+ImageFineTuneMode = Literal["fc_only", "fc_and_layer4", "full"]
 IMAGE_FINE_TUNE_MODES: tuple[ImageFineTuneMode, ...] = (
     "fc_only",
     "fc_and_layer4",
+    "full",
 )
 
 
@@ -30,7 +31,7 @@ class OutfitEncoderConfig:
             raise ValueError("embedding dimensions must be positive")
         if self.image_fine_tune_mode not in IMAGE_FINE_TUNE_MODES:
             raise ValueError(
-                "image_fine_tune_mode must be 'fc_only' or 'fc_and_layer4'"
+                f"image_fine_tune_mode must be one of {IMAGE_FINE_TUNE_MODES}"
             )
         if self.transformer_layers <= 0 or self.attention_heads <= 0:
             raise ValueError("transformer layers and attention heads must be positive")

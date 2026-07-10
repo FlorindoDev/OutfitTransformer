@@ -107,7 +107,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--image-fine-tune-mode",
         choices=IMAGE_FINE_TUNE_MODES,
         default="fc_only",
-        help="train only the image FC or both ResNet layer4 and FC",
+        help="train the image FC, layer4 and FC, or the full ResNet",
     )
     return parser.parse_args(argv)
 

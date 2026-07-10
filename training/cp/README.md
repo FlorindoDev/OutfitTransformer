@@ -61,6 +61,7 @@ flowchart TD
     G -->|fc_only| H["layer4 congelato<br/>BatchNorm in evaluation"]
     G -->|fc_and_layer4| I["layer4 e relative BatchNorm<br/>aggiornati"]
     I -.->|gradiente interrotto| J["stem + layer1-3 congelati<br/>BatchNorm in evaluation"]
+    G -->|full| L["intera ResNet e BatchNorm<br/>aggiornate"]
 
     F -.-> K["SentenceBERT congelato<br/>gradiente interrotto"]
 
@@ -70,12 +71,12 @@ flowchart TD
     classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
 
     class B,C,D,E,F trained
-    class G,I conditional
+    class G,I,L conditional
     class H,J,K frozen
     class A loss
 ```
 
-In entrambe le modalità vengono quindi aggiornati:
+In tutte le modalità vengono quindi aggiornati:
 
 - classificatore `TaskMLP` del CP;
 - tutti i parametri del Transformer encoder-only;
@@ -84,8 +85,9 @@ In entrambe le modalità vengono quindi aggiornati:
 - proiezione testuale `Linear(384, 64)`.
 
 Con `fc_and_layer4` vengono aggiornati anche `layer4` e le sue BatchNorm. Con
-`fc_only`, tutto il backbone prima della FC resta congelato. SentenceBERT,
-`stem`, `layer1`, `layer2` e `layer3` restano sempre congelati.
+`full` viene aggiornata l'intera ResNet, comprese tutte le BatchNorm. Con
+`fc_only`, tutto il backbone prima della FC resta congelato. SentenceBERT resta
+sempre congelato.
 
 Durante validation il modello usa `eval()` e gradienti disabilitati: nessun
 parametro e nessuna statistica BatchNorm vengono aggiornati.
@@ -103,22 +105,24 @@ Inizializzazione e politica di fine-tuning sono configurazioni indipendenti.
 
 `--no-pretrained-image` non sblocca automaticamente il backbone. I blocchi
 congelati dalla modalità di fine-tuning restano congelati anche quando hanno
-pesi casuali. Questa opzione non equivale quindi a un training completo da
-zero.
+pesi casuali. Combinandolo con `--image-fine-tune-mode full` si allena invece
+l'intera ResNet da pesi casuali.
 
 ### Modalità di fine-tuning
 
 ```powershell
 python -m training.cp.train_cp --image-fine-tune-mode fc_only
 python -m training.cp.train_cp --image-fine-tune-mode fc_and_layer4
+python -m training.cp.train_cp --image-fine-tune-mode full
 ```
 
 | Modalità | Parametri ResNet aggiornati | BatchNorm |
 |---|---|---|
 | `fc_only` (default) | solo FC `512 → 64` | tutti i blocchi feature restano in evaluation |
 | `fc_and_layer4` | `layer4` e FC `512 → 64` | BatchNorm di `layer4` allenabili; precedenti congelate |
+| `full` | intera ResNet-18, inclusa la FC `512 → 64` | tutte allenabili |
 
-SentenceBERT resta congelato in entrambe le modalità. La sua proiezione FC,
+SentenceBERT resta congelato in tutte le modalità. La sua proiezione FC,
 il token `OUTFIT`, il Transformer e il classificatore CP restano allenabili.
 
 ## Grafici
@@ -253,7 +257,7 @@ python -m training.cp.train_cp --help
 | `--no-plots` | falso | disabilita grafici |
 | `--text-model` | `all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
 | `--no-pretrained-image` | falso | niente inizializzazione ImageNet |
-| `--image-fine-tune-mode` | `fc_only` | `fc_only` o `fc_and_layer4` |
+| `--image-fine-tune-mode` | `fc_only` | `fc_only`, `fc_and_layer4` o `full` |
 
 ## Esempi
 
@@ -261,6 +265,10 @@ python -m training.cp.train_cp --help
 # Allena layer4 e FC della ResNet
 python -m training.cp.train_cp `
   --image-fine-tune-mode fc_and_layer4
+
+# Allena tutta la ResNet
+python -m training.cp.train_cp `
+  --image-fine-tune-mode full
 
 # Output separato per una nuova run
 python -m training.cp.train_cp `

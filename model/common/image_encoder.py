@@ -16,7 +16,7 @@ class ImageEncoder(nn.Module):
         super().__init__()
         if fine_tune_mode not in IMAGE_FINE_TUNE_MODES:
             raise ValueError(
-                "fine_tune_mode must be 'fc_only' or 'fc_and_layer4'"
+                f"fine_tune_mode must be one of {IMAGE_FINE_TUNE_MODES}"
             )
 
         weights = ResNet18_Weights.DEFAULT if pretrained else None
@@ -40,6 +40,10 @@ class ImageEncoder(nn.Module):
         return self.backbone(images)
 
     def _configure_fine_tuning(self) -> tuple[nn.Module, ...]:
+        if self.fine_tune_mode == "full":
+            self.backbone.requires_grad_(True)
+            return ()
+
         self.backbone.requires_grad_(False)
         self.backbone.fc.requires_grad_(True)
 

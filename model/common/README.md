@@ -85,18 +85,20 @@ Quali pesi possono cambiare durante il training dipende invece da
 |---|---|---|
 | `"fc_only"` (default) | solo FC `Linear(512, 64)` | stem, `layer1`, `layer2`, `layer3`, `layer4` |
 | `"fc_and_layer4"` | `layer4` e FC `Linear(512, 64)` | stem, `layer1`, `layer2`, `layer3` |
+| `"full"` | intera ResNet-18, inclusa la FC `Linear(512, 64)` | nessuno |
 
 I parametri congelati hanno `requires_grad=False`: la loss non produce un
 aggiornamento per loro e l'optimizer non li modifica. Anche i moduli BatchNorm
 dei blocchi congelati restano in modalità evaluation durante il training;
 Con `"fc_and_layer4"`, le BatchNorm interne a `layer4` restano invece allenabili e
-aggiornano le proprie statistiche.
+aggiornano le proprie statistiche. Con `"full"`, tutte le BatchNorm della ResNet
+sono allenabili e aggiornano le proprie statistiche.
 
 La modalità si imposta nella configurazione del modello:
 
 ```python
 config = OutfitEncoderConfig(
-    image_fine_tune_mode="fc_and_layer4",
+    image_fine_tune_mode="full",
 )
 ```
 

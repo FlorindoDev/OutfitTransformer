@@ -47,6 +47,7 @@ flowchart TD
     G -->|fc_only| H["layer4 congelato<br/>BatchNorm in evaluation"]
     G -->|fc_and_layer4| I["layer4 e relative BatchNorm<br/>aggiornati"]
     I -.->|gradiente interrotto| J["stem + layer1-3 congelati<br/>BatchNorm in evaluation"]
+    G -->|full| L["intera ResNet e BatchNorm<br/>aggiornate"]
 
     F -.-> K["SentenceBERT congelato<br/>gradiente interrotto"]
 
@@ -56,12 +57,12 @@ flowchart TD
     classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
 
     class B,C,D,E,F trained
-    class G,I conditional
+    class G,I,L conditional
     class H,J,K frozen
     class A loss
 ```
 
-In entrambe le modalità vengono quindi aggiornati:
+In tutte le modalità vengono quindi aggiornati:
 
 - classificatore `TaskMLP` del CP;
 - tutti i parametri del Transformer encoder-only;
@@ -70,8 +71,9 @@ In entrambe le modalità vengono quindi aggiornati:
 - proiezione testuale `Linear(384, 64)`.
 
 Con `fc_and_layer4` vengono aggiornati anche `layer4` e le sue BatchNorm. Con
-`fc_only`, tutto il backbone prima della FC resta congelato. SentenceBERT,
-`stem`, `layer1`, `layer2` e `layer3` restano sempre congelati.
+`full` viene aggiornata l'intera ResNet, comprese tutte le BatchNorm. Con
+`fc_only`, tutto il backbone prima della FC resta congelato. SentenceBERT resta
+sempre congelato.
 
 Durante validation il modello usa `eval()` e gradienti disabilitati: nessun
 parametro e nessuna statistica BatchNorm vengono aggiornati.
@@ -92,6 +94,13 @@ python -m training.cp.train_cp `
   --epochs 20 `
   --batch-size 32 `
   --image-fine-tune-mode fc_and_layer4
+```
+
+Fine-tuning completo della ResNet:
+
+```powershell
+python -m training.cp.train_cp `
+  --image-fine-tune-mode full
 ```
 
 Run con checkpoint e grafici isolati in una cartella dedicata:
@@ -168,10 +177,11 @@ La FC visuale è sempre allenabile. Il flag
 
 - `fc_only`: congela tutti i blocchi ResNet e le relative BatchNorm;
 - `fc_and_layer4`: allena `layer4`, le sue BatchNorm e la FC.
+- `full`: allena l'intera ResNet, incluse tutte le BatchNorm e la FC.
 
-`--no-pretrained-image` controlla solo l'inizializzazione ImageNet. Non rende
-allenabili i blocchi congelati, quindi non rappresenta un training completo da
-zero.
+`--no-pretrained-image` controlla solo l'inizializzazione ImageNet e non rende
+automaticamente allenabili i blocchi congelati. Combinandolo con
+`--image-fine-tune-mode full` si allena invece l'intera ResNet da pesi casuali.
 
 SentenceBERT resta congelato; la sua proiezione FC, il token `OUTFIT`, il
 Transformer e il classificatore CP restano allenabili.
