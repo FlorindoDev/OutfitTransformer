@@ -72,11 +72,37 @@ lineari mescolano le due modalità.
 pre-addestrati su ImageNet tramite `ResNet18_Weights.DEFAULT`. Al primo utilizzo
 Torchvision scarica il file dei pesi, non l'intero dataset ImageNet.
 
-Durante il training questi pesi sono soltanto il punto di partenza. Il backbone
-ResNet-18 non viene congelato: riceve i gradienti della loss e viene
-**fine-tunato end-to-end** sul task di compatibilità degli outfit. Soltanto
-quando `pretrained_image_encoder=False` corrispondente al flag CLI
-`--no-pretrained-image` ResNet-18 parte da pesi casuali.
+`pretrained_image_encoder` controlla soltanto l'inizializzazione:
+
+- `True`: carica i pesi ImageNet;
+- `False`: parte da pesi casuali, come con il flag CLI
+  `--no-pretrained-image`.
+
+Quali pesi possono cambiare durante il training dipende invece da
+`image_fine_tune_mode`:
+
+| Modalità | Parametri aggiornati | Parametri congelati |
+|---|---|---|
+| `"fc_only"` (default) | solo FC `Linear(512, 64)` | stem, `layer1`, `layer2`, `layer3`, `layer4` |
+| `"fc_and_layer4"` | `layer4` e FC `Linear(512, 64)` | stem, `layer1`, `layer2`, `layer3` |
+
+I parametri congelati hanno `requires_grad=False`: la loss non produce un
+aggiornamento per loro e l'optimizer non li modifica. Anche i moduli BatchNorm
+dei blocchi congelati restano in modalità evaluation durante il training;
+Con `"fc_and_layer4"`, le BatchNorm interne a `layer4` restano invece allenabili e
+aggiornano le proprie statistiche.
+
+La modalità si imposta nella configurazione del modello:
+
+```python
+config = OutfitEncoderConfig(
+    image_fine_tune_mode="fc_and_layer4",
+)
+```
+
+`pretrained_image_encoder=False` non sblocca automaticamente il backbone. Per
+esempio, combinato con `"fc_only"` lascia congelate feature casuali; questa
+combinazione è normalmente sconsigliata.
 
 La testa di classificazione ImageNet originale viene sostituita con una nuova
 FC `Linear(512, 64)`, inizializzata casualmente. Il backbone estrae 512 feature
@@ -88,9 +114,8 @@ immagine → ResNet-18 → feature visive 512 → FC 512→64 → image embeddin
 ```
 
 Questa FC non predice una classe ImageNet: è una proiezione addestrabile che
-impara quali caratteristiche visive sono utili ai task CP e CIR. Anche i
-parametri pre-addestrati del backbone ResNet-18 vengono aggiornati dal
-fine-tuning.
+impara quali caratteristiche visive sono utili ai task CP e CIR. È sempre
+allenabile; i pesi del backbone cambiano solo secondo `image_fine_tune_mode`.
 
 ### Text encoder
 

@@ -1,4 +1,12 @@
 from dataclasses import dataclass
+from typing import Literal
+
+
+ImageFineTuneMode = Literal["fc_only", "fc_and_layer4"]
+IMAGE_FINE_TUNE_MODES: tuple[ImageFineTuneMode, ...] = (
+    "fc_only",
+    "fc_and_layer4",
+)
 
 
 @dataclass(frozen=True)
@@ -11,6 +19,7 @@ class OutfitEncoderConfig:
     dropout: float = 0.1
     text_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     pretrained_image_encoder: bool = True
+    image_fine_tune_mode: ImageFineTuneMode = "fc_only"
 
     @property
     def item_embedding_dim(self) -> int:
@@ -19,6 +28,10 @@ class OutfitEncoderConfig:
     def validate(self) -> None:
         if self.image_embedding_dim <= 0 or self.text_embedding_dim <= 0:
             raise ValueError("embedding dimensions must be positive")
+        if self.image_fine_tune_mode not in IMAGE_FINE_TUNE_MODES:
+            raise ValueError(
+                "image_fine_tune_mode must be 'fc_only' or 'fc_and_layer4'"
+            )
         if self.transformer_layers <= 0 or self.attention_heads <= 0:
             raise ValueError("transformer layers and attention heads must be positive")
         if self.item_embedding_dim % self.attention_heads != 0:

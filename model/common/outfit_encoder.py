@@ -29,6 +29,7 @@ class OutfitEncoder(nn.Module):
         self.image_encoder = ImageEncoder(
             embedding_dim=self.config.image_embedding_dim,
             pretrained=self.config.pretrained_image_encoder,
+            fine_tune_mode=self.config.image_fine_tune_mode,
         )
         self.text_encoder = TextEncoder(
             embedding_dim=self.config.text_embedding_dim,
