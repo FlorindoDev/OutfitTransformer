@@ -40,21 +40,17 @@ un'immagine e una descrizione.
 ## Uso
 
 ```python
-from torch.utils.data import DataLoader
+from data import create_manifest_outfit_loader
 
-from data import OutfitDataset, collate_outfits
-
-dataset = OutfitDataset(
+loader = create_manifest_outfit_loader(
     manifest_path="data/manifest_loader/example_manifest.json",
     image_root="data/images",
-)
-loader = DataLoader(
-    dataset,
     batch_size=8,
     shuffle=True,
-    collate_fn=collate_outfits,
 )
 ```
+
+Per accesso al solo Dataset resta disponibile `OutfitDataset`.
 
 ## Output
 
@@ -78,6 +74,7 @@ personalizzati già organizzati dall'utente.
 manifest_loader/
   __init__.py
   dataset.py
+  loader.py
   example_manifest.json
   README.md
 ```

@@ -11,6 +11,8 @@ l'[architettura comune](../model/common/README.md).
 - [Cosa fanno `transforms.py` e `batch.py`](#cosa-fanno-transformspy-e-batchpy)
 - [Batch composizione](#batch-composizione)
   - [Piccolo esempio di batch](#piccolo-esempio-di-batch)
+- [Composizione di una cartella `<dataset>_loader`](#composizione-di-una-cartella-dataset_loader)
+- [File](#file)
 - [Dataset fornito: Polyvore Outfits](#dataset-fornito-polyvore-outfits)
   - [Esempi dei file di task](#esempi-dei-file-di-task)
   - [Cosa contiene](#cosa-contiene)
@@ -30,7 +32,6 @@ l'[architettura comune](../model/common/README.md).
 - [Padding mask](#padding-mask)
   - [Uso prima del Transformer](#uso-prima-del-transformer)
   - [Uso nel Transformer](#uso-nel-transformer)
-- [File](#file)
 
 
 ## Cosa fanno `transforms.py` e `batch.py`
@@ -53,6 +54,9 @@ modello:
 | `OutfitExample` | Un singolo outfit: ID, immagini degli item e descrizioni testuali |
 | `OutfitBatch` | Un batch di outfit già padded, con immagini, testi, ID e maschera |
 | `collate_outfits()` | Funzione passata al `DataLoader` per unire più outfit in un batch rettangolare |
+| `CompatibilityExample` | Un singolo outfit CP con gli stessi dati di `OutfitExample` e una label di compatibilità |
+| `CompatibilityBatch` | Avvolge un `OutfitBatch` e aggiunge le label richieste dal task CP |
+| `collate_compatibility()` | Converte più `CompatibilityExample` in un `CompatibilityBatch`, riusando padding e maschera di `collate_outfits()` |
 
 Il punto chiave è che gli outfit non hanno tutti lo stesso numero di capi.
 `collate_outfits()` trova l'outfit più lungo del batch, aggiunge immagini di
@@ -64,6 +68,13 @@ padding a zero agli outfit più corti e crea `padding_mask`:
 Questa maschera viene poi usata dal Transformer del modello come
 `src_key_padding_mask`, così l'attenzione considera solo gli item reali e non
 impara informazioni artificiali dalle posizioni vuote.
+
+Le strutture senza label (`OutfitExample` e `OutfitBatch`) rappresentano il
+formato generale usato dall'encoder. Le strutture di compatibility aggiungono
+soltanto l'informazione specifica del task CP, senza duplicare la logica di
+padding. Sia `OutfitBatch` sia `CompatibilityBatch` espongono `.to(device)` per
+spostare immagini, maschere e label sul device usato dal modello; le
+descrizioni restano normali stringhe Python.
 
 
 ## Batch composizione
@@ -139,6 +150,82 @@ batch.padding_mask
 
 batch.labels
 # tensor([1.0, 0.0])
+```
+
+## Composizione di una cartella `<dataset>_loader`
+
+Ogni dataset mantiene nella propria cartella solo logica necessaria a leggere
+e interpretare quel formato. Preprocessing, esempi e batch restano condivisi in
+`data/transforms.py` e `data/batch.py`.
+
+La composizione generale è:
+
+```text
+data/<dataset>_loader/
+  __init__.py   API pubblica del loader
+  download.py   acquisizione delle risorse esterne, quando necessaria
+  dataset.py    dati specifici del dataset -> Example condiviso
+  loader.py     Dataset -> DataLoader PyTorch -> Batch condiviso
+  README.md     sorgenti, uso e responsabilità
+```
+
+Il flusso dei dati tra questi file è:
+
+```mermaid
+flowchart TD
+    U["Training o valutazione"] --> L["loader.py<br/>coordina tutto il caricamento"]
+
+    L -.->|usa| D["download.py<br/>recupera file e gestisce cache"]
+    L -.->|crea| S["dataset.py<br/>interpreta il formato del dataset"]
+    L -.->|configura| P["PyTorch DataLoader<br/>batch size, shuffle e worker"]
+
+    A{"Sorgente dei dati"} -->|remota| D
+    A -->|già locale| R["Risorse grezze<br/>immagini, testi e label"]
+    D --> R
+
+    R --> S
+    T["data/transforms.py<br/>immagine → tensore normalizzato"] --> S
+    S --> P
+
+    B["data/batch.py<br/>collate, padding, mask e label"] --> P
+    P --> C["Batch compatibile<br/>OutfitBatch o CompatibilityBatch"]
+    C --> M["Modello"]
+```
+
+Le frecce tratteggiate mostrano cosa coordina `loader.py`; quelle continue
+mostrano come i dati vengono trasformati fino al batch finale.
+
+- `download.py` conosce origine remota, autenticazione e cache. Non serve per
+  dataset già disponibili localmente, come un manifest.
+- `dataset.py` conosce struttura dei record e come ottenere immagini, testi e
+  label. Restituisce un singolo Example alla volta.
+- `loader.py` configura il `DataLoader`, applica transform e funzione collate,
+  quindi produce Batch già compatibili col modello.
+- `__init__.py` espone solo funzioni e tipi destinati al resto del progetto.
+- `README.md` documenta il dataset senza contenere logica eseguibile.
+
+Questo schema permette di aggiungere nuovi dataset senza modificare input del
+modello: cambia interpretazione dei dati, non `OutfitBatch` o
+`CompatibilityBatch`.
+
+## File
+
+```text
+data/
+  batch.py              esempi, batch, padding e maschere condivisi
+  transforms.py         preprocessing ImageNet
+  manifest_loader/
+    __init__.py          API pubblica del loader manifest
+    README.md            guida del loader JSON generico
+    dataset.py           lettura del manifest e delle immagini
+    loader.py            DataLoader per manifest locali
+    example_manifest.json
+  polyvore_loader/
+    __init__.py          API pubblica del loader Polyvore
+    README.md            guida del loader Polyvore CP
+    download.py          acquisizione risorse Hugging Face
+    dataset.py           risorse Polyvore -> esempi CP
+    loader.py            DataLoader e batch compatibili col modello
 ```
 
 ## Dataset fornito: Polyvore Outfits
@@ -479,28 +566,29 @@ Prima dell'uso:
 hf auth login
 ```
 
-Il factory loader scarica la configurazione richiesta, il file di
-compatibility corretto e i metadati:
+Download e adattamento sono separati. Per scaricare o riusare dalla cache tutte
+le risorse richieste da uno split:
+
+```powershell
+python data/polyvore_loader/download.py --variant disjoint --split train
+```
+
+Per ottenere direttamente batch compatibili con il modello:
 
 ```python
-from torch.utils.data import DataLoader
+from data import create_polyvore_compatibility_loader
 
-from data import (
-    collate_compatibility,
-    load_polyvore_compatibility_dataset,
-)
-
-train_dataset = load_polyvore_compatibility_dataset(
+train_loader = create_polyvore_compatibility_loader(
     variant="nondisjoint",  # oppure "disjoint"
     split="train",
-)
-train_loader = DataLoader(
-    train_dataset,
     batch_size=32,
-    shuffle=True,
-    collate_fn=collate_compatibility,
 )
 ```
+
+`download.py` conosce Hugging Face. `dataset.py` traduce le risorse in esempi.
+`loader.py` applica `transforms.py` e usa `batch.py` con il DataLoader PyTorch.
+`load_polyvore_compatibility_dataset()` resta disponibile quando serve il solo
+Dataset.
 
 Sono disponibili gli split `train`, `validation` e `test`.
 
@@ -656,19 +744,4 @@ mask originale:       [False, False, True]
 con OUTFIT o TARGET:  [False, False, False, True]
                        ↑
                     task token
-```
-
-## File
-
-```text
-data/
-  batch.py              batch, padding e maschere
-  transforms.py         preprocessing ImageNet
-  manifest_loader/
-    README.md            guida del loader JSON generico
-    dataset.py           lettura del manifest e delle immagini
-    example_manifest.json
-  polyvore_loader/
-    README.md            guida del loader Polyvore CP
-    dataset.py           split ufficiali Polyvore per CP
 ```

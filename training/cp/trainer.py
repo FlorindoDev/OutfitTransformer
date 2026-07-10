@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,147 +10,182 @@ from torch import nn
 from torch.optim import Optimizer
 
 from data import CompatibilityBatch
-from metrics import BinaryAccuracy, binary_roc_auc
-
-
-@dataclass(frozen=True)
-class CPEpochMetrics:
-    loss: float
-    accuracy: float
-    examples: int
-    auc: float | None = None
-
-
-@dataclass(frozen=True)
-class CPTrainingHistory:
-    train: tuple[CPEpochMetrics, ...]
-    validation: tuple[CPEpochMetrics, ...]
-
-
-@dataclass(frozen=True)
-class CPBatchProgress:
-    epoch: int
-    phase: str
-    batch: int
-    batches: int | None
-    loss: float
-    running_loss: float
-    running_accuracy: float
-    examples: int
-
-
-@dataclass(frozen=True)
-class CPCheckpointInfo:
-    epoch: int
-    kind: str
-    path: Path
-    monitored_loss: float
+from .checkpointing import CPCheckpointManager
+from .epoch import BatchProgressCallback, run_cp_epoch
+from .types import (
+    CPBatchProgress,
+    CPCheckpointInfo,
+    CPEpochMetrics,
+    CPTrainingHistory,
+)
 
 
 EpochCallback = Callable[
     [int, CPEpochMetrics, CPEpochMetrics | None],
     None,
 ]
-BatchProgressCallback = Callable[[CPBatchProgress], None]
 CheckpointCallback = Callable[[CPCheckpointInfo], None]
+HistoryCallback = Callable[[CPTrainingHistory], Any]
+EpochRunner = Callable[..., CPEpochMetrics]
 
 
-def run_cp_epoch(
-    model: nn.Module,
-    batches: Iterable[CompatibilityBatch],
-    criterion: nn.Module,
-    device: torch.device | str,
-    *,
-    optimizer: Optimizer | None = None,
-    max_grad_norm: float | None = None,
-    epoch: int = 0,
-    phase: str = "train",
-    progress_interval: int | None = None,
-    on_batch_end: BatchProgressCallback | None = None,
-    calculate_auc: bool = False,
-) -> CPEpochMetrics:
-    """Run one CP epoch; an optimizer switches evaluation to training."""
-    if max_grad_norm is not None and max_grad_norm <= 0.0:
-        raise ValueError("max_grad_norm must be positive or None")
-    if progress_interval is not None and progress_interval <= 0:
-        raise ValueError("progress_interval must be positive or None")
+@dataclass(frozen=True)
+class CPTrainerConfig:
+    epochs: int
+    device: torch.device | str
+    start_epoch: int = 1
+    max_grad_norm: float | None = None
+    progress_interval: int | None = None
 
-    is_training = optimizer is not None
-    model.train(is_training)
-    total_loss = 0.0
-    total_examples = 0
-    total_batches = _safe_len(batches)
-    accuracy = BinaryAccuracy()
-    auc_scores: list[torch.Tensor] = []
-    auc_targets: list[torch.Tensor] = []
+    def validate(self) -> None:
+        if self.epochs <= 0:
+            raise ValueError("epochs must be positive")
+        if self.start_epoch <= 0:
+            raise ValueError("start_epoch must be positive")
+        if self.start_epoch > self.epochs:
+            raise ValueError("start_epoch must be less than or equal to epochs")
+        if self.max_grad_norm is not None and self.max_grad_norm <= 0.0:
+            raise ValueError("max_grad_norm must be positive or None")
+        if self.progress_interval is not None and self.progress_interval <= 0:
+            raise ValueError("progress_interval must be positive or None")
 
-    with torch.set_grad_enabled(is_training):
-        for batch_index, batch in enumerate(batches, start=1):
-            if not isinstance(batch, CompatibilityBatch):
-                raise TypeError(
-                    "CP data loader must return CompatibilityBatch instances"
-                )
-            batch = batch.to(device)
-            if is_training:
-                optimizer.zero_grad(set_to_none=True)
 
-            output = model(
-                batch.images,
-                batch.descriptions,
-                batch.padding_mask,
+@dataclass(frozen=True)
+class CPTrainingCallbacks:
+    on_epoch_end: EpochCallback | None = None
+    on_batch_end: BatchProgressCallback | None = None
+    on_checkpoint_saved: CheckpointCallback | None = None
+    on_history_updated: HistoryCallback | None = None
+
+
+class CPTrainer:
+    """Orchestrate CP phases using replaceable training components."""
+
+    def __init__(
+        self,
+        *,
+        model: nn.Module,
+        optimizer: Optimizer,
+        criterion: nn.Module,
+        scheduler: Any | None = None,
+        epoch_runner: EpochRunner = run_cp_epoch,
+    ) -> None:
+        self._model = model
+        self._optimizer = optimizer
+        self._criterion = criterion
+        self._scheduler = scheduler
+        self._epoch_runner = epoch_runner
+
+    def fit(
+        self,
+        train_batches: Iterable[CompatibilityBatch],
+        *,
+        config: CPTrainerConfig,
+        validation_batches: Iterable[CompatibilityBatch] | None = None,
+        checkpoint_manager: CPCheckpointManager | None = None,
+        initial_history: CPTrainingHistory | None = None,
+        callbacks: CPTrainingCallbacks | None = None,
+    ) -> CPTrainingHistory:
+        config.validate()
+        history = initial_history or CPTrainingHistory()
+        _validate_initial_history(history, config.start_epoch)
+        callbacks = callbacks or CPTrainingCallbacks()
+        self._model.to(config.device)
+
+        for epoch in range(config.start_epoch, config.epochs + 1):
+            train_metrics = self._run_training_epoch(
+                train_batches,
+                epoch,
+                config,
+                callbacks,
             )
-            logits = output.logits
-            loss = criterion(logits, batch.labels)
-            if loss.ndim != 0:
-                raise ValueError("CP criterion must return a scalar loss")
+            validation_metrics = self._run_validation_epoch(
+                validation_batches,
+                epoch,
+                config,
+                callbacks,
+            )
 
-            if is_training:
-                loss.backward()
-                if max_grad_norm is not None:
-                    nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-                optimizer.step()
+            if self._scheduler is not None:
+                self._scheduler.step()
 
-            example_count = batch.labels.numel()
-            total_loss += loss.detach().item() * example_count
-            targets = batch.labels >= 0.5
-            accuracy.update(logits, batch.labels)
-            total_examples += example_count
-            if calculate_auc:
-                auc_scores.append(logits.detach().reshape(-1).cpu())
-                auc_targets.append(targets.detach().reshape(-1).cpu())
-            if _should_report_progress(
-                batch_index,
-                total_batches,
-                progress_interval,
-            ) and on_batch_end is not None:
-                on_batch_end(
-                    CPBatchProgress(
-                        epoch=epoch,
-                        phase=phase,
-                        batch=batch_index,
-                        batches=total_batches,
-                        loss=loss.detach().item(),
-                        running_loss=total_loss / total_examples,
-                        running_accuracy=accuracy.compute(),
-                        examples=total_examples,
-                    )
+            history = history.append(
+                epoch,
+                train_metrics,
+                validation_metrics,
+            )
+            monitored_loss = (
+                validation_metrics.loss
+                if validation_metrics is not None
+                else train_metrics.loss
+            )
+            if checkpoint_manager is not None:
+                saved_checkpoints = checkpoint_manager.save(
+                    epoch=epoch,
+                    model=self._model,
+                    optimizer=self._optimizer,
+                    scheduler=self._scheduler,
+                    monitored_loss=monitored_loss,
+                    train_metrics=train_metrics,
+                    validation_metrics=validation_metrics,
+                    history=history,
+                )
+                if callbacks.on_checkpoint_saved is not None:
+                    for checkpoint in saved_checkpoints:
+                        callbacks.on_checkpoint_saved(checkpoint)
+
+            if callbacks.on_history_updated is not None:
+                callbacks.on_history_updated(history)
+            if callbacks.on_epoch_end is not None:
+                callbacks.on_epoch_end(
+                    epoch,
+                    train_metrics,
+                    validation_metrics,
                 )
 
-    if total_examples == 0:
-        raise ValueError("CP data loader produced no examples")
-    return CPEpochMetrics(
-        loss=total_loss / total_examples,
-        accuracy=accuracy.compute(),
-        examples=total_examples,
-        auc=(
-            binary_roc_auc(
-                torch.cat(auc_scores),
-                torch.cat(auc_targets),
-            )
-            if calculate_auc
-            else None
-        ),
-    )
+        return history
+
+    def _run_training_epoch(
+        self,
+        batches: Iterable[CompatibilityBatch],
+        epoch: int,
+        config: CPTrainerConfig,
+        callbacks: CPTrainingCallbacks,
+    ) -> CPEpochMetrics:
+        return self._epoch_runner(
+            self._model,
+            batches,
+            self._criterion,
+            config.device,
+            optimizer=self._optimizer,
+            max_grad_norm=config.max_grad_norm,
+            epoch=epoch,
+            phase="train",
+            progress_interval=config.progress_interval,
+            on_batch_end=callbacks.on_batch_end,
+            calculate_auc=False,
+        )
+
+    def _run_validation_epoch(
+        self,
+        batches: Iterable[CompatibilityBatch] | None,
+        epoch: int,
+        config: CPTrainerConfig,
+        callbacks: CPTrainingCallbacks,
+    ) -> CPEpochMetrics | None:
+        if batches is None:
+            return None
+        return self._epoch_runner(
+            self._model,
+            batches,
+            self._criterion,
+            config.device,
+            epoch=epoch,
+            phase="validation",
+            progress_interval=config.progress_interval,
+            on_batch_end=callbacks.on_batch_end,
+            calculate_auc=True,
+        )
 
 
 def train_cp(
@@ -168,200 +203,73 @@ def train_cp(
     epoch_checkpoint_dir: str | Path | None = None,
     start_epoch: int = 1,
     initial_best_loss: float = float("inf"),
+    initial_history: CPTrainingHistory | None = None,
+    checkpoint_metadata: Mapping[str, Any] | None = None,
     progress_interval: int | None = None,
     on_epoch_end: EpochCallback | None = None,
     on_batch_end: BatchProgressCallback | None = None,
     on_checkpoint_saved: CheckpointCallback | None = None,
+    on_history_updated: HistoryCallback | None = None,
 ) -> CPTrainingHistory:
-    """Train OutfitTransformer only on compatibility prediction."""
-    if epochs <= 0:
-        raise ValueError("epochs must be positive")
-    if start_epoch <= 0:
-        raise ValueError("start_epoch must be positive")
-    if start_epoch > epochs:
-        raise ValueError("start_epoch must be less than or equal to epochs")
-    if progress_interval is not None and progress_interval <= 0:
-        raise ValueError("progress_interval must be positive or None")
+    """Convenience API composing the modular CP training components."""
+    checkpoint_manager = None
+    if checkpoint_path is not None or epoch_checkpoint_dir is not None:
+        checkpoint_manager = CPCheckpointManager(
+            best_path=checkpoint_path,
+            epoch_directory=epoch_checkpoint_dir,
+            total_epochs=epochs,
+            initial_best_loss=initial_best_loss,
+            run_config=checkpoint_metadata,
+        )
 
-    model.to(device)
-    train_history: list[CPEpochMetrics] = []
-    validation_history: list[CPEpochMetrics] = []
-    best_loss = initial_best_loss
-    best_checkpoint_path = (
-        Path(checkpoint_path) if checkpoint_path is not None else None
+    trainer = CPTrainer(
+        model=model,
+        optimizer=optimizer,
+        criterion=criterion,
+        scheduler=scheduler,
     )
-    epoch_checkpoint_directory = (
-        Path(epoch_checkpoint_dir) if epoch_checkpoint_dir is not None else None
-    )
-
-    for epoch in range(start_epoch, epochs + 1):
-        train_metrics = run_cp_epoch(
-            model,
-            train_batches,
-            criterion,
-            device,
-            optimizer=optimizer,
+    return trainer.fit(
+        train_batches,
+        validation_batches=validation_batches,
+        config=CPTrainerConfig(
+            epochs=epochs,
+            device=device,
+            start_epoch=start_epoch,
             max_grad_norm=max_grad_norm,
-            epoch=epoch,
-            phase="train",
             progress_interval=progress_interval,
+        ),
+        checkpoint_manager=checkpoint_manager,
+        initial_history=initial_history,
+        callbacks=CPTrainingCallbacks(
+            on_epoch_end=on_epoch_end,
             on_batch_end=on_batch_end,
-        )
-        train_history.append(train_metrics)
-
-        validation_metrics = None
-        if validation_batches is not None:
-            validation_metrics = run_cp_epoch(
-                model,
-                validation_batches,
-                criterion,
-                device,
-                epoch=epoch,
-                phase="validation",
-                progress_interval=progress_interval,
-                on_batch_end=on_batch_end,
-            )
-            validation_history.append(validation_metrics)
-
-        if scheduler is not None:
-            scheduler.step()
-
-        monitored_loss = (
-            validation_metrics.loss
-            if validation_metrics is not None
-            else train_metrics.loss
-        )
-        if epoch_checkpoint_directory is not None:
-            epoch_checkpoint_path = _epoch_checkpoint_path(
-                epoch_checkpoint_directory,
-                epoch,
-                epochs,
-            )
-            _save_checkpoint(
-                path=epoch_checkpoint_path,
-                epoch=epoch,
-                model=model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                monitored_loss=monitored_loss,
-                train_metrics=train_metrics,
-                validation_metrics=validation_metrics,
-            )
-            _notify_checkpoint_saved(
-                on_checkpoint_saved,
-                epoch=epoch,
-                kind="epoch",
-                path=epoch_checkpoint_path,
-                monitored_loss=monitored_loss,
-            )
-
-        if best_checkpoint_path is not None and monitored_loss < best_loss:
-            best_loss = monitored_loss
-            _save_checkpoint(
-                path=best_checkpoint_path,
-                epoch=epoch,
-                model=model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                monitored_loss=monitored_loss,
-                train_metrics=train_metrics,
-                validation_metrics=validation_metrics,
-            )
-            _notify_checkpoint_saved(
-                on_checkpoint_saved,
-                epoch=epoch,
-                kind="best",
-                path=best_checkpoint_path,
-                monitored_loss=monitored_loss,
-            )
-
-        if on_epoch_end is not None:
-            on_epoch_end(epoch, train_metrics, validation_metrics)
-
-    return CPTrainingHistory(
-        train=tuple(train_history),
-        validation=tuple(validation_history),
+            on_checkpoint_saved=on_checkpoint_saved,
+            on_history_updated=on_history_updated,
+        ),
     )
 
 
-def _save_checkpoint(
-    path: Path,
-    epoch: int,
-    model: nn.Module,
-    optimizer: Optimizer,
-    scheduler: Any | None,
-    monitored_loss: float,
-    train_metrics: CPEpochMetrics | None = None,
-    validation_metrics: CPEpochMetrics | None = None,
+def _validate_initial_history(
+    history: CPTrainingHistory,
+    start_epoch: int,
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    checkpoint = {
-        "epoch": epoch,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "monitored_loss": monitored_loss,
-        "train_metrics": _metrics_payload(train_metrics),
-        "validation_metrics": _metrics_payload(validation_metrics),
-    }
-    if scheduler is not None and hasattr(scheduler, "state_dict"):
-        checkpoint["scheduler_state_dict"] = scheduler.state_dict()
-    torch.save(checkpoint, path)
-
-
-def _safe_len(batches: Iterable[CompatibilityBatch]) -> int | None:
-    try:
-        return len(batches)  # type: ignore[arg-type]
-    except TypeError:
-        return None
-
-
-def _should_report_progress(
-    batch: int,
-    batches: int | None,
-    progress_interval: int | None,
-) -> bool:
-    if progress_interval is None:
-        return False
-    if batch == 1:
-        return True
-    if batches is not None and batch == batches:
-        return True
-    return batch % progress_interval == 0
-
-
-def _epoch_checkpoint_path(directory: Path, epoch: int, epochs: int) -> Path:
-    width = max(3, len(str(epochs)))
-    return directory / f"cp_epoch_{epoch:0{width}d}.pt"
-
-
-def _metrics_payload(metrics: CPEpochMetrics | None) -> dict[str, float | int] | None:
-    if metrics is None:
-        return None
-    payload: dict[str, float | int] = {
-        "loss": metrics.loss,
-        "accuracy": metrics.accuracy,
-        "examples": metrics.examples,
-    }
-    if metrics.auc is not None:
-        payload["auc"] = metrics.auc
-    return payload
-
-
-def _notify_checkpoint_saved(
-    callback: CheckpointCallback | None,
-    *,
-    epoch: int,
-    kind: str,
-    path: Path,
-    monitored_loss: float,
-) -> None:
-    if callback is None:
+    if history.last_epoch is None:
         return
-    callback(
-        CPCheckpointInfo(
-            epoch=epoch,
-            kind=kind,
-            path=path,
-            monitored_loss=monitored_loss,
+    expected_last_epoch = start_epoch - 1
+    if history.last_epoch != expected_last_epoch:
+        raise ValueError(
+            "initial history must end immediately before start_epoch"
         )
-    )
+
+
+__all__ = [
+    "CPBatchProgress",
+    "CPCheckpointInfo",
+    "CPEpochMetrics",
+    "CPTrainer",
+    "CPTrainerConfig",
+    "CPTrainingCallbacks",
+    "CPTrainingHistory",
+    "run_cp_epoch",
+    "train_cp",
+]

@@ -6,66 +6,15 @@ from dataclasses import dataclass
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from ..batch import OutfitBatch, OutfitExample, collate_outfits
+from ..batch import CompatibilityExample
 from ..transforms import ImageTransform, build_image_transform
-
-PolyvoreVariant = Literal["nondisjoint", "disjoint"]
-PolyvoreSplit = Literal["train", "validation", "test"]
-
-_DATASET_ID = "mvasil/polyvore-outfits"
-_TEXT_SPLIT_NAMES: dict[PolyvoreSplit, str] = {
-    "train": "train",
-    "validation": "valid",
-    "test": "test",
-}
-
-
-@dataclass(frozen=True)
-class CompatibilityExample:
-    outfit_id: str
-    images: Tensor
-    descriptions: tuple[str, ...]
-    label: float
-
-    def __post_init__(self) -> None:
-        OutfitExample(self.outfit_id, self.images, self.descriptions)
-        if self.label not in (0.0, 1.0):
-            raise ValueError("compatibility label must be 0 or 1")
-
-
-@dataclass(frozen=True)
-class CompatibilityBatch:
-    outfits: OutfitBatch
-    labels: Tensor
-
-    @property
-    def outfit_ids(self) -> tuple[str, ...]:
-        return self.outfits.outfit_ids
-
-    @property
-    def images(self) -> Tensor:
-        return self.outfits.images
-
-    @property
-    def descriptions(self) -> tuple[tuple[str, ...], ...]:
-        return self.outfits.descriptions
-
-    @property
-    def padding_mask(self) -> Tensor:
-        return self.outfits.padding_mask
-
-    def to(self, device: torch.device | str) -> "CompatibilityBatch":
-        return CompatibilityBatch(
-            outfits=self.outfits.to(device),
-            labels=self.labels.to(device),
-        )
 
 
 @dataclass(frozen=True)
@@ -581,93 +530,6 @@ class PolyvoreCompatibilityDataset(Dataset[CompatibilityExample]):
         if path is None:
             return {}
         return _read_item_metadata(str(Path(path).resolve()))
-
-
-def collate_compatibility(
-    examples: Sequence[CompatibilityExample],
-) -> CompatibilityBatch:
-    if not examples:
-        raise ValueError("cannot collate an empty compatibility batch")
-    outfits = collate_outfits(
-        [
-            OutfitExample(
-                outfit_id=example.outfit_id,
-                images=example.images,
-                descriptions=example.descriptions,
-            )
-            for example in examples
-        ]
-    )
-    labels = torch.tensor(
-        [example.label for example in examples],
-        dtype=torch.float32,
-    )
-    return CompatibilityBatch(outfits=outfits, labels=labels)
-
-
-def load_polyvore_compatibility_dataset(
-    variant: PolyvoreVariant = "nondisjoint",
-    split: PolyvoreSplit = "train",
-    *,
-    token: bool | str | None = True,
-    cache_dir: str | Path | None = None,
-    image_transform: ImageTransform | None = None,
-) -> PolyvoreCompatibilityDataset:
-    """Load a gated Hugging Face split and its official CP question file."""
-    if variant not in ("nondisjoint", "disjoint"):
-        raise ValueError("variant must be 'nondisjoint' or 'disjoint'")
-    if split not in ("train", "validation", "test"):
-        raise ValueError("split must be 'train', 'validation', or 'test'")
-
-    try:
-        from datasets import load_dataset
-        from huggingface_hub import hf_hub_download
-    except ImportError as error:
-        raise ImportError(
-            "Hugging Face loading requires the 'datasets' and "
-            "'huggingface_hub' packages"
-        ) from error
-
-    normalized_cache_dir = str(cache_dir) if cache_dir is not None else None
-    outfit_rows = load_dataset(
-        _DATASET_ID,
-        variant,
-        split=split,
-        token=token,
-        cache_dir=normalized_cache_dir,
-    )
-    question_filename = (
-        f"{variant}/compatibility_{_TEXT_SPLIT_NAMES[split]}.txt"
-    )
-    outfit_mapping_filename = f"{variant}/{_TEXT_SPLIT_NAMES[split]}.json"
-    compatibility_path = hf_hub_download(
-        repo_id=_DATASET_ID,
-        filename=question_filename,
-        repo_type="dataset",
-        token=token,
-        cache_dir=normalized_cache_dir,
-    )
-    metadata_path = hf_hub_download(
-        repo_id=_DATASET_ID,
-        filename="polyvore_item_metadata.json",
-        repo_type="dataset",
-        token=token,
-        cache_dir=normalized_cache_dir,
-    )
-    outfit_mapping_path = hf_hub_download(
-        repo_id=_DATASET_ID,
-        filename=outfit_mapping_filename,
-        repo_type="dataset",
-        token=token,
-        cache_dir=normalized_cache_dir,
-    )
-    return PolyvoreCompatibilityDataset(
-        outfit_rows=outfit_rows,
-        compatibility_path=compatibility_path,
-        image_transform=image_transform,
-        item_metadata_path=metadata_path,
-        outfit_mapping_path=outfit_mapping_path,
-    )
 
 
 @lru_cache(maxsize=4)

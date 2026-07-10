@@ -1,105 +1,186 @@
 # Training
 
-Il package `training` separa il codice di addestramento in base al task:
+Il package separa il training per task:
 
-- [Training CP](#training-cp), implementato in [`training/cp`](cp/);
-- [Training CIR](#training-cir), previsto ma non ancora implementato.
+- [Compatibility Prediction](cp/README.md): implementato;
+- [Complementary Item Retrieval](cir/README.md): non ancora implementato.
 
-## Training CP
+## Indice
 
-Il training di Compatibility Prediction stabilisce se un outfit è compatibile.
-La CLI, il loop di epoca e la guida completa sono raccolti nella cartella
-[`training/cp`](cp/):
+- [Compatibility Prediction](#compatibility-prediction)
+  - [Cosa viene aggiornato nel training](#Cosa-viene-aggiornato-nel-training)
+  - [Avviare una nuova run](#avviare-una-nuova-run)
+  - [Riprendere da checkpoint](#riprendere-da-checkpoint)
+  - [ResNet-18](#resnet-18)
+- [Complementary Item Retrieval](#complementary-item-retrieval)
+
+## Compatibility Prediction
+
+La pipeline CP è composta da runner di epoca, orchestratore, history,
+checkpoint manager e plotter indipendenti. L'API breve `train_cp()` compone i
+componenti standard; `CPTrainer` permette di sostituire il runner o collegare
+callback senza duplicare persistenza e metriche.
+
+Ogni epoca produce:
+
+- train loss e accuracy;
+- validation loss, accuracy e ROC AUC;
+- checkpoint dell'epoca ed eventuale nuovo best;
+- tre grafici cumulativi loss, accuracy e validation accuracy/AUC.
+
+### Cosa viene aggiornato nel training
+
+Il grafo mostra il percorso del gradiente durante `loss.backward()`. Dopo il
+backward viene applicato il gradient clipping; Adam aggiorna soltanto i
+parametri allenabili che hanno ricevuto un gradiente.
+
+```mermaid
+flowchart TD
+    A["Binary Focal Loss<br/>nessun parametro"] -->|backward| B["TaskMLP CP<br/>aggiornato"]
+    B --> C["Transformer encoder-only<br/>aggiornato"]
+
+    C --> D["Token OUTFIT<br/>aggiornato"]
+    C --> E["FC visuale 512 → 64<br/>sempre aggiornata"]
+    C --> F["Proiezione testuale FC 384 → 64<br/>aggiornata"]
+
+    E --> G{"image_fine_tune_mode"}
+    G -->|fc_only| H["layer4 congelato<br/>BatchNorm in evaluation"]
+    G -->|fc_and_layer4| I["layer4 e relative BatchNorm<br/>aggiornati"]
+    I -.->|gradiente interrotto| J["stem + layer1-3 congelati<br/>BatchNorm in evaluation"]
+
+    F -.-> K["SentenceBERT congelato<br/>gradiente interrotto"]
+
+    classDef trained fill:#d5f5e3,stroke:#239b56,color:#17202a
+    classDef conditional fill:#fcf3cf,stroke:#b7950b,color:#17202a
+    classDef frozen fill:#f2f3f4,stroke:#7b7d7d,color:#17202a
+    classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
+
+    class B,C,D,E,F trained
+    class G,I conditional
+    class H,J,K frozen
+    class A loss
+```
+
+In entrambe le modalità vengono quindi aggiornati:
+
+- classificatore `TaskMLP` del CP;
+- tutti i parametri del Transformer encoder-only;
+- token apprendibile `OUTFIT`;
+- FC visuale `Linear(512, 64)`;
+- proiezione testuale `Linear(384, 64)`.
+
+Con `fc_and_layer4` vengono aggiornati anche `layer4` e le sue BatchNorm. Con
+`fc_only`, tutto il backbone prima della FC resta congelato. SentenceBERT,
+`stem`, `layer1`, `layer2` e `layer3` restano sempre congelati.
+
+Durante validation il modello usa `eval()` e gradienti disabilitati: nessun
+parametro e nessuna statistica BatchNorm vengono aggiornati.
+
+### Avviare una nuova run
+
+Training con configurazione predefinita:
 
 ```powershell
 python -m training.cp.train_cp
 ```
 
-Consulta la [guida completa al training CP](cp/README.md) per dataset,
-iperparametri, checkpoint, resume e valutazione sul test set.
+Training con `layer4` e FC visuale allenabili:
 
-### Cosa aggiorna la backpropagation
-
-```mermaid
-flowchart TD
-    A["Binary Focal Loss<br/>"] -->|gradiente| B["TaskMLP CP<br/>aggiornato"]
-    B --> C["Transformer encoder-only<br/>aggiornato"]
-
-    C --> D["Token OUTFIT<br/>aggiornato"]
-    C --> E["ResNet-18 + FC visuale<br/>aggiornate"]
-    C --> F["Proiezione testuale FC<br/>aggiornata"]
-    F -.->|"gradiente interrotto"| G["SentenceBERT<br/>congelato"]
-
-    classDef trained fill:#d5f5e3,stroke:#239b56,color:#17202a
-    classDef frozen fill:#f2f3f4,stroke:#7b7d7d,color:#17202a
-    classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
-
-    class B,C,D,E,F trained
-    class G frozen
-    class A loss
+```powershell
+python -m training.cp.train_cp `
+  --variant disjoint `
+  --epochs 20 `
+  --batch-size 32 `
+  --image-fine-tune-mode fc_and_layer4
 ```
 
-Il gradiente parte dalla Focal Loss, attraversa classificatore e Transformer
-encoder-only, poi aggiorna il token `OUTFIT`, il ramo visuale e la proiezione
-testuale.
-Si arresta prima di SentenceBERT, eseguito con pesi congelati e
-`torch.no_grad()`.
+Run con checkpoint e grafici isolati in una cartella dedicata:
 
-## Training CIR
-
-Il training di Complementary Item Retrieval non è ancora implementato. Quando
-verrà aggiunto avrà una cartella dedicata `training/cir`, separata dal CP, e
-riutilizzerà l'encoder comune con il token `TARGET`, la proiezione CIR e la
-Set-wise Ranking Loss.
-
-Consulta la [pagina del futuro training CIR](cir/README.md) e il
-[README del modello CIR](../model/cir/README.md).
-
-## Come il batch usa i pesi
-
-Durante il forward il modello riceve un batch di outfit, non un singolo outfit
-alla volta. Dopo l'encoding visuale e testuale, gli item del batch hanno una
-forma di questo tipo:
-
-```python
-X.shape = [B, L, D]
+```powershell
+python -m training.cp.train_cp `
+  --epochs 30 `
+  --checkpoint checkpoints\experiment_01\best.pt `
+  --checkpoint-dir checkpoints\experiment_01\epochs `
+  --plot-dir checkpoints\experiment_01\plots
 ```
 
-Dove:
+GPU specifica e log batch meno frequenti:
 
-- `B` e il numero di outfit nel batch;
-- `L` e il numero massimo di item per outfit, dopo padding;
-- `D` e la dimensione dell'embedding di ogni item.
-
-Per esempio, con 4 outfit, 6 item massimi per outfit e embedding da 128:
-
-```python
-X.shape = [4, 6, 128]
+```powershell
+python -m training.cp.train_cp `
+  --device cuda:0 `
+  --log-interval 100
 ```
 
-Nel Transformer gli stessi pesi vengono applicati a tutti gli item di tutti gli
-outfit. Per la matrice delle query:
+### Riprendere da checkpoint
 
-```python
-Wq.shape = [128, 128]
-Q = X @ Wq
-Q.shape = [4, 6, 128]
+Ripresa dal checkpoint migliore:
+
+```powershell
+python -m training.cp.train_cp `
+  --epochs 40 `
+  --resume checkpoints\cp_best.pt `
+  --image-fine-tune-mode fc_only
 ```
 
-Questa operazione equivale concettualmente a:
+Ripresa da una specifica epoca:
 
-```python
-Q[0] = X[0] @ Wq
-Q[1] = X[1] @ Wq
-Q[2] = X[2] @ Wq
-Q[3] = X[3] @ Wq
+```powershell
+python -m training.cp.train_cp `
+  --epochs 40 `
+  --resume checkpoints\cp_epochs\cp_epoch_020.pt `
+  --image-fine-tune-mode fc_and_layer4
 ```
 
-Ogni `X[i]` ha forma `[6, 128]`, quindi ogni prodotto produce una matrice
-`[6, 128]`. PyTorch esegue tutto insieme in modo vettorializzato e restituisce
-un unico tensore `Q` di forma `[4, 6, 128]`.
+Ripresa con checkpoint e grafici nuovi salvati in una cartella separata:
 
-I pesi `Wq` sono quindi condivisi: non esiste una matrice diversa per ogni
-outfit. La dimensione `B` serve a processare piu outfit in parallelo, mentre la
-dimensione `L` mantiene separati gli item di ciascun outfit. Lo stesso schema
-vale per `Wk` e `Wv`, usati per costruire key e value.
+```powershell
+python -m training.cp.train_cp `
+  --epochs 40 `
+  --resume checkpoints\cp_best.pt `
+  --image-fine-tune-mode fc_only `
+  --checkpoint checkpoints\resume_01\best.pt `
+  --checkpoint-dir checkpoints\resume_01\epochs `
+  --plot-dir checkpoints\resume_01\plots
+```
+
+Le nuove epoche vengono sempre salvate in `resume_01\epochs` e i nuovi grafici
+in `resume_01\plots`. `resume_01\best.pt` viene invece creato soltanto se una
+nuova epoca migliora la migliore validation loss contenuta nel checkpoint di
+partenza. Se non avviene alcun miglioramento, il best originale resta
+`checkpoints\cp_best.pt`.
+
+`--epochs` indica l'ultima epoca totale. Nell'esempio, un checkpoint terminato
+all'epoca 20 continua dall'epoca 21 fino alla 40; non esegue altre 40 epoche.
+
+Optimizer, scheduler, history, migliore loss e RNG vengono ripristinati dal
+checkpoint nuovo. Learning rate, weight decay e configurazione StepLR salvati
+nel checkpoint prevalgono sugli stessi flag CLI. Cambiare
+`--image-fine-tune-mode` è invece consentito e permette un fine-tuning a fasi.
+
+I checkpoint legacy restano caricabili, ma non possono fornire history, RNG e
+migliore loss precedenti completi.
+
+### ResNet-18
+
+La FC visuale è sempre allenabile. Il flag
+`--image-fine-tune-mode` controlla il resto:
+
+- `fc_only`: congela tutti i blocchi ResNet e le relative BatchNorm;
+- `fc_and_layer4`: allena `layer4`, le sue BatchNorm e la FC.
+
+`--no-pretrained-image` controlla solo l'inizializzazione ImageNet. Non rende
+allenabili i blocchi congelati, quindi non rappresenta un training completo da
+zero.
+
+SentenceBERT resta congelato; la sua proiezione FC, il token `OUTFIT`, il
+Transformer e il classificatore CP restano allenabili.
+
+Dettagli, flag, resume, formato checkpoint, grafici ed esempi:
+[guida completa CP](cp/README.md).
+
+## Complementary Item Retrieval
+
+Il training CIR non è ancora implementato. Riutilizzerà l'encoder comune, il
+token `TARGET`, la proiezione CIR e la Set-wise Ranking Loss. Consulta la
+[pagina CIR](cir/README.md) e il [modello CIR](../model/cir/README.md).

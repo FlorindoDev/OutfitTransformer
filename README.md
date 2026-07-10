@@ -251,9 +251,20 @@ pip install -r requirements.txt
 python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 32
 ```
 
-usa il dataset per allenare il modello e salva un checkpoint per
-epoca in `checkpoints/cp_epochs/` e salva il migliore in
-`checkpoints/cp_best.pt`.
+usa il dataset per allenare il modello, salva un checkpoint per epoca in
+`checkpoints/cp_epochs/`, il migliore in `checkpoints/cp_best.pt` e tre grafici
+cumulativi in `checkpoints/cp_plots/`. La validation ROC AUC viene calcolata a
+ogni epoca.
+
+Il nuovo comportamento ResNet è controllato esplicitamente:
+
+```powershell
+# Allena soltanto la FC visuale (default)
+python -m training.cp.train_cp --image-fine-tune-mode fc_only
+
+# Allena layer4 e FC visuale
+python -m training.cp.train_cp --image-fine-tune-mode fc_and_layer4
+```
 
 La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
 
@@ -284,7 +295,7 @@ Le metriche e tutte le opzioni sono descritte nella
 | Binary Focal Loss | Implementata |
 | Target item token e target embedding | Implementati |
 | Set-wise Ranking Loss | Implementata |
-| Training loop CP, ADAM, scheduler e checkpoint | Implementati |
+| Training CP modulare, ADAM, scheduler, checkpoint e grafici | Implementati |
 | Costruzione automatica degli outfit parziali | Non implementata |
 | Negative sampler e curriculum learning | Non implementati |
 | Indicizzazione KNN e ricerca top-k | Non implementate |
@@ -295,15 +306,18 @@ Le metriche e tutte le opzioni sono descritte nella
 ```text
 data/
   README.md             Polyvore, esempi, forme e batching
-  batch.py              batch e maschere
+  batch.py              esempi, batch e maschere condivisi
   transforms.py         preprocessing ImageNet
   manifest_loader/
     README.md           guida del loader JSON generico
     dataset.py          lettura del manifest locale
+    loader.py           DataLoader per manifest locali
     example_manifest.json
   polyvore_loader/
     README.md           guida del loader Polyvore CP
-    dataset.py          Parquet, compatibility e metadati
+    download.py         acquisizione risorse Hugging Face
+    dataset.py          Parquet, compatibility e metadati -> esempi
+    loader.py           DataLoader e batch compatibili col modello
 model/
   common/
     README.md           architettura condivisa
@@ -335,7 +349,11 @@ training/
   cp/
     README.md           comandi e iperparametri del training CP
     train_cp.py         CLI training CP su Polyvore
-    trainer.py          epoche, metriche e checkpoint CP
+    trainer.py          orchestratore modulare CP
+    epoch.py            runner e metriche di una fase
+    types.py            history e tipi del training
+    checkpointing.py    checkpoint atomici e resume
+    plotting.py         grafici cumulativi per epoca
   cir/
     README.md           training CIR previsto, non ancora implementato
 requirements.txt
@@ -364,4 +382,4 @@ metriche benchmark complete non sono ancora implementate. Mancano:
 3. negative sampling e curriculum learning;
 4. trasferimento del checkpoint CP al training CIR;
 5. indicizzazione del catalogo e ricerca KNN/top-k;
-6. metriche AUC CP, FITB e CIR.
+6. metriche FITB e CIR.
