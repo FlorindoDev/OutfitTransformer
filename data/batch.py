@@ -37,6 +37,47 @@ class OutfitBatch:
         )
 
 
+@dataclass(frozen=True)
+class CompatibilityExample:
+    outfit_id: str
+    images: Tensor
+    descriptions: tuple[str, ...]
+    label: float
+
+    def __post_init__(self) -> None:
+        OutfitExample(self.outfit_id, self.images, self.descriptions)
+        if self.label not in (0.0, 1.0):
+            raise ValueError("compatibility label must be 0 or 1")
+
+
+@dataclass(frozen=True)
+class CompatibilityBatch:
+    outfits: OutfitBatch
+    labels: Tensor
+
+    @property
+    def outfit_ids(self) -> tuple[str, ...]:
+        return self.outfits.outfit_ids
+
+    @property
+    def images(self) -> Tensor:
+        return self.outfits.images
+
+    @property
+    def descriptions(self) -> tuple[tuple[str, ...], ...]:
+        return self.outfits.descriptions
+
+    @property
+    def padding_mask(self) -> Tensor:
+        return self.outfits.padding_mask
+
+    def to(self, device: torch.device | str) -> "CompatibilityBatch":
+        return CompatibilityBatch(
+            outfits=self.outfits.to(device),
+            labels=self.labels.to(device),
+        )
+
+
 def collate_outfits(examples: Sequence[OutfitExample]) -> OutfitBatch:
     if not examples:
         raise ValueError("cannot collate an empty batch")
@@ -57,3 +98,25 @@ def collate_outfits(examples: Sequence[OutfitExample]) -> OutfitBatch:
         descriptions=tuple(example.descriptions for example in examples),
         padding_mask=padding_mask,
     )
+
+
+def collate_compatibility(
+    examples: Sequence[CompatibilityExample],
+) -> CompatibilityBatch:
+    if not examples:
+        raise ValueError("cannot collate an empty compatibility batch")
+    outfits = collate_outfits(
+        [
+            OutfitExample(
+                outfit_id=example.outfit_id,
+                images=example.images,
+                descriptions=example.descriptions,
+            )
+            for example in examples
+        ]
+    )
+    labels = torch.tensor(
+        [example.label for example in examples],
+        dtype=torch.float32,
+    )
+    return CompatibilityBatch(outfits=outfits, labels=labels)
