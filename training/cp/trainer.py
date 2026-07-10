@@ -12,6 +12,7 @@ from torch.optim import Optimizer
 from data import CompatibilityBatch
 from .checkpointing import CPCheckpointManager
 from .epoch import BatchProgressCallback, run_cp_epoch
+from .selection import CPBestMetric, CPSelectionCriterion
 from .types import (
     CPBatchProgress,
     CPCheckpointInfo,
@@ -114,18 +115,12 @@ class CPTrainer:
                 train_metrics,
                 validation_metrics,
             )
-            monitored_loss = (
-                validation_metrics.loss
-                if validation_metrics is not None
-                else train_metrics.loss
-            )
             if checkpoint_manager is not None:
                 saved_checkpoints = checkpoint_manager.save(
                     epoch=epoch,
                     model=self._model,
                     optimizer=self._optimizer,
                     scheduler=self._scheduler,
-                    monitored_loss=monitored_loss,
                     train_metrics=train_metrics,
                     validation_metrics=validation_metrics,
                     history=history,
@@ -163,7 +158,7 @@ class CPTrainer:
             phase="train",
             progress_interval=config.progress_interval,
             on_batch_end=callbacks.on_batch_end,
-            calculate_auc=False,
+            calculate_auc=True,
         )
 
     def _run_validation_epoch(
@@ -202,7 +197,9 @@ def train_cp(
     checkpoint_path: str | Path | None = None,
     epoch_checkpoint_dir: str | Path | None = None,
     start_epoch: int = 1,
-    initial_best_loss: float = float("inf"),
+    best_metric: CPBestMetric = "val_loss",
+    initial_best_value: float | None = None,
+    initial_best_loss: float | None = None,
     initial_history: CPTrainingHistory | None = None,
     checkpoint_metadata: Mapping[str, Any] | None = None,
     progress_interval: int | None = None,
@@ -212,13 +209,23 @@ def train_cp(
     on_history_updated: HistoryCallback | None = None,
 ) -> CPTrainingHistory:
     """Convenience API composing the modular CP training components."""
+    if initial_best_value is not None and initial_best_loss is not None:
+        raise ValueError(
+            "provide either initial_best_value or initial_best_loss, not both"
+        )
+    resolved_best_value = (
+        initial_best_value
+        if initial_best_value is not None
+        else initial_best_loss
+    )
     checkpoint_manager = None
     if checkpoint_path is not None or epoch_checkpoint_dir is not None:
         checkpoint_manager = CPCheckpointManager(
             best_path=checkpoint_path,
             epoch_directory=epoch_checkpoint_dir,
             total_epochs=epochs,
-            initial_best_loss=initial_best_loss,
+            selection_criterion=CPSelectionCriterion(best_metric),
+            initial_best_value=resolved_best_value,
             run_config=checkpoint_metadata,
         )
 

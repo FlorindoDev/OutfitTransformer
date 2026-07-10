@@ -149,7 +149,15 @@ class CPCheckpointInfo:
     epoch: int
     kind: str
     path: Path
-    monitored_loss: float
+    selection_metric: str
+    selection_source: str
+    selection_value: float
+    best_selection_value: float
+
+    @property
+    def monitored_loss(self) -> float:
+        """Legacy alias; accurate when selection_metric is val_loss."""
+        return self.selection_value
 
 
 def _numeric_value(payload: Mapping[str, Any], key: str) -> int | float:

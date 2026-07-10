@@ -23,6 +23,7 @@ from model import (
 )
 from .checkpointing import CPResumeState, load_cp_training_checkpoint
 from .plotting import CPHistoryPlotter
+from .selection import CP_BEST_METRICS, CPSelectionCriterion
 from .trainer import train_cp
 from .types import (
     CPBatchProgress,
@@ -67,6 +68,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--checkpoint",
         type=Path,
         default=Path("checkpoints/cp_best.pt"),
+    )
+    parser.add_argument(
+        "--best-metric",
+        choices=CP_BEST_METRICS,
+        default="val_loss",
+        help="validation metric used to select the best checkpoint",
     )
     parser.add_argument(
         "--checkpoint-dir",
@@ -150,10 +157,10 @@ def main() -> None:
         scheduler,
     )
     start_epoch = 1 if resume_state is None else resume_state.epoch + 1
-    initial_best_loss = (
-        float("inf")
-        if resume_state is None
-        else resume_state.best_monitored_loss
+    selection_criterion = CPSelectionCriterion(args.best_metric)
+    initial_best_value = _initial_best_value(
+        selection_criterion,
+        resume_state,
     )
     initial_history = (
         CPTrainingHistory() if resume_state is None else resume_state.history
@@ -174,7 +181,8 @@ def main() -> None:
         checkpoint_path=args.checkpoint,
         epoch_checkpoint_dir=args.checkpoint_dir,
         start_epoch=start_epoch,
-        initial_best_loss=initial_best_loss,
+        best_metric=args.best_metric,
+        initial_best_value=initial_best_value,
         initial_history=initial_history,
         checkpoint_metadata=_checkpoint_metadata(
             args,
@@ -296,9 +304,11 @@ def _print_epoch(
         f"epoch={epoch} "
         f"train_loss={train_metrics.loss:.6f} "
         f"train_accuracy={train_metrics.accuracy:.4f} "
-        f"train_examples={train_metrics.examples} "
-        f"lr={_current_lr(optimizer):.8f}"
+        f"train_examples={train_metrics.examples}"
     )
+    if train_metrics.auc is not None:
+        message += f" train_auc={train_metrics.auc:.4f}"
+    message += f" lr={_current_lr(optimizer):.8f}"
     if validation_metrics is not None:
         message += (
             f" val_loss={validation_metrics.loss:.6f}"
@@ -321,6 +331,7 @@ def _print_startup(args: argparse.Namespace) -> None:
         f"resnet_fine_tune_mode={args.image_fine_tune_mode}"
     )
     print(f"checkpoint_best={args.checkpoint.resolve()}")
+    print(f"checkpoint_best_metric={args.best_metric}")
     print(f"checkpoint_epochs={args.checkpoint_dir.resolve()}")
     if args.no_plots:
         print("plots=disabled")
@@ -401,7 +412,10 @@ def _print_checkpoint(info: CPCheckpointInfo) -> None:
         f"checkpoint={info.kind} "
         f"epoch={info.epoch} "
         f"path={info.path.resolve()} "
-        f"monitored_loss={info.monitored_loss:.6f}"
+        f"selection_metric={info.selection_metric} "
+        f"selection_source={info.selection_source} "
+        f"selection_value={info.selection_value:.6f} "
+        f"best_selection_value={info.best_selection_value:.6f}"
     )
 
 
@@ -412,15 +426,38 @@ def _print_resume(path: Path, state: CPResumeState) -> None:
         f"resume_loaded={path.resolve()} "
         f"resume_epoch={state.epoch} "
         f"next_epoch={state.epoch + 1} "
-        f"best_loss={state.best_monitored_loss:.6f} "
+        f"selection_metric={state.selection_metric} "
+        f"best_selection_value={state.best_selection_value:.6f} "
         f"history={history_status} "
         f"rng={rng_status}"
     )
     if not state.history_complete:
         print(
             "warning=legacy checkpoint lacks full history and historical best; "
-            "resume starts from its current epoch metrics"
+            "changing --best-metric cannot reconstruct earlier epochs"
         )
+
+
+def _initial_best_value(
+    criterion: CPSelectionCriterion,
+    state: CPResumeState | None,
+) -> float:
+    if state is None:
+        return criterion.initial_best_value
+    if state.selection_metric == criterion.metric:
+        return state.best_selection_value
+
+    if not state.history_complete:
+        print(
+            f"warning=best metric changed from {state.selection_metric} "
+            f"to {criterion.metric}; only checkpoint epoch history is available"
+        )
+    else:
+        print(
+            f"resume_best_metric_changed={state.selection_metric}"
+            f"->{criterion.metric}; historical best recomputed"
+        )
+    return criterion.best_value(state.history)
 
 
 def _warn_resume_configuration(
@@ -543,6 +580,7 @@ def _checkpoint_metadata(
             "lr_gamma": scheduler.gamma,
             "focal_alpha": args.focal_alpha,
             "focal_gamma": args.focal_gamma,
+            "best_metric": args.best_metric,
             "max_grad_norm": args.max_grad_norm,
             "seed": effective_seed,
             "rng_continued_from_checkpoint": (

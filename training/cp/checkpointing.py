@@ -12,6 +12,7 @@ import torch
 from torch import nn
 from torch.optim import Optimizer
 
+from .selection import CPBestMetric, CPSelectionCriterion
 from .types import (
     CPCheckpointInfo,
     CPEpochMetrics,
@@ -19,21 +20,28 @@ from .types import (
 )
 
 
-CHECKPOINT_SCHEMA_VERSION = 2
+CHECKPOINT_SCHEMA_VERSION = 3
+SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS = (2, CHECKPOINT_SCHEMA_VERSION)
 
 
 @dataclass(frozen=True)
 class CPResumeState:
     epoch: int
-    best_monitored_loss: float
+    selection_metric: CPBestMetric
+    best_selection_value: float
     history: CPTrainingHistory
     history_complete: bool
     rng_restored: bool
     run_config: dict[str, Any] | None
 
+    @property
+    def best_monitored_loss(self) -> float:
+        """Legacy alias; accurate for schema-2 and val_loss checkpoints."""
+        return self.best_selection_value
+
 
 class CPCheckpointManager:
-    """Persist epoch and best checkpoints while owning best-loss state."""
+    """Persist epoch and best checkpoints using one validation criterion."""
 
     def __init__(
         self,
@@ -41,7 +49,9 @@ class CPCheckpointManager:
         best_path: str | Path | None,
         epoch_directory: str | Path | None,
         total_epochs: int,
-        initial_best_loss: float = float("inf"),
+        selection_criterion: CPSelectionCriterion | None = None,
+        initial_best_value: float | None = None,
+        initial_best_loss: float | None = None,
         run_config: Mapping[str, Any] | None = None,
     ) -> None:
         if total_epochs <= 0:
@@ -51,14 +61,33 @@ class CPCheckpointManager:
             Path(epoch_directory) if epoch_directory is not None else None
         )
         self._total_epochs = total_epochs
-        self._best_loss = float(initial_best_loss)
+        self._selection = selection_criterion or CPSelectionCriterion()
+        if initial_best_value is not None and initial_best_loss is not None:
+            raise ValueError(
+                "provide either initial_best_value or initial_best_loss, not both"
+            )
+        resolved_best_value = (
+            initial_best_value
+            if initial_best_value is not None
+            else initial_best_loss
+        )
+        self._best_value = (
+            self._selection.initial_best_value
+            if resolved_best_value is None
+            else float(resolved_best_value)
+        )
         self._run_config = (
             _normalize_run_config(run_config) if run_config is not None else None
         )
 
     @property
+    def best_value(self) -> float:
+        return self._best_value
+
+    @property
     def best_loss(self) -> float:
-        return self._best_loss
+        """Legacy alias; accurate when selecting val_loss."""
+        return self._best_value
 
     def save(
         self,
@@ -67,20 +96,28 @@ class CPCheckpointManager:
         model: nn.Module,
         optimizer: Optimizer,
         scheduler: Any | None,
-        monitored_loss: float,
         train_metrics: CPEpochMetrics,
         validation_metrics: CPEpochMetrics | None,
         history: CPTrainingHistory,
+        monitored_loss: float | None = None,
     ) -> tuple[CPCheckpointInfo, ...]:
-        is_best = monitored_loss < self._best_loss
-        next_best_loss = min(self._best_loss, monitored_loss)
+        selected_metrics, selection_source = self._selection_metrics(
+            train_metrics,
+            validation_metrics,
+        )
+        selection_value = self._selection.value(selected_metrics)
+        is_best = self._selection.is_better(selection_value, self._best_value)
+        next_best_value = selection_value if is_best else self._best_value
         checkpoint = _build_checkpoint(
             epoch=epoch,
             model=model,
             optimizer=optimizer,
             scheduler=scheduler,
-            monitored_loss=monitored_loss,
-            best_monitored_loss=next_best_loss,
+            selection_criterion=self._selection,
+            selection_source=selection_source,
+            selection_value=selection_value,
+            best_selection_value=next_best_value,
+            is_best=is_best,
             train_metrics=train_metrics,
             validation_metrics=validation_metrics,
             history=history,
@@ -100,7 +137,10 @@ class CPCheckpointManager:
                     epoch=epoch,
                     kind="epoch",
                     path=epoch_path,
-                    monitored_loss=monitored_loss,
+                    selection_metric=self._selection.metric,
+                    selection_source=selection_source,
+                    selection_value=selection_value,
+                    best_selection_value=next_best_value,
                 )
             )
 
@@ -111,12 +151,28 @@ class CPCheckpointManager:
                     epoch=epoch,
                     kind="best",
                     path=self._best_path,
-                    monitored_loss=monitored_loss,
+                    selection_metric=self._selection.metric,
+                    selection_source=selection_source,
+                    selection_value=selection_value,
+                    best_selection_value=next_best_value,
                 )
             )
 
-        self._best_loss = next_best_loss
+        self._best_value = next_best_value
         return tuple(saved)
+
+    def _selection_metrics(
+        self,
+        train_metrics: CPEpochMetrics,
+        validation_metrics: CPEpochMetrics | None,
+    ) -> tuple[CPEpochMetrics, str]:
+        if validation_metrics is not None:
+            return validation_metrics, "validation"
+        if self._selection.metric == "val_loss":
+            return train_metrics, "train_fallback"
+        raise ValueError(
+            f"{self._selection.metric} selection requires validation metrics"
+        )
 
 
 def load_cp_training_checkpoint(
@@ -149,10 +205,7 @@ def load_cp_training_checkpoint(
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
     epoch = _checkpoint_int(checkpoint, "epoch")
-    monitored_loss = _checkpoint_float(checkpoint, "monitored_loss")
-    best_loss_value = checkpoint.get("best_monitored_loss", monitored_loss)
-    if not isinstance(best_loss_value, int | float):
-        raise ValueError("checkpoint best_monitored_loss must be numeric")
+    selection_metric, best_selection_value = _load_selection_state(checkpoint)
 
     history, history_complete = _load_history(checkpoint, epoch)
     run_config_value = checkpoint.get("run_config")
@@ -162,7 +215,8 @@ def load_cp_training_checkpoint(
     rng_restored = _restore_rng_state(checkpoint.get("rng_state"))
     return CPResumeState(
         epoch=epoch,
-        best_monitored_loss=float(best_loss_value),
+        selection_metric=selection_metric,
+        best_selection_value=best_selection_value,
         history=history,
         history_complete=history_complete,
         rng_restored=rng_restored,
@@ -176,8 +230,11 @@ def _build_checkpoint(
     model: nn.Module,
     optimizer: Optimizer,
     scheduler: Any | None,
-    monitored_loss: float,
-    best_monitored_loss: float,
+    selection_criterion: CPSelectionCriterion,
+    selection_source: str,
+    selection_value: float,
+    best_selection_value: float,
+    is_best: bool,
     train_metrics: CPEpochMetrics,
     validation_metrics: CPEpochMetrics | None,
     history: CPTrainingHistory,
@@ -188,8 +245,25 @@ def _build_checkpoint(
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
-        "monitored_loss": monitored_loss,
-        "best_monitored_loss": best_monitored_loss,
+        "selection": {
+            "metric": selection_criterion.metric,
+            "source": selection_source,
+            "direction": selection_criterion.direction,
+            "value": selection_value,
+            "best_value": best_selection_value,
+            "is_best": is_best,
+        },
+        "monitored_loss": (
+            validation_metrics.loss
+            if validation_metrics is not None
+            else train_metrics.loss
+        ),
+        "best_monitored_loss": min(
+            metrics.loss
+            for metrics in (
+                history.validation if history.validation else history.train
+            )
+        ),
         "train_metrics": train_metrics.to_payload(),
         "validation_metrics": (
             validation_metrics.to_payload()
@@ -233,11 +307,31 @@ def _validate_checkpoint_schema(checkpoint: Mapping[str, Any]) -> None:
         return
     if not isinstance(version, int) or isinstance(version, bool):
         raise ValueError("checkpoint_schema_version must be an integer")
-    if version != CHECKPOINT_SCHEMA_VERSION:
+    if version not in SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS:
         raise ValueError(
             f"unsupported checkpoint schema version {version}; "
-            f"expected {CHECKPOINT_SCHEMA_VERSION}"
+            f"expected one of {SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS}"
         )
+
+
+def _load_selection_state(
+    checkpoint: Mapping[str, Any],
+) -> tuple[CPBestMetric, float]:
+    selection = checkpoint.get("selection")
+    if isinstance(selection, Mapping):
+        metric = selection.get("metric")
+        if metric not in ("val_loss", "val_accuracy", "val_auc"):
+            raise ValueError("checkpoint selection metric is invalid")
+        best_value = selection.get("best_value")
+        if not isinstance(best_value, int | float):
+            raise ValueError("checkpoint selection best_value must be numeric")
+        return metric, float(best_value)
+
+    monitored_loss = _checkpoint_float(checkpoint, "monitored_loss")
+    best_loss_value = checkpoint.get("best_monitored_loss", monitored_loss)
+    if not isinstance(best_loss_value, int | float):
+        raise ValueError("checkpoint best_monitored_loss must be numeric")
+    return "val_loss", float(best_loss_value)
 
 
 def _optional_metrics(value: Any) -> CPEpochMetrics | None:

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Sequence
 
-from .types import CPTrainingHistory
+from .types import CPEpochMetrics, CPTrainingHistory
 
 
 class CPHistoryPlotter:
@@ -31,6 +31,9 @@ class CPHistoryPlotter:
             self._plot_loss(history, epoch),
             self._plot_accuracy(history, epoch),
         ]
+        auc_plot = self._plot_auc(history, epoch)
+        if auc_plot is not None:
+            saved.append(auc_plot)
         validation_plot = self._plot_validation_accuracy_auc(history, epoch)
         if validation_plot is not None:
             saved.append(validation_plot)
@@ -82,24 +85,49 @@ class CPHistoryPlotter:
             y_limits=(0.0, 1.0),
         )
 
+    def _plot_auc(
+        self,
+        history: CPTrainingHistory,
+        epoch: int,
+    ) -> Path | None:
+        series: list[tuple[Sequence[int], Sequence[float], str]] = []
+        train_auc = self._auc_series(
+            history.epochs,
+            history.train,
+            "Train ROC AUC",
+        )
+        if train_auc is not None:
+            series.append(train_auc)
+        validation_auc = self._auc_series(
+            history.validation_epochs,
+            history.validation,
+            "Validation ROC AUC",
+        )
+        if validation_auc is not None:
+            series.append(validation_auc)
+        if not series:
+            return None
+        return self._save_chart(
+            epoch=epoch,
+            name="auc",
+            title="CP ROC AUC",
+            y_label="ROC AUC",
+            series=series,
+            y_limits=(0.0, 1.0),
+        )
+
     def _plot_validation_accuracy_auc(
         self,
         history: CPTrainingHistory,
         epoch: int,
     ) -> Path | None:
-        auc_points = [
-            (validation_epoch, metrics)
-            for validation_epoch, metrics in zip(
-                history.validation_epochs,
-                history.validation,
-                strict=True,
-            )
-            if metrics.auc is not None
-        ]
-        if not auc_points:
+        validation_auc = self._auc_series(
+            history.validation_epochs,
+            history.validation,
+            "Validation ROC AUC",
+        )
+        if validation_auc is None:
             return None
-        auc_epochs = [point[0] for point in auc_points]
-        auc_values = [point[1].auc for point in auc_points]
         return self._save_chart(
             epoch=epoch,
             name="validation_accuracy_auc",
@@ -111,10 +139,27 @@ class CPHistoryPlotter:
                     [item.accuracy for item in history.validation],
                     "Validation accuracy",
                 ),
-                (auc_epochs, auc_values, "Validation ROC AUC"),
+                validation_auc,
             ],
             y_limits=(0.0, 1.0),
         )
+
+    @staticmethod
+    def _auc_series(
+        epochs: Sequence[int],
+        metrics: Sequence[CPEpochMetrics],
+        label: str,
+    ) -> tuple[Sequence[int], Sequence[float], str] | None:
+        auc_epochs: list[int] = []
+        auc_values: list[float] = []
+        for epoch, item in zip(epochs, metrics, strict=True):
+            if item.auc is None:
+                continue
+            auc_epochs.append(epoch)
+            auc_values.append(item.auc)
+        if not auc_epochs:
+            return None
+        return auc_epochs, auc_values, label
 
     def _save_chart(
         self,

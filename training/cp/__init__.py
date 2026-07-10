@@ -6,6 +6,11 @@ from .checkpointing import (
 )
 from .epoch import CPEpochAccumulator, run_cp_epoch
 from .plotting import CPHistoryPlotter
+from .selection import (
+    CP_BEST_METRICS,
+    CPBestMetric,
+    CPSelectionCriterion,
+)
 from .trainer import (
     CPTrainer,
     CPTrainerConfig,
@@ -22,12 +27,15 @@ from .types import (
 __all__ = [
     "BinaryAccuracy",
     "CPBatchProgress",
+    "CPBestMetric",
+    "CP_BEST_METRICS",
     "CPCheckpointInfo",
     "CPCheckpointManager",
     "CPEpochAccumulator",
     "CPEpochMetrics",
     "CPHistoryPlotter",
     "CPResumeState",
+    "CPSelectionCriterion",
     "CPTrainer",
     "CPTrainerConfig",
     "CPTrainingCallbacks",
