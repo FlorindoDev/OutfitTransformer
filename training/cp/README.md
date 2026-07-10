@@ -1,120 +1,29 @@
 # Training CP
 
-Guida operativa per allenare OutfitTransformer sul task di **Compatibility
-Prediction (CP)**: dato un outfit, il modello predice se è compatibile (`1`) o
-incompatibile (`0`).
+Pipeline modulare per allenare OutfitTransformer sul task di **Compatibility
+Prediction (CP)**. Il modello riceve un outfit e predice se è compatibile
+(`1`) oppure incompatibile (`0`).
 
-- Torna alla [panoramica Training CP/CIR](../README.md).
-- Consulta il [modello CP](../../model/cp/README.md).
-- Consulta il [formato dei dati Polyvore](../../data/README.md).
-- Consulta la [guida alla valutazione](../../evaluate/README.md).
-- Consulta la [guida alle metriche](../../metrics/README.md).
+- [Training generale](../README.md)
+- [Modello CP](../../model/cp/README.md)
+- [Loader Polyvore](../../data/polyvore_loader/README.md)
+- [Valutazione](../../evaluate/README.md)
 
 ## Indice
 
-- [Flusso](#flusso)
-  - [Inizializzazione e fine-tuning di ResNet-18](#inizializzazione-e-fine-tuning-di-resnet-18)
-  - [Cosa aggiorna la backpropagation](#cosa-aggiorna-la-backpropagation)
 - [Avvio rapido](#avvio-rapido)
-- [Flag della CLI](#flag-della-cli)
-- [Iperparametri](#iperparametri)
-  - [Ottimizzazione](#ottimizzazione)
-  - [Preprocessing](#preprocessing)
-- [Scheduler](#scheduler)
-- [Training e validation](#training-e-validation)
+- [Cosa viene aggiornato nel training](#cosa-viene-aggiornato-nel-training)
+- [Fine-tuning ResNet-18](#fine-tuning-resnet-18)
+  - [Pesi iniziali](#pesi-iniziali)
+  - [Modalità di fine-tuning](#modalità-di-fine-tuning)
+- [Grafici](#grafici)
 - [Checkpoint e resume](#checkpoint-e-resume)
-- [Valutazione sul test set](#valutazione-sul-test-set)
-- [Comandi utili](#comandi-utili)
-- [File](#file)
-
-## Flusso
-
-```text
-immagini + descrizioni
-        ↓
-ResNet-18 + SentenceBERT/FC
-        ↓
-item embedding da 128 feature
-        ↓
-token OUTFIT + Transformer encoder-only
-        ↓
-TaskMLP → logit
-        ↓
-Binary Focal Loss
-        ↓
-backpropagation + Adam
-```
-
-### Inizializzazione e fine-tuning di ResNet-18
-
-Per impostazione predefinita, ResNet-18 **non viene addestrata da zero**. Il
-training carica i pesi pre-addestrati su ImageNet tramite Torchvision e li usa
-come inizializzazione. Non è necessario scaricare il dataset ImageNet: al primo
-avvio viene scaricato soltanto il file dei pesi.
-
-Il backbone non rimane congelato. Durante il training la Binary Focal Loss
-propaga i gradienti fino a tutti i layer di ResNet-18 e Adam ne aggiorna i pesi:
-si tratta quindi di **fine-tuning end-to-end su Polyvore**. La nuova proiezione
-visuale `Linear(512, 64)`, il Transformer e la testa CP vengono invece
-inizializzati per il task e addestrati insieme al backbone.
-
-Il flag `--no-pretrained-image` disabilita esplicitamente questa
-inizializzazione e fa partire ResNet-18 da pesi casuali. Senza il flag, vengono
-sempre usati i pesi ImageNet come base.
-
-### Cosa aggiorna la backpropagation
-
-```mermaid
-flowchart TD
-    A["Binary Focal Loss<br/>nessun parametro"] -->|gradiente| B["TaskMLP CP<br/>aggiornato"]
-    B --> C["Transformer encoder-only<br/>aggiornato"]
-
-    C --> D["Token OUTFIT<br/>aggiornato"]
-    C --> E["ResNet-18 + FC visuale<br/>aggiornati"]
-    C --> F["Proiezione testuale FC<br/>aggiornata"]
-    F -.->|"gradiente interrotto"| G["SentenceBERT<br/>congelato"]
-
-    classDef trained fill:#d5f5e3,stroke:#239b56,color:#17202a
-    classDef frozen fill:#f2f3f4,stroke:#7b7d7d,color:#17202a
-    classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
-
-    class B,C,D,E,F trained
-    class G frozen
-    class A loss
-```
-
-SentenceBERT produce le feature testuali dentro `torch.no_grad()`: il suo
-backbone non cambia, mentre la proiezione FC successiva viene allenata.
-
-Il token `OUTFIT` è un unico `nn.Parameter` di forma `[1, 1, 128]`, condiviso
-da tutti gli outfit. I suoi 128 valori sono essi stessi pesi allenabili: non
-sono prodotti dall'attenzione o da un'altra rete. Vengono inizializzati una
-sola volta con valori casuali e diventano una rappresentazione base appresa.
-
-Durante il forward questa stessa base viene espansa alla dimensione del batch
-e inserita davanti agli item. Il Transformer ne produce poi una versione
-contestualizzata diversa per ciascun outfit:
-
-```text
-token OUTFIT base condiviso + item dell'outfit
-                       ↓ Transformer
-outfit embedding contestualizzato e specifico dell'outfit
-```
-
-La loss dipende dall'outfit embedding; di conseguenza `loss.backward()` fa
-passare il gradiente attraverso classificatore e Transformer fino anche ai 128
-valori del token base. `optimizer.step()` aggiorna direttamente sia il token
-base sia i pesi del Transformer. Il token non viene ricreato a ogni forward e,
-durante validation e inferenza, rimane fisso.
-
-| Elemento | Che cos'è | Come cambia |
-|---|---|---|
-| `outfit_token` | Parametro base globale, salvato nel checkpoint | Aggiornato direttamente da Adam |
-| `outfit_embedding` | Output contestualizzato per un singolo outfit | Ricalcolato a ogni forward, non è un parametro |
+- [Flag CLI](#flag-cli)
+- [Esempi](#esempi)
+- [Test](#test)
+- [File e flusso dei moduli](#file-e-flusso-dei-moduli)
 
 ## Avvio rapido
-
-Eseguire dalla root del progetto:
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -122,160 +31,137 @@ hf auth login
 python -m training.cp.train_cp
 ```
 
-La configurazione predefinita usa la variante `disjoint`, 30 epoche, batch da
-32 e il device CUDA quando disponibile.
+Il comando predefinito usa:
 
-## Flag della CLI
+- Polyvore `disjoint`;
+- 30 epoche e batch size 32;
+- ResNet-18 inizializzata con ImageNet;
+- fine-tuning ResNet in modalità `fc_only`;
+- Binary Focal Loss e Adam;
+- validation loss per scegliere il checkpoint migliore;
+- ROC AUC calcolata sulla validation a ogni epoca;
+- tre grafici cumulativi salvati dopo ogni epoca.
+
+## Cosa viene aggiornato nel training
+
+Il grafo mostra il percorso del gradiente durante `loss.backward()`. Dopo il
+backward viene applicato il gradient clipping; Adam aggiorna soltanto i
+parametri allenabili che hanno ricevuto un gradiente.
+
+```mermaid
+flowchart TD
+    A["Binary Focal Loss<br/>nessun parametro"] -->|backward| B["TaskMLP CP<br/>aggiornato"]
+    B --> C["Transformer encoder-only<br/>aggiornato"]
+
+    C --> D["Token OUTFIT<br/>aggiornato"]
+    C --> E["FC visuale 512 → 64<br/>sempre aggiornata"]
+    C --> F["Proiezione testuale FC 384 → 64<br/>aggiornata"]
+
+    E --> G{"image_fine_tune_mode"}
+    G -->|fc_only| H["layer4 congelato<br/>BatchNorm in evaluation"]
+    G -->|fc_and_layer4| I["layer4 e relative BatchNorm<br/>aggiornati"]
+    I -.->|gradiente interrotto| J["stem + layer1-3 congelati<br/>BatchNorm in evaluation"]
+
+    F -.-> K["SentenceBERT congelato<br/>gradiente interrotto"]
+
+    classDef trained fill:#d5f5e3,stroke:#239b56,color:#17202a
+    classDef conditional fill:#fcf3cf,stroke:#b7950b,color:#17202a
+    classDef frozen fill:#f2f3f4,stroke:#7b7d7d,color:#17202a
+    classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
+
+    class B,C,D,E,F trained
+    class G,I conditional
+    class H,J,K frozen
+    class A loss
+```
+
+In entrambe le modalità vengono quindi aggiornati:
+
+- classificatore `TaskMLP` del CP;
+- tutti i parametri del Transformer encoder-only;
+- token apprendibile `OUTFIT`;
+- FC visuale `Linear(512, 64)`;
+- proiezione testuale `Linear(384, 64)`.
+
+Con `fc_and_layer4` vengono aggiornati anche `layer4` e le sue BatchNorm. Con
+`fc_only`, tutto il backbone prima della FC resta congelato. SentenceBERT,
+`stem`, `layer1`, `layer2` e `layer3` restano sempre congelati.
+
+Durante validation il modello usa `eval()` e gradienti disabilitati: nessun
+parametro e nessuna statistica BatchNorm vengono aggiornati.
+
+## Fine-tuning ResNet-18
+
+Inizializzazione e politica di fine-tuning sono configurazioni indipendenti.
+
+### Pesi iniziali
+
+| Flag | Comportamento |
+|---|---|
+| default | carica i pesi ImageNet |
+| `--no-pretrained-image` | inizializza ResNet-18 con pesi casuali |
+
+`--no-pretrained-image` non sblocca automaticamente il backbone. I blocchi
+congelati dalla modalità di fine-tuning restano congelati anche quando hanno
+pesi casuali. Questa opzione non equivale quindi a un training completo da
+zero.
+
+### Modalità di fine-tuning
 
 ```powershell
-python -m training.cp.train_cp --help
+python -m training.cp.train_cp --image-fine-tune-mode fc_only
+python -m training.cp.train_cp --image-fine-tune-mode fc_and_layer4
 ```
 
-| Flag | Default | Funzione |
-|---|---:|---|
-| `-h`, `--help` | — | Mostra l'help |
-| `--variant` | `disjoint` | Variante Polyvore: `disjoint` o `nondisjoint` |
-| `--epochs` | `30` | Ultima epoca da eseguire |
-| `--batch-size` | `32` | Numero di outfit per batch |
-| `--learning-rate` | `5e-5` | Learning rate iniziale di Adam |
-| `--weight-decay` | `1e-4` | Regolarizzazione L2 di Adam |
-| `--lr-step-size` | `10` | Epoche tra due riduzioni del learning rate |
-| `--lr-gamma` | `0.5` | Fattore moltiplicativo dello scheduler |
-| `--focal-alpha` | `0.5` | Bilanciamento della classe positiva |
-| `--focal-gamma` | `1.0` | Riduzione del peso degli esempi facili |
-| `--max-grad-norm` | `1.0` | Limite della norma globale dei gradienti |
-| `--workers` | `0` | Processi del DataLoader |
-| `--seed` | `42` | Seed Python, PyTorch e CUDA |
-| `--log-interval` | `50` | Stampa ogni N batch; `0` disabilita i log batch |
-| `--device` | automatico | `cuda` se disponibile, altrimenti `cpu` |
-| `--cache-dir` | cache Hugging Face | Posizione della cache dataset e Hub |
-| `--checkpoint` | `checkpoints/cp_best.pt` | Checkpoint con validation loss minima |
-| `--checkpoint-dir` | `checkpoints/cp_epochs` | Directory dei checkpoint per epoca |
-| `--resume` | disabilitato | Riprende training, optimizer e scheduler |
-| `--text-model` | `sentence-transformers/all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
-| `--no-pretrained-image` | falso | Inizializza ResNet-18 casualmente invece di partire dai pesi ImageNet |
+| Modalità | Parametri ResNet aggiornati | BatchNorm |
+|---|---|---|
+| `fc_only` (default) | solo FC `512 → 64` | tutti i blocchi feature restano in evaluation |
+| `fc_and_layer4` | `layer4` e FC `512 → 64` | BatchNorm di `layer4` allenabili; precedenti congelate |
 
-## Iperparametri
+SentenceBERT resta congelato in entrambe le modalità. La sua proiezione FC,
+il token `OUTFIT`, il Transformer e il classificatore CP restano allenabili.
 
-### Ottimizzazione
+## Grafici
 
-| Iperparametro | Default |
-|---|---:|
-| optimizer | Adam |
-| learning rate | `5e-5` |
-| weight decay | `1e-4` |
-| batch size | `32` |
-| epoche | `30` |
-| gradient clipping | `1.0` |
-| Focal Loss alpha | `0.5` |
-| Focal Loss gamma | `1.0` |
-
-La Focal Loss concentra il training sugli outfit incerti o classificati male.
-Il clipping viene applicato dopo `loss.backward()` e prima
-di `optimizer.step()`.
-
-Gli iperparametri dell'architettura sono documentati una sola volta nella
-sezione [Transformer encoder-only](../../model/cp/README.md#transformer-encoder-only)
-del modello CP.
-
-### Preprocessing
-
-| Impostazione | Valore |
-|---|---|
-| dimensione immagine | `224 × 224` |
-| normalizzazione | media e deviazione standard ImageNet |
-| ResNet-18 | pesi ImageNet iniziali + fine-tuning end-to-end, salvo `--no-pretrained-image` |
-| SentenceBERT | congelato |
-| padding | a destra |
-| train shuffle | attivo |
-| validation shuffle | attivo |
-
-## Scheduler
-
-Lo scheduler modifica il learning rate durante il training. Il progetto usa
-`StepLR`:
-
-```python
-scheduler = StepLR(
-    optimizer,
-    step_size=10,
-    gamma=0.5,
-)
-```
-
-Con il learning rate predefinito:
+Matplotlib usa il backend headless `Agg`. Dopo ogni epoca vengono salvati tre
+PNG. Ogni immagine contiene l'intera storia disponibile dall'inizio della run
+fino all'epoca corrente:
 
 ```text
-epoche 1–10:   0.000050
-epoche 11–20:  0.000025
-epoche 21–30:  0.0000125
+checkpoints/cp_plots/
+  cp_loss_epoch_001.png
+  cp_accuracy_epoch_001.png
+  cp_validation_accuracy_auc_epoch_001.png
+  cp_loss_epoch_002.png
+  cp_accuracy_epoch_002.png
+  cp_validation_accuracy_auc_epoch_002.png
+  ...
 ```
 
-Alla fine di ogni epoca viene chiamato `scheduler.step()`. Lo scheduler:
+Contenuto:
 
-- non calcola gradienti;
-- non modifica direttamente i pesi;
-- riduce il learning rate di Adam secondo una scadenza fissa;
-- non sceglie il checkpoint migliore: quello dipende dalla validation loss.
+1. train loss e validation loss;
+2. train accuracy e validation accuracy;
+3. validation accuracy e validation ROC AUC.
 
-Il suo stato viene salvato nei checkpoint e ripristinato con `--resume`.
+Directory personalizzata:
 
-## Training e validation
-
-Il training usa gli split ufficiali di `mvasil/polyvore-outfits`. Ogni
-esempio viene ricostruito attraverso questi mapping:
-
-```text
-compatibility_*.txt      -> label + token set_id_index
-<split>.json             -> token set_id_index -> item_id
-Parquet                  -> item_id -> immagine
-polyvore_item_metadata   -> item_id -> descrizione
+```powershell
+python -m training.cp.train_cp --plot-dir artifacts\cp_plots
 ```
 
-Il dataset lo restituisce come:
+Disabilitazione esplicita:
 
-```text
-CompatibilityExample(
-    images=[N, 3, 224, 224],
-    descriptions=tuple di N stringhe,
-    label=1.0 oppure 0.0,
-)
+```powershell
+python -m training.cp.train_cp --no-plots
 ```
 
-Il dettaglio di file, mapping e caricamento è raccolto nella
-[guida ai dati Polyvore](../../data/README.md).
-
-Ogni epoca esegue:
-
-1. training con forward, Focal Loss, backward e aggiornamento dei pesi;
-2. validation con `model.eval()` e gradienti disabilitati;
-3. step dello scheduler;
-4. salvataggio dei checkpoint.
-
-I log batch mostrano:
-
-```text
-loss=... running_loss=... running_accuracy=... examples=...
-```
-
-- `loss`: loss del batch corrente;
-- `running_loss`: media cumulativa dell'epoca;
-- `running_accuracy`: accuracy cumulativa;
-- `examples`: outfit elaborati fino a quel momento.
-
-A fine epoca vengono stampate `train_loss`, `train_accuracy`, `val_loss`,
-`val_accuracy` e learning rate.
-
-Il loop riutilizzabile espone:
-
-| Funzione | Ruolo |
-|---|---|
-| `run_cp_epoch()` | Esegue un'epoca di training o validation |
-| `train_cp()` | Gestisce epoche, validation, scheduler e checkpoint |
+Senza validation vengono generati solo i grafici disponibili; il grafico
+validation accuracy/AUC viene omesso.
 
 ## Checkpoint e resume
 
-Vengono salvati:
+Il training conserva:
 
 ```text
 checkpoints/cp_epochs/cp_epoch_001.pt
@@ -284,83 +170,202 @@ checkpoints/cp_epochs/cp_epoch_002.pt
 checkpoints/cp_best.pt
 ```
 
-- `cp_epoch_NNN.pt` conserva ogni epoca;
-- `cp_best.pt` viene aggiornato solo quando la validation loss raggiunge un
-  nuovo minimo.
+Il checkpoint migliore usa un confronto stretto sulla validation loss. Se non
+esiste validation, usa la train loss.
 
-Ogni checkpoint contiene:
+Ogni nuovo checkpoint contiene:
 
 | Campo | Contenuto |
 |---|---|
-| `epoch` | Ultima epoca completata |
-| `model_state_dict` | Pesi di encoder, Transformer e classificatore |
-| `optimizer_state_dict` | Stato di Adam |
-| `scheduler_state_dict` | Stato dello scheduler, se presente |
-| `monitored_loss` | Validation loss usata per selezionare il modello |
-| `train_metrics` | Loss, accuracy ed esempi di training |
-| `validation_metrics` | Loss, accuracy ed esempi di validation |
+| `checkpoint_schema_version` | versione del formato |
+| `epoch` | ultima epoca completata |
+| `model_state_dict` | stato del modello |
+| `optimizer_state_dict` | stato dell'optimizer |
+| `scheduler_state_dict` | stato dello scheduler, quando presente |
+| `monitored_loss` | loss dell'epoca corrente |
+| `best_monitored_loss` | migliore loss dell'intera storia |
+| `train_metrics` | metriche train correnti |
+| `validation_metrics` | loss, accuracy e AUC validation correnti |
+| `training_history` | curve complete con numeri di epoca reali |
+| `run_config` | dataset, modello, modalità ResNet e iperparametri |
+| `rng_state` | RNG Python, NumPy, PyTorch CPU e CUDA |
 
-Per riprendere:
+Il salvataggio avviene in modo atomico: un checkpoint completo sostituisce il
+file finale solo dopo che la scrittura è terminata.
+
+Resume:
 
 ```powershell
 python -m training.cp.train_cp `
   --epochs 40 `
-  --resume checkpoints\cp_best.pt
+  --resume checkpoints\cp_epochs\cp_epoch_020.pt `
+  --image-fine-tune-mode fc_only
 ```
 
-`--epochs` indica l'ultima epoca totale, non quante epoche aggiungere.
-Il modello SentenceBERT e la configurazione architetturale devono coincidere
-con quelli del checkpoint; altrimenti il caricamento strict dei pesi segnala
-l'incompatibilità.
+Con i nuovi checkpoint, history, migliore loss, optimizer, scheduler e RNG
+vengono ripristinati. I grafici delle epoche successive includono anche le
+epoche precedenti. A parità di ambiente e input, una run interrotta può quindi
+continuare con la stessa sequenza di shuffle e dropout.
 
-## Valutazione sul test set
+Nel resume, stato optimizer e scheduler del checkpoint è autorevole. Eventuali
+valori CLI diversi per learning rate, weight decay, `lr-step-size` e
+`lr-gamma` non vengono applicati: il log mostra il valore ignorato e quello
+effettivo. Batch size, loss e gradient clipping usano invece i valori della
+nuova invocazione e ogni differenza dalla configurazione salvata viene
+segnalata.
 
-Il test set non viene usato durante il training. Dopo avere scelto
-`cp_best.pt`:
+I checkpoint legacy restano caricabili. Non contengono però la storia completa
+né il migliore storico né la modalità ResNet: il resume può recuperare soltanto
+le metriche dell'ultima epoca salvata, usa quella loss come riferimento iniziale
+e applica la modalità scelta nella nuova CLI. Il log segnala
+`history=legacy_partial`.
+
+Cambiare `--image-fine-tune-mode` durante un resume è consentito per supportare
+strategie a fasi, ma viene segnalato nel log.
+
+## Flag CLI
 
 ```powershell
-python -m evaluate.cp `
-  --variant disjoint `
-  --checkpoint checkpoints\cp_best.pt `
-  --focal-gamma 1.0
+python -m training.cp.train_cp --help
 ```
 
-La valutazione non aggiorna i pesi e stampa test loss, accuracy, ROC AUC ed
-esempi. L'AUC usa i logits per misurare quanto spesso un outfit compatibile
-riceve un punteggio superiore a uno incompatibile.
-Variante, SentenceBERT e parametri della Focal Loss devono coincidere con il
-training.
-Per tutte le opzioni e la descrizione delle metriche consulta la
-[guida alla valutazione](../../evaluate/README.md).
+| Flag | Default | Funzione |
+|---|---:|---|
+| `--variant` | `disjoint` | variante Polyvore |
+| `--epochs` | `30` | ultima epoca totale |
+| `--batch-size` | `32` | outfit per batch |
+| `--learning-rate` | `5e-5` | learning rate Adam |
+| `--weight-decay` | `1e-4` | weight decay Adam |
+| `--lr-step-size` | `10` | periodo StepLR |
+| `--lr-gamma` | `0.5` | fattore StepLR |
+| `--focal-alpha` | `0.5` | alpha Focal Loss |
+| `--focal-gamma` | `1.0` | gamma Focal Loss |
+| `--max-grad-norm` | `1.0` | gradient clipping globale |
+| `--workers` | `0` | worker DataLoader |
+| `--seed` | `42` | seed Python, NumPy e PyTorch CPU/CUDA |
+| `--log-interval` | `50` | intervallo log batch; `0` disabilita |
+| `--device` | automatico | CUDA quando disponibile, altrimenti CPU |
+| `--cache-dir` | cache HF | cache dataset e Hub |
+| `--checkpoint` | `checkpoints/cp_best.pt` | checkpoint migliore |
+| `--checkpoint-dir` | `checkpoints/cp_epochs` | checkpoint per epoca |
+| `--resume` | disabilitato | checkpoint da riprendere |
+| `--plot-dir` | `checkpoints/cp_plots` | grafici cumulativi |
+| `--no-plots` | falso | disabilita grafici |
+| `--text-model` | `all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
+| `--no-pretrained-image` | falso | niente inizializzazione ImageNet |
+| `--image-fine-tune-mode` | `fc_only` | `fc_only` o `fc_and_layer4` |
 
-## Comandi utili
+## Esempi
 
 ```powershell
-# Variante nondisjoint
-python -m training.cp.train_cp --variant nondisjoint
+# Allena layer4 e FC della ResNet
+python -m training.cp.train_cp `
+  --image-fine-tune-mode fc_and_layer4
 
-# GPU specifica
-python -m training.cp.train_cp --device cuda:0
+# Output separato per una nuova run
+python -m training.cp.train_cp `
+  --checkpoint checkpoints\experiment_01\best.pt `
+  --checkpoint-dir checkpoints\experiment_01\epochs `
+  --plot-dir checkpoints\experiment_01\plots
 
 # VRAM limitata
 python -m training.cp.train_cp --batch-size 8
 
-# Cache personalizzata
-python -m training.cp.train_cp --cache-dir D:\datasets\huggingface
-
 # SentenceBERT locale
 python -m training.cp.train_cp `
   --text-model D:\models\all-MiniLM-L6-v2
-
-# Disabilita i log batch
-python -m training.cp.train_cp --log-interval 0
 ```
 
-## File
+## Test
 
-```text
-training/cp/
-  train_cp.py   CLI e configurazione della run
-  trainer.py    epoche, validation e checkpoint
-  README.md     questa guida
+I test non richiedono Polyvore né download di modelli:
+
+```powershell
+python -m unittest discover -v
 ```
+
+Coprono runner train/validation, AUC, checkpoint nuovo e legacy, best storico,
+schema checkpoint, equivalenza run continua/resume con RNG, grafici PNG, flag
+ResNet, parametri allenabili e stato BatchNorm.
+
+## File e flusso dei moduli
+
+### Flusso tra i file
+
+```mermaid
+flowchart TD
+    CLI["train_cp.py<br/>CLI e composition root"] --> BUILD["Costruisce DataLoader, modello,<br/>loss, optimizer e scheduler"]
+    CLI --> TRAINER["trainer.py<br/>train_cp e CPTrainer"]
+    BUILD --> TRAINER
+
+    TRAINER -->|fase train| EPOCH["epoch.py<br/>run_cp_epoch"]
+    TRAINER -->|fase validation| EPOCH
+    EPOCH -->|metriche della fase| TRAINER
+
+    TRAINER -->|aggiunge le metriche| TYPES["types.py<br/>CPTrainingHistory e tipi condivisi"]
+    TYPES -->|history completa| CHECKPOINT["checkpointing.py<br/>checkpoint per epoca e best"]
+    TYPES -->|history completa| PLOT["plotting.py<br/>tre grafici cumulativi"]
+
+    CHECKPOINT --> PT["file .pt"]
+    PLOT --> PNG["file .png"]
+
+    TYPES -.->|dataclass metriche e progress| EPOCH
+```
+
+Il flusso completo di ogni epoca è:
+
+1. `train_cp.py` legge i flag e costruisce tutte le dipendenze concrete;
+2. `trainer.py` chiede a `epoch.py` di eseguire la fase train;
+3. `trainer.py` chiede allo stesso runner di eseguire la validation con AUC;
+4. le metriche vengono aggiunte a `CPTrainingHistory` in `types.py`;
+5. `checkpointing.py` salva stato corrente, best e history;
+6. `plotting.py` legge la stessa history e genera i tre grafici cumulativi;
+7. callback e log ricevono i risultati dell'epoca completata.
+
+### Responsabilità di ogni file
+
+| File | Cosa contiene | Quando modificarlo |
+|---|---|---|
+| `train_cp.py` | Parser CLI, creazione loader, modello, loss, Adam, StepLR, resume e collegamento callback | Per aggiungere flag, cambiare default o cambiare la composizione della run |
+| `trainer.py` | `CPTrainer`, `CPTrainerConfig`, callback e API breve `train_cp()` | Per cambiare l'ordine delle fasi o il comportamento generale tra le epoche |
+| `epoch.py` | `run_cp_epoch()` e `CPEpochAccumulator`; forward, loss, backward, clipping, optimizer e metriche | Per cambiare ciò che accade dentro un batch o dentro una singola fase |
+| `types.py` | `CPEpochMetrics`, `CPTrainingHistory`, progress batch e informazioni checkpoint | Per aggiungere nuove metriche o dati condivisi, senza introdurre I/O |
+| `checkpointing.py` | Checkpoint atomici, schema, best loss, config, RNG e compatibilità legacy | Per cambiare formato o politica di salvataggio e resume |
+| `plotting.py` | Backend `Agg` e generazione dei tre PNG cumulativi | Per cambiare stile, nomi o contenuto dei grafici |
+| `__init__.py` | Export pubblici del package `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
+| `README.md` | Documentazione operativa del training CP | Quando cambiano flusso, flag o formato degli artefatti |
+
+I test aggiunti sono separati dal codice di produzione:
+
+| File | Copertura |
+|---|---|
+| `tests/training/cp/test_epoch_and_trainer.py` | runner, AUC, history, best checkpoint, schema, RNG e resume |
+| `tests/training/cp/test_plotting_and_resnet.py` | grafici PNG, flag ResNet, parametri allenabili e BatchNorm |
+
+### Come sostituire il runner senza perdere gli altri componenti
+
+`CPTrainer` accetta un `epoch_runner` sostituibile. Un runner personalizzato può
+modificare la logica di train/validation riutilizzando comunque history,
+checkpoint, plotting e callback:
+
+```python
+from training import CPTrainer, CPTrainerConfig
+
+trainer = CPTrainer(
+    model=model,
+    optimizer=optimizer,
+    criterion=criterion,
+    scheduler=scheduler,
+    epoch_runner=my_cp_epoch_runner,
+)
+
+history = trainer.fit(
+    train_loader,
+    validation_batches=validation_loader,
+    config=CPTrainerConfig(epochs=20, device="cuda"),
+)
+```
+
+Se cambia soltanto un'azione a fine epoca, è sufficiente aggiungere una
+callback tramite `CPTrainingCallbacks` o tramite gli argomenti callback di
+`train_cp()`; non serve riscrivere il runner.
