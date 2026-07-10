@@ -8,6 +8,7 @@ Il package separa il training per task:
 ## Indice
 
 - [Compatibility Prediction](#compatibility-prediction)
+  - [Cosa viene aggiornato nel training](#Cosa-viene-aggiornato-nel-training)
   - [Avviare una nuova run](#avviare-una-nuova-run)
   - [Riprendere da checkpoint](#riprendere-da-checkpoint)
   - [ResNet-18](#resnet-18)
@@ -26,6 +27,54 @@ Ogni epoca produce:
 - validation loss, accuracy e ROC AUC;
 - checkpoint dell'epoca ed eventuale nuovo best;
 - tre grafici cumulativi loss, accuracy e validation accuracy/AUC.
+
+### Cosa viene aggiornato nel training
+
+Il grafo mostra il percorso del gradiente durante `loss.backward()`. Dopo il
+backward viene applicato il gradient clipping; Adam aggiorna soltanto i
+parametri allenabili che hanno ricevuto un gradiente.
+
+```mermaid
+flowchart TD
+    A["Binary Focal Loss<br/>nessun parametro"] -->|backward| B["TaskMLP CP<br/>aggiornato"]
+    B --> C["Transformer encoder-only<br/>aggiornato"]
+
+    C --> D["Token OUTFIT<br/>aggiornato"]
+    C --> E["FC visuale 512 → 64<br/>sempre aggiornata"]
+    C --> F["Proiezione testuale FC 384 → 64<br/>aggiornata"]
+
+    E --> G{"image_fine_tune_mode"}
+    G -->|fc_only| H["layer4 congelato<br/>BatchNorm in evaluation"]
+    G -->|fc_and_layer4| I["layer4 e relative BatchNorm<br/>aggiornati"]
+    I -.->|gradiente interrotto| J["stem + layer1-3 congelati<br/>BatchNorm in evaluation"]
+
+    F -.-> K["SentenceBERT congelato<br/>gradiente interrotto"]
+
+    classDef trained fill:#d5f5e3,stroke:#239b56,color:#17202a
+    classDef conditional fill:#fcf3cf,stroke:#b7950b,color:#17202a
+    classDef frozen fill:#f2f3f4,stroke:#7b7d7d,color:#17202a
+    classDef loss fill:#fdebd0,stroke:#ca6f1e,color:#17202a
+
+    class B,C,D,E,F trained
+    class G,I conditional
+    class H,J,K frozen
+    class A loss
+```
+
+In entrambe le modalità vengono quindi aggiornati:
+
+- classificatore `TaskMLP` del CP;
+- tutti i parametri del Transformer encoder-only;
+- token apprendibile `OUTFIT`;
+- FC visuale `Linear(512, 64)`;
+- proiezione testuale `Linear(384, 64)`.
+
+Con `fc_and_layer4` vengono aggiornati anche `layer4` e le sue BatchNorm. Con
+`fc_only`, tutto il backbone prima della FC resta congelato. SentenceBERT,
+`stem`, `layer1`, `layer2` e `layer3` restano sempre congelati.
+
+Durante validation il modello usa `eval()` e gradienti disabilitati: nessun
+parametro e nessuna statistica BatchNorm vengono aggiornati.
 
 ### Avviare una nuova run
 
