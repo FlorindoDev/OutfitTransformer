@@ -38,9 +38,10 @@ Il comando predefinito usa:
 - ResNet-18 inizializzata con ImageNet;
 - fine-tuning ResNet in modalità `fc_only`;
 - Binary Focal Loss e Adam;
-- validation loss per scegliere il checkpoint migliore;
-- ROC AUC calcolata sulla validation a ogni epoca;
-- tre grafici cumulativi salvati dopo ogni epoca.
+- validation loss per scegliere il checkpoint migliore, configurabile con
+  `--best-metric`;
+- ROC AUC calcolata su train e validation a ogni epoca;
+- quattro grafici cumulativi salvati dopo ogni epoca.
 
 ## Cosa viene aggiornato nel training
 
@@ -127,7 +128,7 @@ il token `OUTFIT`, il Transformer e il classificatore CP restano allenabili.
 
 ## Grafici
 
-Matplotlib usa il backend headless `Agg`. Dopo ogni epoca vengono salvati tre
+Matplotlib usa il backend headless `Agg`. Dopo ogni epoca vengono salvati quattro
 PNG. Ogni immagine contiene l'intera storia disponibile dall'inizio della run
 fino all'epoca corrente:
 
@@ -135,9 +136,11 @@ fino all'epoca corrente:
 checkpoints/cp_plots/
   cp_loss_epoch_001.png
   cp_accuracy_epoch_001.png
+  cp_auc_epoch_001.png
   cp_validation_accuracy_auc_epoch_001.png
   cp_loss_epoch_002.png
   cp_accuracy_epoch_002.png
+  cp_auc_epoch_002.png
   cp_validation_accuracy_auc_epoch_002.png
   ...
 ```
@@ -146,7 +149,8 @@ Contenuto:
 
 1. train loss e validation loss;
 2. train accuracy e validation accuracy;
-3. validation accuracy e validation ROC AUC.
+3. train ROC AUC e validation ROC AUC;
+4. validation accuracy e validation ROC AUC.
 
 Directory personalizzata:
 
@@ -160,8 +164,8 @@ Disabilitazione esplicita:
 python -m training.cp.train_cp --no-plots
 ```
 
-Senza validation vengono generati solo i grafici disponibili; il grafico
-validation accuracy/AUC viene omesso.
+Senza validation, il grafico ROC AUC contiene soltanto la curva train e il
+grafico validation accuracy/AUC viene omesso.
 
 ## Checkpoint e resume
 
@@ -174,8 +178,16 @@ checkpoints/cp_epochs/cp_epoch_002.pt
 checkpoints/cp_best.pt
 ```
 
-Il checkpoint migliore usa un confronto stretto sulla validation loss. Se non
-esiste validation, usa la train loss.
+Il checkpoint migliore usa la metrica scelta con `--best-metric`:
+
+- `val_loss` minimizza la validation loss ed è il default;
+- `val_accuracy` massimizza la validation accuracy;
+- `val_auc` massimizza la validation ROC AUC.
+
+Il confronto è stretto: in caso di parità resta migliore il checkpoint salvato
+prima. `val_accuracy` e `val_auc` richiedono la validation; per compatibilità
+con l'API precedente, `val_loss` usa la train loss solo quando la validation
+non è disponibile e registra `source=train_fallback`.
 
 Ogni nuovo checkpoint contiene:
 
@@ -186,10 +198,9 @@ Ogni nuovo checkpoint contiene:
 | `model_state_dict` | stato del modello |
 | `optimizer_state_dict` | stato dell'optimizer |
 | `scheduler_state_dict` | stato dello scheduler, quando presente |
-| `monitored_loss` | loss dell'epoca corrente |
-| `best_monitored_loss` | migliore loss dell'intera storia |
 | `train_metrics` | metriche train correnti |
 | `validation_metrics` | loss, accuracy e AUC validation correnti |
+| `selection` | metrica, sorgente, direzione, valore corrente, migliore storico e `is_best` |
 | `training_history` | curve complete con numeri di epoca reali |
 | `run_config` | dataset, modello, modalità ResNet e iperparametri |
 | `rng_state` | RNG Python, NumPy, PyTorch CPU e CUDA |
@@ -206,7 +217,7 @@ python -m training.cp.train_cp `
   --image-fine-tune-mode fc_only
 ```
 
-Con i nuovi checkpoint, history, migliore loss, optimizer, scheduler e RNG
+Con i nuovi checkpoint, history, migliore metrica, optimizer, scheduler e RNG
 vengono ripristinati. I grafici delle epoche successive includono anche le
 epoche precedenti. A parità di ambiente e input, una run interrotta può quindi
 continuare con la stessa sequenza di shuffle e dropout.
@@ -223,6 +234,11 @@ né il migliore storico né la modalità ResNet: il resume può recuperare solta
 le metriche dell'ultima epoca salvata, usa quella loss come riferimento iniziale
 e applica la modalità scelta nella nuova CLI. Il log segnala
 `history=legacy_partial`.
+
+I checkpoint schema 2 vengono interpretati come selezionati tramite `val_loss`.
+Se `--best-metric` cambia durante il resume, il migliore storico viene
+ricalcolato dalla `training_history`; con un checkpoint legacy privo di history
+completa il log segnala che le epoche precedenti non sono ricostruibili.
 
 Cambiare `--image-fine-tune-mode` durante un resume è consentito per supportare
 strategie a fasi, ma viene segnalato nel log.
@@ -251,6 +267,7 @@ python -m training.cp.train_cp --help
 | `--device` | automatico | CUDA quando disponibile, altrimenti CPU |
 | `--cache-dir` | cache HF | cache dataset e Hub |
 | `--checkpoint` | `checkpoints/cp_best.pt` | checkpoint migliore |
+| `--best-metric` | `val_loss` | `val_loss`, `val_accuracy` o `val_auc` |
 | `--checkpoint-dir` | `checkpoints/cp_epochs` | checkpoint per epoca |
 | `--resume` | disabilitato | checkpoint da riprendere |
 | `--plot-dir` | `checkpoints/cp_plots` | grafici cumulativi |
@@ -265,6 +282,10 @@ python -m training.cp.train_cp --help
 # Allena layer4 e FC della ResNet
 python -m training.cp.train_cp `
   --image-fine-tune-mode fc_and_layer4
+
+# Sceglie il checkpoint migliore tramite validation AUC
+python -m training.cp.train_cp `
+  --best-metric val_auc
 
 # Allena tutta la ResNet
 python -m training.cp.train_cp `
@@ -312,7 +333,7 @@ flowchart TD
 
     TRAINER -->|aggiunge le metriche| TYPES["types.py<br/>CPTrainingHistory e tipi condivisi"]
     TYPES -->|history completa| CHECKPOINT["checkpointing.py<br/>checkpoint per epoca e best"]
-    TYPES -->|history completa| PLOT["plotting.py<br/>tre grafici cumulativi"]
+    TYPES -->|history completa| PLOT["plotting.py<br/>quattro grafici cumulativi"]
 
     CHECKPOINT --> PT["file .pt"]
     PLOT --> PNG["file .png"]
@@ -327,7 +348,7 @@ Il flusso completo di ogni epoca è:
 3. `trainer.py` chiede allo stesso runner di eseguire la validation con AUC;
 4. le metriche vengono aggiunte a `CPTrainingHistory` in `types.py`;
 5. `checkpointing.py` salva stato corrente, best e history;
-6. `plotting.py` legge la stessa history e genera i tre grafici cumulativi;
+6. `plotting.py` legge la stessa history e genera i quattro grafici cumulativi;
 7. callback e log ricevono i risultati dell'epoca completata.
 
 ### Responsabilità di ogni file
@@ -339,7 +360,7 @@ Il flusso completo di ogni epoca è:
 | `epoch.py` | `run_cp_epoch()` e `CPEpochAccumulator`; forward, loss, backward, clipping, optimizer e metriche | Per cambiare ciò che accade dentro un batch o dentro una singola fase |
 | `types.py` | `CPEpochMetrics`, `CPTrainingHistory`, progress batch e informazioni checkpoint | Per aggiungere nuove metriche o dati condivisi, senza introdurre I/O |
 | `checkpointing.py` | Checkpoint atomici, schema, best loss, config, RNG e compatibilità legacy | Per cambiare formato o politica di salvataggio e resume |
-| `plotting.py` | Backend `Agg` e generazione dei tre PNG cumulativi | Per cambiare stile, nomi o contenuto dei grafici |
+| `plotting.py` | Backend `Agg` e generazione dei quattro PNG cumulativi | Per cambiare stile, nomi o contenuto dei grafici |
 | `__init__.py` | Export pubblici del package `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
 | `README.md` | Documentazione operativa del training CP | Quando cambiano flusso, flag o formato degli artefatti |
 

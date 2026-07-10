@@ -23,10 +23,11 @@ callback senza duplicare persistenza e metriche.
 
 Ogni epoca produce:
 
-- train loss e accuracy;
+- train loss, accuracy e ROC AUC;
 - validation loss, accuracy e ROC AUC;
 - checkpoint dell'epoca ed eventuale nuovo best;
-- tre grafici cumulativi loss, accuracy e validation accuracy/AUC.
+- quattro grafici cumulativi: loss, accuracy, ROC AUC train/validation e
+  validation accuracy/AUC.
 
 ### Cosa viene aggiornato nel training
 
@@ -112,6 +113,13 @@ python -m training.cp.train_cp `
   --checkpoint-dir checkpoints\experiment_01\epochs `
   --plot-dir checkpoints\experiment_01\plots
 ```
+
+Sceglie il checkpoint migliore tramite validation AUC
+```
+python -m training.cp.train_cp `
+  --best-metric val_auc
+```
+
 
 GPU specifica e log batch meno frequenti:
 

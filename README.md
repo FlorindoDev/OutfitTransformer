@@ -252,9 +252,14 @@ python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 32
 ```
 
 usa il dataset per allenare il modello, salva un checkpoint per epoca in
-`checkpoints/cp_epochs/`, il migliore in `checkpoints/cp_best.pt` e tre grafici
-cumulativi in `checkpoints/cp_plots/`. La validation ROC AUC viene calcolata a
-ogni epoca.
+`checkpoints/cp_epochs/`, il migliore in `checkpoints/cp_best.pt` e quattro
+grafici cumulativi in `checkpoints/cp_plots/`. La ROC AUC viene calcolata su
+train e validation a ogni epoca. Il checkpoint migliore usa `val_loss` per default; si può scegliere
+`val_accuracy` o `val_auc` con `--best-metric`:
+
+```powershell
+python -m training.cp.train_cp --best-metric val_auc
+```
 
 Il nuovo comportamento ResNet è controllato esplicitamente:
 
