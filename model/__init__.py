@@ -1,5 +1,6 @@
 from .cir import ComplementaryItemRetriever, RetrievalOutput, SetWiseRankingLoss
 from .common import (
+    IMAGE_FINE_TUNE_MODES,
     ImageFineTuneMode,
     OutfitEncoder,
     OutfitEncoderConfig,
@@ -17,6 +18,7 @@ __all__ = [
     "CompatibilityOutput",
     "CompatibilityPredictor",
     "ComplementaryItemRetriever",
+    "IMAGE_FINE_TUNE_MODES",
     "ImageFineTuneMode",
     "OutfitEncoder",
     "OutfitEncoderConfig",
