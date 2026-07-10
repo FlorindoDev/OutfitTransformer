@@ -295,15 +295,18 @@ Le metriche e tutte le opzioni sono descritte nella
 ```text
 data/
   README.md             Polyvore, esempi, forme e batching
-  batch.py              batch e maschere
+  batch.py              esempi, batch e maschere condivisi
   transforms.py         preprocessing ImageNet
   manifest_loader/
     README.md           guida del loader JSON generico
     dataset.py          lettura del manifest locale
+    loader.py           DataLoader per manifest locali
     example_manifest.json
   polyvore_loader/
     README.md           guida del loader Polyvore CP
-    dataset.py          Parquet, compatibility e metadati
+    download.py         acquisizione risorse Hugging Face
+    dataset.py          Parquet, compatibility e metadati -> esempi
+    loader.py           DataLoader e batch compatibili col modello
 model/
   common/
     README.md           architettura condivisa

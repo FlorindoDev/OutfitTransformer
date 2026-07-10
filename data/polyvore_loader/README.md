@@ -10,9 +10,12 @@ tensori si trova nella
 ## Indice
 
 - [Input](#input)
-- [Uso](#uso)
-- [Output](#output)
-- [Responsabilità della cartella](#responsabilità-della-cartella)
+- [`download.py`](#downloadpy-acquisizione-delle-risorse)
+- [`dataset.py`](#datasetpy-interpretazione-di-polyvore)
+- [`loader.py`](#loaderpy-creazione-dei-batch)
+- [`__init__.py`](#__init__py-api-pubblica)
+- [`README.md`](#readmemd-documentazione)
+- [Flusso completo](#flusso-completo)
 
 ## Input
 
@@ -38,57 +41,52 @@ con lo stesso `item_id` prende l'immagine dal Parquet e il testo da
 
 Non genera esempi negativi e non usa i file FITB.
 
-## Uso
+## `download.py`: acquisizione delle risorse
 
-```python
-from torch.utils.data import DataLoader
+Rappresenta il confine con Hugging Face. Riceve variante, split e posizione
+della cache; scarica oppure riusa immagini, domande di compatibility, mapping e
+metadati. Raggruppa i riferimenti ottenuti in `PolyvoreResources`.
 
-from data import (
-    collate_compatibility,
-    load_polyvore_compatibility_dataset,
-)
+Non interpreta gli outfit, non trasforma immagini e non crea batch. Il suo
+unico compito è rendere disponibili tutte le sorgenti richieste da Polyvore.
 
-dataset = load_polyvore_compatibility_dataset(
-    variant="nondisjoint",
-    split="train",
-)
-loader = DataLoader(
-    dataset,
-    batch_size=32,
-    shuffle=True,
-    collate_fn=collate_compatibility,
-)
-```
+## `dataset.py`: interpretazione di Polyvore
 
-## Output
+Conosce il formato interno del dataset. Collega i token `set_id_index` agli
+item, associa immagine e descrizione, applica il preprocessing condiviso e
+costruisce un `CompatibilityExample` alla volta.
 
-Un esempio contiene:
+Implementa quindi il concetto PyTorch di `Dataset`: espone numero di esempi e
+accesso a un singolo esempio. Non decide batch size, shuffle o parallelismo e
+non scarica file.
 
-```text
-CompatibilityExample(
-    outfit_id: str,
-    images: Tensor[N, 3, 224, 224],
-    descriptions: tuple di N stringhe,
-    label: 0.0 oppure 1.0,
-)
-```
+## `loader.py`: creazione dei batch
 
-Il collate produce:
+Coordina i componenti precedenti. Ottiene le risorse, crea il Dataset e lo
+inserisce nel `DataLoader` PyTorch. Usa `data/batch.py` per padding, maschera e
+label; usa `data/transforms.py` per il formato delle immagini.
+
+Il risultato è un flusso di `CompatibilityBatch` già compatibile con il
+modello. Qui vengono configurati batch size, shuffle, worker, memoria pinned e
+gestione dell'ultimo batch.
+
+
+## Flusso completo
 
 ```text
-CompatibilityBatch(
-    images: Tensor[B, L, 3, 224, 224],
-    descriptions: B tuple,
-    padding_mask: Tensor[B, L],
-    labels: Tensor[B],
-)
+Hugging Face
+    ↓
+download.py → PolyvoreResources
+    ↓
+dataset.py → CompatibilityExample
+    ↓
+loader.py + data/batch.py + data/transforms.py
+    ↓
+CompatibilityBatch
+    ↓
+modello
 ```
 
-## Responsabilità della cartella
-
-```text
-polyvore_loader/
-  __init__.py
-  dataset.py
-  README.md
-```
+Ogni livello conosce solo la propria responsabilità. Un nuovo dataset può
+replicare questa struttura mantenendo invariato il formato ricevuto dal
+modello.
