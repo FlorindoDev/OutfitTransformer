@@ -19,19 +19,19 @@ Prediction (CP)**. Il modello riceve un outfit e predice se è compatibile
 - [Grafici](#grafici)
 - [Checkpoint e resume](#checkpoint-e-resume)
 - [Flag CLI](#flag-cli)
-- [Esempi](#esempi)
 - [Test](#test)
 - [File e flusso dei moduli](#file-e-flusso-dei-moduli)
+- [Esempi](#esempi)
 
 ## Avvio rapido
 
 ```powershell
 python -m pip install -r requirements.txt
 hf auth login
-python -m training.cp.train_cp
 ```
 
-Il comando predefinito usa:
+Il comando di training predefinito è riportato nella sezione
+[Esempi](#esempi). La configurazione predefinita usa:
 
 - Polyvore `disjoint`;
 - 30 epoche e batch size 32;
@@ -111,12 +111,6 @@ l'intera ResNet da pesi casuali.
 
 ### Modalità di fine-tuning
 
-```powershell
-python -m training.cp.train_cp --image-fine-tune-mode fc_only
-python -m training.cp.train_cp --image-fine-tune-mode fc_and_layer4
-python -m training.cp.train_cp --image-fine-tune-mode full
-```
-
 | Modalità | Parametri ResNet aggiornati | BatchNorm |
 |---|---|---|
 | `fc_only` (default) | solo FC `512 → 64` | tutti i blocchi feature restano in evaluation |
@@ -152,17 +146,8 @@ Contenuto:
 3. train ROC AUC e validation ROC AUC;
 4. validation accuracy e validation ROC AUC.
 
-Directory personalizzata:
-
-```powershell
-python -m training.cp.train_cp --plot-dir artifacts\cp_plots
-```
-
-Disabilitazione esplicita:
-
-```powershell
-python -m training.cp.train_cp --no-plots
-```
+I comandi per scegliere una directory personalizzata o disabilitare i plot sono
+raccolti nella sezione [Esempi](#esempi).
 
 Senza validation, il grafico ROC AUC contiene soltanto la curva train e il
 grafico validation accuracy/AUC viene omesso.
@@ -208,14 +193,7 @@ Ogni nuovo checkpoint contiene:
 Il salvataggio avviene in modo atomico: un checkpoint completo sostituisce il
 file finale solo dopo che la scrittura è terminata.
 
-Resume:
-
-```powershell
-python -m training.cp.train_cp `
-  --epochs 40 `
-  --resume checkpoints\cp_epochs\cp_epoch_020.pt `
-  --image-fine-tune-mode fc_only
-```
+I comandi di resume sono raccolti nella sezione [Esempi](#esempi).
 
 Con i nuovi checkpoint, history, migliore metrica, optimizer, scheduler e RNG
 vengono ripristinati. I grafici delle epoche successive includono anche le
@@ -245,9 +223,8 @@ strategie a fasi, ma viene segnalato nel log.
 
 ## Flag CLI
 
-```powershell
-python -m training.cp.train_cp --help
-```
+Il comando per visualizzare l'help completo è riportato nella sezione
+[Esempi](#esempi).
 
 | Flag | Default | Funzione |
 |---|---:|---|
@@ -275,35 +252,6 @@ python -m training.cp.train_cp --help
 | `--text-model` | `all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
 | `--no-pretrained-image` | falso | niente inizializzazione ImageNet |
 | `--image-fine-tune-mode` | `fc_only` | `fc_only`, `fc_and_layer4` o `full` |
-
-## Esempi
-
-```powershell
-# Allena layer4 e FC della ResNet
-python -m training.cp.train_cp `
-  --image-fine-tune-mode fc_and_layer4
-
-# Sceglie il checkpoint migliore tramite validation AUC
-python -m training.cp.train_cp `
-  --best-metric val_auc
-
-# Allena tutta la ResNet
-python -m training.cp.train_cp `
-  --image-fine-tune-mode full
-
-# Output separato per una nuova run
-python -m training.cp.train_cp `
-  --checkpoint checkpoints\experiment_01\best.pt `
-  --checkpoint-dir checkpoints\experiment_01\epochs `
-  --plot-dir checkpoints\experiment_01\plots
-
-# VRAM limitata
-python -m training.cp.train_cp --batch-size 8
-
-# SentenceBERT locale
-python -m training.cp.train_cp `
-  --text-model D:\models\all-MiniLM-L6-v2
-```
 
 ## Test
 
@@ -398,3 +346,91 @@ history = trainer.fit(
 Se cambia soltanto un'azione a fine epoca, è sufficiente aggiungere una
 callback tramite `CPTrainingCallbacks` o tramite gli argomenti callback di
 `train_cp()`; non serve riscrivere il runner.
+
+## Esempi
+
+Tutti i comandi di esempio del training CP sono raccolti qui e sono identici
+nella guida generale e nella guida specifica CP.
+
+### Avvio e configurazione
+
+```powershell
+# Configurazione predefinita
+python -m training.cp.train_cp
+
+# Allena layer4 e FC visuale
+python -m training.cp.train_cp `
+  --variant disjoint `
+  --epochs 20 `
+  --batch-size 32 `
+  --image-fine-tune-mode fc_and_layer4
+
+# Fine-tuning completo della ResNet
+python -m training.cp.train_cp `
+  --image-fine-tune-mode full
+
+# Sceglie il checkpoint migliore tramite validation AUC
+python -m training.cp.train_cp `
+  --best-metric val_auc
+
+# Usa una GPU specifica e riduce la frequenza dei log batch
+python -m training.cp.train_cp `
+  --device cuda:0 `
+  --log-interval 100
+
+# Riduce il batch size quando la VRAM è limitata
+python -m training.cp.train_cp --batch-size 8
+
+# Usa un modello SentenceBERT locale
+python -m training.cp.train_cp `
+  --text-model D:\models\all-MiniLM-L6-v2
+```
+
+### Artefatti e grafici
+
+```powershell
+# Salva checkpoint e grafici di una nuova run in cartelle dedicate
+python -m training.cp.train_cp `
+  --epochs 30 `
+  --checkpoint checkpoints\experiment_01\best.pt `
+  --checkpoint-dir checkpoints\experiment_01\epochs `
+  --plot-dir checkpoints\experiment_01\plots
+
+# Cambia soltanto la directory dei grafici
+python -m training.cp.train_cp `
+  --plot-dir artifacts\cp_plots
+
+# Disabilita i grafici
+python -m training.cp.train_cp --no-plots
+```
+
+### Resume
+
+```powershell
+# Riprende dal checkpoint migliore
+python -m training.cp.train_cp `
+  --epochs 40 `
+  --resume checkpoints\cp_best.pt `
+  --image-fine-tune-mode fc_only
+
+# Riprende da una specifica epoca
+python -m training.cp.train_cp `
+  --epochs 40 `
+  --resume checkpoints\cp_epochs\cp_epoch_020.pt `
+  --image-fine-tune-mode fc_and_layer4
+
+# Riprende salvando i nuovi artefatti in cartelle separate
+python -m training.cp.train_cp `
+  --epochs 40 `
+  --resume checkpoints\cp_best.pt `
+  --image-fine-tune-mode fc_only `
+  --checkpoint checkpoints\resume_01\best.pt `
+  --checkpoint-dir checkpoints\resume_01\epochs `
+  --plot-dir checkpoints\resume_01\plots
+```
+
+### Help CLI
+
+```powershell
+python -m training.cp.train_cp --help
+```
