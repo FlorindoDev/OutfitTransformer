@@ -18,7 +18,8 @@ Prediction (CP)**. Il modello riceve un outfit e predice se è compatibile
   - [Modalità di fine-tuning](#modalità-di-fine-tuning)
 - [Grafici](#grafici)
 - [Checkpoint e resume](#checkpoint-e-resume)
-- [Flag CLI](#flag-cli)
+- [Nuova fase di fine-tuning](#nuova-fase-di-fine-tuning)
+- [Flag CLI training normale](#flag-cli-training-normale)
 - [Test](#test)
 - [File e flusso dei moduli](#file-e-flusso-dei-moduli)
 - [Esempi](#esempi)
@@ -221,7 +222,107 @@ completa il log segnala che le epoche precedenti non sono ricostruibili.
 Cambiare `--image-fine-tune-mode` durante un resume è consentito per supportare
 strategie a fasi, ma viene segnalato nel log.
 
-## Flag CLI
+## fase di fine-tuning
+
+`fine_tune_cp` differisce dal resume esatto di `train_cp`:
+
+- carica dal checkpoint soltanto i pesi del modello e il numero di epoca;
+- crea optimizer, scheduler, loss, history, RNG e migliore metrica nuovi;
+- permette di cambiare tutti gli iperparametri di training;
+- può assegnare un learning rate inferiore ai blocchi ResNet allenabili;
+- salva la nuova fase in una directory indipendente.
+
+Il numero di epoca continua dal checkpoint sorgente. Con un checkpoint di epoca
+6 e `--additional-epochs 10`, la nuova fase esegue le epoche 7–16. History e
+best comprendono soltanto queste dieci nuove epoche.
+
+```powershell
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01\best.pt `
+  --additional-epochs 10 `
+  --output-dir checkpoints\experiment_01_stage2 `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 1e-5 `
+  --image-backbone-learning-rate 1e-6 `
+  --optimizer adamw `
+  --scheduler cosine `
+  --loss focal `
+  --focal-gamma 1.0 `
+  --best-metric val_auc
+```
+
+Per riprendere il fine-tuning da una sua epoca, usare quel checkpoint come
+nuova sorgente e una directory di output nuova:
+
+```powershell
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt `
+  --additional-epochs 5 `
+  --output-dir checkpoints\experiment_01_stage2_continued `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 5e-6 `
+  --image-backbone-learning-rate 5e-7 `
+  --optimizer adamw `
+  --scheduler cosine `
+  --best-metric val_auc
+```
+
+La numerazione continua dall'epoca sorgente, ma questa operazione apre una
+nuova fase: optimizer, scheduler, history, RNG e best precedente non vengono
+ripristinati. I relativi flag definiscono interamente il nuovo stato.
+
+Sono disponibili optimizer `adam` e `adamw`, scheduler `none`, `step` e
+`cosine`, loss `focal` e `bce`, gradient clipping configurabile, override di
+dropout, batch size, seed, dataset e politica ResNet. `--focal-alpha none` e
+`--max-grad-norm none` disabilitano rispettivamente alpha e clipping.
+
+Cambiare dropout è sicuro perché non modifica le shape dei pesi. Dimensioni
+embedding, numero di layer Transformer e numero di teste vengono invece
+ereditati dal checkpoint: cambiarli renderebbe lo state dict incompatibile.
+Per evitare sovrascritture accidentali, la CLI rifiuta una `--output-dir` che
+contiene già file `.pt`.
+
+### Flag CLI fine-tuning
+
+```powershell
+python -m training.cp.fine_tune_cp --help
+```
+
+| Flag | Default | Funzione |
+|---|---:|---|
+| `-h`, `--help` | — | mostra help completo |
+| `--source-checkpoint` | obbligatorio | checkpoint CP da cui caricare pesi e numero epoca |
+| `--additional-epochs` | `10` | numero di nuove epoche da eseguire |
+| `--output-dir` | `checkpoints/cp_fine_tune` | directory per `best.pt`, checkpoint epoca e grafici |
+| `--variant` | checkpoint, altrimenti `disjoint` | variante Polyvore: `disjoint` o `nondisjoint` |
+| `--batch-size` | `50` | outfit per batch |
+| `--learning-rate` | `1e-5` | LR per FC visuale, proiezione testo, token, Transformer e classificatore |
+| `--image-backbone-learning-rate` | valore di `--learning-rate` | LR separato per i blocchi ResNet allenabili |
+| `--optimizer` | `adam` | optimizer: `adam` o `adamw` |
+| `--weight-decay` | `1e-4` | weight decay del nuovo optimizer |
+| `--adam-beta1` | `0.9` | primo coefficiente beta di Adam/AdamW |
+| `--adam-beta2` | `0.999` | secondo coefficiente beta di Adam/AdamW |
+| `--adam-eps` | `1e-8` | epsilon numerico di Adam/AdamW |
+| `--scheduler` | `step` | scheduler: `none`, `step` o `cosine` |
+| `--lr-step-size` | `10` | epoche tra riduzioni LR con scheduler `step` |
+| `--lr-gamma` | `0.5` | fattore di riduzione LR con scheduler `step` |
+| `--min-learning-rate` | `0.0` | LR minimo `eta_min` con scheduler `cosine` |
+| `--loss` | `focal` | loss: `focal` o `bce` |
+| `--focal-alpha` | `0.5` | alpha Focal Loss; `none` lo disabilita |
+| `--focal-gamma` | `1.0` | gamma Focal Loss |
+| `--best-metric` | `val_auc` | selezione best: `val_loss`, `val_accuracy` o `val_auc` |
+| `--max-grad-norm` | `1.0` | gradient clipping globale; `none` lo disabilita |
+| `--image-fine-tune-mode` | `fc_and_layer4` | politica ResNet: `fc_only`, `fc_and_layer4` o `full` |
+| `--dropout` | valore del checkpoint | override dropout senza cambiare shape dei pesi |
+| `--text-model` | valore del checkpoint | override percorso SentenceBERT; architettura deve restare compatibile |
+| `--workers` | `0` | worker DataLoader |
+| `--seed` | `42` | nuovo seed Python, NumPy e PyTorch CPU/CUDA |
+| `--device` | automatico | CUDA quando disponibile, altrimenti CPU |
+| `--cache-dir` | cache HF | cache dataset e Hub |
+| `--log-interval` | `50` | intervallo log batch; `0` disabilita |
+| `--no-plots` | falso | disabilita grafici della nuova fase |
+
+## Flag CLI training normale
 
 Il comando per visualizzare l'help completo è riportato nella sezione
 [Esempi](#esempi).
@@ -263,7 +364,7 @@ python -m unittest discover -v
 
 Coprono runner train/validation, AUC, checkpoint nuovo e legacy, best storico,
 schema checkpoint, equivalenza run continua/resume con RNG, grafici PNG, flag
-ResNet, parametri allenabili e stato BatchNorm.
+ResNet, parametri allenabili, stato BatchNorm e gruppi LR del fine-tuning.
 
 ## File e flusso dei moduli
 
@@ -308,6 +409,8 @@ Il flusso completo di ogni epoca è:
 | `epoch.py` | `run_cp_epoch()` e `CPEpochAccumulator`; forward, loss, backward, clipping, optimizer e metriche | Per cambiare ciò che accade dentro un batch o dentro una singola fase |
 | `types.py` | `CPEpochMetrics`, `CPTrainingHistory`, progress batch e informazioni checkpoint | Per aggiungere nuove metriche o dati condivisi, senza introdurre I/O |
 | `checkpointing.py` | Checkpoint atomici, schema, best loss, config, RNG e compatibilità legacy | Per cambiare formato o politica di salvataggio e resume |
+| `fine_tuning.py` | Lettura pesi sorgente e optimizer con gruppi LR distinti | Per cambiare semantica della nuova fase o gruppi di parametri |
+| `fine_tune_cp.py` | CLI della nuova fase di fine-tuning | Per aggiungere flag specifici al fine-tuning |
 | `plotting.py` | Backend `Agg` e generazione dei quattro PNG cumulativi | Per cambiare stile, nomi o contenuto dei grafici |
 | `__init__.py` | Export pubblici del package `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
 | `README.md` | Documentazione operativa del training CP | Quando cambiano flusso, flag o formato degli artefatti |
@@ -429,8 +532,43 @@ python -m training.cp.train_cp `
   --plot-dir checkpoints\resume_01\plots
 ```
 
+### fase di fine-tuning
+
+```powershell
+# Sblocca layer4 con LR dieci volte inferiore al resto del modello
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01\best.pt `
+  --additional-epochs 10 `
+  --output-dir checkpoints\experiment_01_stage2 `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 1e-5 `
+  --image-backbone-learning-rate 1e-6 `
+  --best-metric val_auc
+
+# Nuova fase BCE + AdamW + cosine scheduler
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\cp_epochs\cp_epoch_005.pt `
+  --additional-epochs 8 `
+  --output-dir checkpoints\bce_finetune `
+  --optimizer adamw `
+  --scheduler cosine `
+  --loss bce `
+  --image-fine-tune-mode fc_only
+
+# Continua da un checkpoint prodotto da una fase di fine-tuning
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt `
+  --additional-epochs 5 `
+  --output-dir checkpoints\experiment_01_stage2_continued `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 5e-6 `
+  --image-backbone-learning-rate 5e-7 `
+  --best-metric val_auc
+```
+
 ### Help CLI
 
 ```powershell
 python -m training.cp.train_cp --help
+python -m training.cp.fine_tune_cp --help
 ```

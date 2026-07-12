@@ -100,6 +100,11 @@ checkpoint nuovo. Learning rate, weight decay e configurazione StepLR salvati
 nel checkpoint prevalgono sugli stessi flag CLI. Cambiare
 `--image-fine-tune-mode` è invece consentito e permette un fine-tuning a fasi.
 
+Quando serve cambiare anche optimizer, learning rate, scheduler, loss o seed,
+usare `python -m training.cp.fine_tune_cp`: carica soltanto i pesi del modello
+e avvia una nuova fase con stato di training pulito. Supporta anche un learning
+rate separato per i blocchi ResNet allenabili.
+
 I checkpoint legacy restano caricabili, ma non possono fornire history, RNG e
 migliore metrica precedenti completi.
 
@@ -210,8 +215,43 @@ python -m training.cp.train_cp `
   --plot-dir checkpoints\resume_01\plots
 ```
 
+### fase di fine-tuning
+
+```powershell
+# Sblocca layer4 con LR dieci volte inferiore al resto del modello
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01\best.pt `
+  --additional-epochs 10 `
+  --output-dir checkpoints\experiment_01_stage2 `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 1e-5 `
+  --image-backbone-learning-rate 1e-6 `
+  --best-metric val_auc
+
+# Nuova fase BCE + AdamW + cosine scheduler
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\cp_epochs\cp_epoch_005.pt `
+  --additional-epochs 8 `
+  --output-dir checkpoints\bce_finetune `
+  --optimizer adamw `
+  --scheduler cosine `
+  --loss bce `
+  --image-fine-tune-mode fc_only
+
+# Continua da un checkpoint prodotto da una fase di fine-tuning
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt `
+  --additional-epochs 5 `
+  --output-dir checkpoints\experiment_01_stage2_continued `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 5e-6 `
+  --image-backbone-learning-rate 5e-7 `
+  --best-metric val_auc
+```
+
 ### Help CLI
 
 ```powershell
 python -m training.cp.train_cp --help
+python -m training.cp.fine_tune_cp --help
 ```
