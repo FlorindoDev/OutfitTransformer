@@ -473,7 +473,8 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--no-plots` | falso | disabilita grafici |
 | `--text-model` | `all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
 | `--no-pretrained-image` | falso | niente inizializzazione ImageNet |
-| `--image-fine-tune-mode` | `full` | `fc_only`, `fc_and_layer4` o `full` |
+| `--image-fine-tune-mode` | `fc_only` | `fc_only`, `fc_and_layer4` o `full` |
+
 
 ## File e flusso dei moduli
 
