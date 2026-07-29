@@ -22,6 +22,10 @@ from model import (
     CompatibilityPredictor,
     OutfitEncoderConfig,
 )
+from .early_stopping import (
+    CPEarlyStoppingStatus,
+    create_early_stopping_config,
+)
 from .fine_tuning import (
     CPFineTuneCheckpoint,
     CPFineTuneOptimizerConfig,
@@ -105,6 +109,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default="val_auc",
     )
     parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=None,
+        help=(
+            "stop after N validation epochs without sufficient improvement; "
+            "disabled when omitted"
+        ),
+    )
+    parser.add_argument(
+        "--early-stopping-min-delta",
+        type=float,
+        default=0.0,
+        help="minimum best-metric improvement that resets patience",
+    )
+    parser.add_argument(
         "--max-grad-norm",
         type=_optional_float,
         default=1.0,
@@ -186,6 +205,11 @@ def main() -> None:
 
     plotter = None if args.no_plots else CPHistoryPlotter(plot_directory)
     progress_interval = args.log_interval if args.log_interval > 0 else None
+    early_stopping = create_early_stopping_config(
+        metric=args.best_metric,
+        patience=args.early_stopping_patience,
+        min_delta=args.early_stopping_min_delta,
+    )
     train_cp(
         model=model,
         train_batches=train_loader,
@@ -209,12 +233,14 @@ def main() -> None:
             optimizer_config=optimizer_config,
         ),
         progress_interval=progress_interval,
+        early_stopping=early_stopping,
         on_batch_end=_print_batch if progress_interval is not None else None,
         on_checkpoint_saved=_print_checkpoint,
         on_history_updated=(
             None if plotter is None else partial(_plot_and_report, plotter)
         ),
         on_epoch_end=partial(_print_epoch, optimizer=optimizer),
+        on_early_stopping=_print_early_stopping,
     )
 
 
@@ -270,6 +296,11 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--workers must be non-negative")
     if args.log_interval < 0:
         raise ValueError("--log-interval must be non-negative")
+    create_early_stopping_config(
+        metric=args.best_metric,
+        patience=args.early_stopping_patience,
+        min_delta=args.early_stopping_min_delta,
+    )
 
 
 def _validate_output_directory(output_directory: Path) -> None:
@@ -375,6 +406,8 @@ def _checkpoint_metadata(
             "focal_alpha": args.focal_alpha,
             "focal_gamma": args.focal_gamma,
             "best_metric": args.best_metric,
+            "early_stopping_patience": args.early_stopping_patience,
+            "early_stopping_min_delta": args.early_stopping_min_delta,
             "max_grad_norm": args.max_grad_norm,
             "seed": args.seed,
         },
@@ -423,6 +456,14 @@ def _print_startup(
         )
     )
     print(f"best_metric={args.best_metric} output_dir={args.output_dir.resolve()}")
+    if args.early_stopping_patience is None:
+        print("early_stopping=disabled")
+    else:
+        print(
+            f"early_stopping=enabled metric={args.best_metric} "
+            f"patience={args.early_stopping_patience} "
+            f"min_delta={args.early_stopping_min_delta}"
+        )
     print("source_optimizer_scheduler_history_rng=discarded")
 
 
@@ -493,6 +534,16 @@ def _print_checkpoint(info: CPCheckpointInfo) -> None:
         f"path={info.path.resolve()} metric={info.selection_metric} "
         f"value={info.selection_value:.6f} "
         f"best={info.best_selection_value:.6f}"
+    )
+
+
+def _print_early_stopping(status: CPEarlyStoppingStatus) -> None:
+    print(
+        f"early_stopping=triggered epoch={status.epoch} "
+        f"metric={status.metric} value={status.value:.6f} "
+        f"best={status.best_value:.6f} "
+        f"epochs_without_improvement={status.epochs_without_improvement} "
+        f"patience={status.patience}"
     )
 
 

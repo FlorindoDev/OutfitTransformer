@@ -5,6 +5,12 @@ from .checkpointing import (
     load_cp_training_checkpoint,
 )
 from .epoch import CPEpochAccumulator, run_cp_epoch
+from .early_stopping import (
+    CPEarlyStopper,
+    CPEarlyStoppingConfig,
+    CPEarlyStoppingStatus,
+    create_early_stopping_config,
+)
 from .fine_tuning import (
     CPFineTuneCheckpoint,
     CPFineTuneOptimizerConfig,
@@ -39,6 +45,9 @@ __all__ = [
     "CP_BEST_METRICS",
     "CPCheckpointInfo",
     "CPCheckpointManager",
+    "CPEarlyStopper",
+    "CPEarlyStoppingConfig",
+    "CPEarlyStoppingStatus",
     "CPEpochAccumulator",
     "CPEpochMetrics",
     "CPFineTuneCheckpoint",
@@ -54,6 +63,7 @@ __all__ = [
     "CPTrainingHistory",
     "binary_roc_auc",
     "build_cp_fine_tune_optimizer",
+    "create_early_stopping_config",
     "load_cp_training_checkpoint",
     "optimizer_learning_rates",
     "run_cp_epoch",

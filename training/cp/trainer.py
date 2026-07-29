@@ -11,6 +11,11 @@ from torch.optim import Optimizer
 
 from data import CompatibilityBatch
 from .checkpointing import CPCheckpointManager
+from .early_stopping import (
+    CPEarlyStopper,
+    CPEarlyStoppingConfig,
+    CPEarlyStoppingStatus,
+)
 from .epoch import BatchProgressCallback, run_cp_epoch
 from .selection import CPBestMetric, CPSelectionCriterion
 from .types import (
@@ -27,6 +32,7 @@ EpochCallback = Callable[
 ]
 CheckpointCallback = Callable[[CPCheckpointInfo], None]
 HistoryCallback = Callable[[CPTrainingHistory], Any]
+EarlyStoppingCallback = Callable[[CPEarlyStoppingStatus], None]
 EpochRunner = Callable[..., CPEpochMetrics]
 
 
@@ -37,6 +43,7 @@ class CPTrainerConfig:
     start_epoch: int = 1
     max_grad_norm: float | None = None
     progress_interval: int | None = None
+    early_stopping: CPEarlyStoppingConfig | None = None
 
     def validate(self) -> None:
         if self.epochs <= 0:
@@ -49,6 +56,8 @@ class CPTrainerConfig:
             raise ValueError("max_grad_norm must be positive or None")
         if self.progress_interval is not None and self.progress_interval <= 0:
             raise ValueError("progress_interval must be positive or None")
+        if self.early_stopping is not None:
+            self.early_stopping.validate()
 
 
 @dataclass(frozen=True)
@@ -57,6 +66,7 @@ class CPTrainingCallbacks:
     on_batch_end: BatchProgressCallback | None = None
     on_checkpoint_saved: CheckpointCallback | None = None
     on_history_updated: HistoryCallback | None = None
+    on_early_stopping: EarlyStoppingCallback | None = None
 
 
 class CPTrainer:
@@ -88,9 +98,16 @@ class CPTrainer:
         callbacks: CPTrainingCallbacks | None = None,
     ) -> CPTrainingHistory:
         config.validate()
+        if config.early_stopping is not None and validation_batches is None:
+            raise ValueError("early stopping requires validation batches")
         history = initial_history or CPTrainingHistory()
         _validate_initial_history(history, config.start_epoch)
         callbacks = callbacks or CPTrainingCallbacks()
+        early_stopper = (
+            None
+            if config.early_stopping is None
+            else CPEarlyStopper(config.early_stopping, history)
+        )
         self._model.to(config.device)
 
         for epoch in range(config.start_epoch, config.epochs + 1):
@@ -137,6 +154,18 @@ class CPTrainer:
                     train_metrics,
                     validation_metrics,
                 )
+            if (
+                early_stopper is not None
+                and validation_metrics is not None
+            ):
+                stopping_status = early_stopper.observe(
+                    epoch,
+                    validation_metrics,
+                )
+                if stopping_status.should_stop:
+                    if callbacks.on_early_stopping is not None:
+                        callbacks.on_early_stopping(stopping_status)
+                    break
 
         return history
 
@@ -203,10 +232,12 @@ def train_cp(
     initial_history: CPTrainingHistory | None = None,
     checkpoint_metadata: Mapping[str, Any] | None = None,
     progress_interval: int | None = None,
+    early_stopping: CPEarlyStoppingConfig | None = None,
     on_epoch_end: EpochCallback | None = None,
     on_batch_end: BatchProgressCallback | None = None,
     on_checkpoint_saved: CheckpointCallback | None = None,
     on_history_updated: HistoryCallback | None = None,
+    on_early_stopping: EarlyStoppingCallback | None = None,
 ) -> CPTrainingHistory:
     """Convenience API composing the modular CP training components."""
     if initial_best_value is not None and initial_best_loss is not None:
@@ -244,6 +275,7 @@ def train_cp(
             start_epoch=start_epoch,
             max_grad_norm=max_grad_norm,
             progress_interval=progress_interval,
+            early_stopping=early_stopping,
         ),
         checkpoint_manager=checkpoint_manager,
         initial_history=initial_history,
@@ -252,6 +284,7 @@ def train_cp(
             on_batch_end=on_batch_end,
             on_checkpoint_saved=on_checkpoint_saved,
             on_history_updated=on_history_updated,
+            on_early_stopping=on_early_stopping,
         ),
     )
 

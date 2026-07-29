@@ -41,8 +41,18 @@ class CPSelectionCriterion:
             raise ValueError("val_auc selection requires validation AUC")
         return metrics.auc
 
-    def is_better(self, current: float, best: float) -> bool:
-        return current < best if self.direction == "min" else current > best
+    def is_better(
+        self,
+        current: float,
+        best: float,
+        *,
+        min_delta: float = 0.0,
+    ) -> bool:
+        if min_delta < 0.0:
+            raise ValueError("min_delta must be non-negative")
+        if self.direction == "min":
+            return current < best - min_delta
+        return current > best + min_delta
 
     def best_value(self, history: CPTrainingHistory) -> float:
         if not history.validation:
