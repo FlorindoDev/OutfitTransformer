@@ -21,9 +21,25 @@ Prediction (CP)**. Il modello riceve un outfit e predice se è compatibile
 - [Early stopping](#early-stopping)
 - [Nuova fase di fine-tuning](#nuova-fase-di-fine-tuning)
 - [Serie di esperimenti](#serie-di-esperimenti)
+  - [Iperparametri completi dei quattro training](#iperparametri-completi-dei-quattro-training)
+  - [Avvio della serie](#avvio-della-serie)
+  - [Riprendere la serie da un checkpoint](#riprendere-la-serie-da-un-checkpoint)
+    - [Caso base: stage 2 completato](#caso-base-stage-2-completato)
+    - [Esempio con flag opzionali](#esempio-con-flag-opzionali)
+    - [Caso stage 2 interrotto](#caso-stage-2-interrotto)
+    - [Caso stage 3 o 4 interrotto](#caso-stage-3-o-4-interrotto)
+- [Flag CLI fine-tuning](#flag-cli-fine-tuning)
 - [Flag CLI training normale](#flag-cli-training-normale)
 - [File e flusso dei moduli](#file-e-flusso-dei-moduli)
+  - [Flusso tra i file](#flusso-tra-i-file)
+  - [Responsabilità di ogni file](#responsabilità-di-ogni-file)
+  - [Come sostituire il runner](#come-sostituire-il-runner-senza-perdere-gli-altri-componenti)
 - [Esempi](#esempi)
+  - [Avvio e configurazione](#avvio-e-configurazione)
+  - [Artefatti e grafici](#artefatti-e-grafici)
+  - [Resume](#resume)
+  - [Fase di fine-tuning](#fase-di-fine-tuning)
+  - [Help CLI](#help-cli)
 
 ## Avvio rapido
 
@@ -383,6 +399,8 @@ precedente.
 Lo stage 1 è un baseline indipendente. La catena progressiva usa invece
 `02_fc_only_base → 03_layer4_plateau → 04_full_low_lr`.
 
+### Avvio della serie
+
 ```powershell
 python -m training.cp.run_training_series
 ```
@@ -394,10 +412,117 @@ python -m training.cp.run_training_series --dry-run
 ```
 
 Gli artefatti finiscono in `checkpoints/cp_training_series/<nome-stage>/`.
-`--start-stage 3` riparte dal confine di uno stage già completato e verifica
-che il checkpoint sorgente esista. Directory contenenti checkpoint non vengono
-sovrascritte. Poiché il paper non dichiara il numero di epoche, lo stage 1 usa
-30 epoche per default, modificabili con `--paper-epochs`.
+Directory contenenti checkpoint non vengono sovrascritte. Poiché il paper non
+dichiara il numero di epoche, lo stage 1 usa 30 epoche per default,
+modificabili con `--paper-epochs`.
+
+### Riprendere la serie da un checkpoint
+
+Esistono due operazioni diverse:
+
+1. uno stage è completato e la serie deve partire dallo stage successivo:
+   usare `run_training_series --start-stage`;
+2. uno stage è stato interrotto durante il training: riprendere prima quello
+   stage tramite la sua CLI, poi continuare la serie.
+
+#### Caso base: stage 2 completato
+
+Se `02_fc_only_base/best.pt` esiste, questo è l'unico comando necessario per
+eseguire gli stage 3 e 4:
+
+```powershell
+python -m training.cp.run_training_series --start-stage 3
+```
+
+Lo script cerca automaticamente:
+
+```text
+checkpoints/cp_training_series/02_fc_only_base/best.pt
+```
+
+Non serve chiamare manualmente `fine_tune_cp`: lo stage 3 usa quel checkpoint,
+poi lo stage 4 usa il `best.pt` prodotto dallo stage 3.
+
+Se anche lo stage 3 è già completato, si può eseguire soltanto lo stage 4:
+
+```powershell
+python -m training.cp.run_training_series --start-stage 4
+```
+
+#### Esempio con flag opzionali
+
+I flag seguenti non sono necessari con i default. Permettono di usare una serie
+salvata altrove, ridurre il batch, scegliere GPU e worker, disabilitare i
+grafici:
+
+```powershell
+python -m training.cp.run_training_series `
+  --output-root checkpoints\mia_serie `
+  --start-stage 3 `
+  --batch-size 8 `
+  --device cuda:0 `
+  --workers 4 `
+  --no-plots
+```
+
+Se gli stage precedenti usano un `--output-root` personalizzato, ripassare lo
+stesso valore non è opzionale: serve a trovare il relativo `best.pt`.
+
+Directory degli stage da eseguire non devono contenere file `.pt`, perché lo
+script evita sovrascritture.
+
+Lo stage 1 non alimenta lo stage 2: è un baseline indipendente. Non esiste
+quindi una ripartenza dello stage 2 dal checkpoint dello stage 1.
+
+#### Caso stage 2 interrotto
+
+`--start-stage 3` funziona soltanto dopo avere completato lo stage 2. Se lo
+stage 2 si è fermato all'epoca 7, prima bisogna riprenderlo. Questo esempio
+contiene solo i flag necessari per mantenere modalità, best checkpoint,
+checkpoint per epoca ed early stopping dello stage 2:
+
+```powershell
+python -m training.cp.train_cp `
+  --resume checkpoints\cp_training_series\02_fc_only_base\epochs\cp_epoch_007.pt `
+  --epochs 12 `
+  --image-fine-tune-mode fc_only `
+  --checkpoint checkpoints\cp_training_series\02_fc_only_base\best.pt `
+  --checkpoint-dir checkpoints\cp_training_series\02_fc_only_base\epochs `
+  --early-stopping-patience 3 `
+  --early-stopping-min-delta 0.0001
+```
+
+Il resume ripristina modello, optimizer, scheduler, history e RNG. Quando lo
+stage 2 termina, basta continuare con:
+
+```powershell
+python -m training.cp.run_training_series --start-stage 3
+```
+
+#### Caso stage 3 o 4 interrotto
+
+Gli stage 3 e 4 usano `fine_tune_cp`. Questa CLI carica i pesi, ma crea
+optimizer, scheduler, history e patience nuovi. Serve una directory diversa.
+Esempio minimo per continuare lo stage 3:
+
+```powershell
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\cp_training_series\03_layer4_plateau\epochs\cp_epoch_020.pt `
+  --output-dir checkpoints\cp_training_series\03_layer4_plateau_continued `
+  --image-backbone-learning-rate 1e-6 `
+  --scheduler cosine `
+  --early-stopping-patience 4 `
+  --early-stopping-min-delta 0.0001
+```
+
+Le 10 epoche aggiuntive, modalità `fc_and_layer4`, Adam, LR task `1e-5`,
+weight decay `1e-4`, Focal Loss e best su validation AUC sono già i default,
+quindi non serve ripeterli.
+
+Questo caso è una nuova fase di fine-tuning, non un resume esatto.
+Il relativo `best.pt` non viene agganciato automaticamente da
+`run_training_series`: per usarlo nello stage successivo bisogna passarlo
+esplicitamente a un nuovo comando `fine_tune_cp --source-checkpoint`.
 
 ## Flag CLI fine-tuning
 
