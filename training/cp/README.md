@@ -18,9 +18,10 @@ Prediction (CP)**. Il modello riceve un outfit e predice se è compatibile
   - [Modalità di fine-tuning](#modalità-di-fine-tuning)
 - [Grafici](#grafici)
 - [Checkpoint e resume](#checkpoint-e-resume)
+- [Early stopping](#early-stopping)
 - [Nuova fase di fine-tuning](#nuova-fase-di-fine-tuning)
+- [Serie di esperimenti](#serie-di-esperimenti)
 - [Flag CLI training normale](#flag-cli-training-normale)
-- [Test](#test)
 - [File e flusso dei moduli](#file-e-flusso-dei-moduli)
 - [Esempi](#esempi)
 
@@ -35,14 +36,22 @@ Il comando di training predefinito è riportato nella sezione
 [Esempi](#esempi). La configurazione predefinita usa:
 
 - Polyvore `disjoint`;
-- 30 epoche e batch size 32;
+- batch size 50;
 - ResNet-18 inizializzata con ImageNet;
-- fine-tuning ResNet in modalità `fc_only`;
-- Binary Focal Loss e Adam;
-- validation loss per scegliere il checkpoint migliore, configurabile con
+- fine-tuning completo della ResNet, come dichiarato nel paper;
+- Adam con learning rate `1e-5` e StepLR ogni 10 epoche con fattore `0.5`;
+- Binary Focal Loss;
+- validation ROC AUC per scegliere il checkpoint migliore, configurabile con
   `--best-metric`;
+- early stopping disabilitato finché non viene richiesto via CLI;
 - ROC AUC calcolata su train e validation a ogni epoca;
 - quattro grafici cumulativi salvati dopo ogni epoca.
+
+Batch size, ResNet-18 preaddestrata, fine-tuning dell'image encoder, Adam,
+learning rate e scheduler sono dichiarati nel paper. Il paper non specifica
+numero di epoche, weight decay, criterio del best checkpoint, seed, gradient
+clipping né iperparametri della focal loss: i default di progetto sono
+rispettivamente 30, `0.0`, `val_auc`, 42, `1.0`, alpha `0.5` e gamma `1.0`.
 
 ## Cosa viene aggiornato nel training
 
@@ -114,9 +123,9 @@ l'intera ResNet da pesi casuali.
 
 | Modalità | Parametri ResNet aggiornati | BatchNorm |
 |---|---|---|
-| `fc_only` (default) | solo FC `512 → 64` | tutti i blocchi feature restano in evaluation |
+| `fc_only` | solo FC `512 → 64` | tutti i blocchi feature restano in evaluation |
 | `fc_and_layer4` | `layer4` e FC `512 → 64` | BatchNorm di `layer4` allenabili; precedenti congelate |
-| `full` | intera ResNet-18, inclusa la FC `512 → 64` | tutte allenabili |
+| `full` (default) | intera ResNet-18, inclusa la FC `512 → 64` | tutte allenabili |
 
 SentenceBERT resta congelato in tutte le modalità. La sua proiezione FC,
 il token `OUTFIT`, il Transformer e il classificatore CP restano allenabili.
@@ -166,9 +175,9 @@ checkpoints/cp_best.pt
 
 Il checkpoint migliore usa la metrica scelta con `--best-metric`:
 
-- `val_loss` minimizza la validation loss ed è il default;
+- `val_loss` minimizza la validation loss;
 - `val_accuracy` massimizza la validation accuracy;
-- `val_auc` massimizza la validation ROC AUC.
+- `val_auc` massimizza la validation ROC AUC ed è il default.
 
 Il confronto è stretto: in caso di parità resta migliore il checkpoint salvato
 prima. `val_accuracy` e `val_auc` richiedono la validation; per compatibilità
@@ -222,7 +231,26 @@ completa il log segnala che le epoche precedenti non sono ricostruibili.
 Cambiare `--image-fine-tune-mode` durante un resume è consentito per supportare
 strategie a fasi, ma viene segnalato nel log.
 
-## fase di fine-tuning
+## Early stopping
+
+Training normale e fine-tuning accettano gli stessi flag:
+
+```powershell
+--early-stopping-patience 4 --early-stopping-min-delta 0.0001
+```
+
+`--early-stopping-patience N` interrompe dopo `N` epoche di validation
+consecutive senza miglioramento sufficiente. La metrica osservata è quella
+scelta con `--best-metric`; `min-delta` è il miglioramento minimo richiesto per
+azzerare la patience. Senza `--early-stopping-patience` la funzione resta
+disabilitata. Checkpoint, grafici e callback dell'ultima epoca vengono
+completati prima dell'interruzione.
+
+Nel resume esatto di `train_cp`, lo stato viene ricostruito dalla history del
+checkpoint. In `fine_tune_cp` la nuova fase parte invece con history e patience
+nuove.
+
+## Nuova fase di fine-tuning
 
 `fine_tune_cp` differisce dal resume esatto di `train_cp`:
 
@@ -282,7 +310,96 @@ ereditati dal checkpoint: cambiarli renderebbe lo state dict incompatibile.
 Per evitare sovrascritture accidentali, la CLI rifiuta una `--output-dir` che
 contiene già file `.pt`.
 
-### Flag CLI fine-tuning
+## Serie di esperimenti
+
+`run_training_series.py` richiama in successione le CLI esistenti; non duplica
+training, loader o checkpointing:
+
+1. `01_paper_end_to_end`: CP end-to-end con gli iperparametri dichiarati nel paper;
+2. `02_fc_only_base`: base con sola FC ResNet;
+3. `03_layer4_plateau`: `fc_and_layer4`, LR backbone `1e-6`, early stopping AUC;
+4. `04_full_low_lr`: full per 4 epoche massime, LR backbone `3e-7`.
+
+| Stage | ResNet | Epoche max | LR task | LR backbone | Weight decay | Scheduler | Early stopping |
+|---|---|---:|---:|---:|---:|---|---|
+| `01_paper_end_to_end` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
+| `02_fc_only_base` | `fc_only` | 12 | `1e-5` | Backbone congelato | `1e-4` | StepLR, ogni 10 epoche × `0.5` | patience 3, delta `1e-4` |
+| `03_layer4_plateau` | `fc_and_layer4` | 30 aggiuntive | `1e-5` | `1e-6` | `1e-4` | Cosine, `T_max=30`, minimo `0` | patience 4, delta `1e-4` |
+| `04_full_low_lr` | `full` | 4 aggiuntive | `3e-6` | `3e-7` | `1e-4` | Cosine, `T_max=4`, minimo `0` | patience 2, delta `1e-4` |
+
+### Iperparametri completi dei quattro training
+
+I valori riportati sono i default effettivi di `run_training_series.py`.
+Quelli indicati come ereditati provengono dal checkpoint dello stage
+precedente.
+
+| Iperparametro | `01_paper_end_to_end` | `02_fc_only_base` | `03_layer4_plateau` | `04_full_low_lr` |
+|---|---|---|---|---|
+| CLI | `training.cp.train_cp` | `training.cp.train_cp` | `training.cp.fine_tune_cp` | `training.cp.fine_tune_cp` |
+| Sorgente pesi | ResNet-18 ImageNet e SentenceBERT preaddestrati; componenti CP inizializzati dal modello | ResNet-18 ImageNet e SentenceBERT preaddestrati; componenti CP inizializzati dal modello | `02_fc_only_base/best.pt` | `03_layer4_plateau/best.pt` |
+| Dataset | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` |
+| Variante dataset | `disjoint` | `disjoint` | `disjoint` | `disjoint` |
+| Epoche massime | 30 | 12 | 30 aggiuntive | 4 aggiuntive |
+| Batch size | 50 | 50 | 50 | 50 |
+| Modalità ResNet | `full` | `fc_only` | `fc_and_layer4` | `full` |
+| Blocchi ResNet allenabili | intera ResNet, FC e BatchNorm | solo FC `512 → 64`; backbone e BatchNorm congelati | `layer4`, relative BatchNorm e FC | intera ResNet, FC e BatchNorm |
+| Componenti CP allenabili | Transformer, token `OUTFIT`, proiezione testo e classificatore | Transformer, token `OUTFIT`, proiezione testo e classificatore | Transformer, token `OUTFIT`, proiezione testo e classificatore | Transformer, token `OUTFIT`, proiezione testo e classificatore |
+| SentenceBERT | congelato | congelato | congelato, ereditato | congelato, ereditato |
+| Modello testuale | `sentence-transformers/all-MiniLM-L6-v2` | `sentence-transformers/all-MiniLM-L6-v2` | ereditato dallo stage 2 | ereditato dallo stage 3 |
+| Image embedding | 64 | 64 | 64, ereditato | 64, ereditato |
+| Text embedding | 64 | 64 | 64, ereditato | 64, ereditato |
+| Item embedding / `d_model` | 128 | 128 | 128, ereditato | 128, ereditato |
+| Layer Transformer | 6 | 6 | 6, ereditati | 6, ereditati |
+| Teste di attenzione | 16 | 16 | 16, ereditate | 16, ereditate |
+| Dimensione feed-forward | 512 | 512 | 512, ereditata | 512, ereditata |
+| Dropout | `0.1` | `0.1` | `0.1`, ereditato | `0.1`, ereditato |
+| Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss |
+| Focal alpha | `0.5` | `0.5` | `0.5` | `0.5` |
+| Focal gamma | `1.0` | `1.0` | `1.0` | `1.0` |
+| Optimizer | Adam | Adam | Adam | Adam |
+| Adam beta1 | `0.9` | `0.9` | `0.9` | `0.9` |
+| Adam beta2 | `0.999` | `0.999` | `0.999` | `0.999` |
+| Adam epsilon | `1e-8` | `1e-8` | `1e-8` | `1e-8` |
+| LR task | `1e-5` | `1e-5` | `1e-5` | `3e-6` |
+| LR backbone ResNet | `1e-5` | non applicabile: congelato | `1e-6` | `3e-7` |
+| Weight decay | `0.0` | `1e-4` | `1e-4` | `1e-4` |
+| Scheduler | StepLR | StepLR | CosineAnnealingLR | CosineAnnealingLR |
+| Step size | 10 | 10 | non applicabile | non applicabile |
+| Gamma scheduler | `0.5` | `0.5` | non applicabile | non applicabile |
+| `T_max` cosine | non applicabile | non applicabile | 30 | 4 |
+| LR minimo cosine | non applicabile | non applicabile | `0.0` | `0.0` |
+| Metrica best checkpoint | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC |
+| Early stopping | disabilitato | abilitato | abilitato | abilitato |
+| Patience | non applicabile | 3 | 4 | 2 |
+| `min_delta` | non applicabile | `1e-4` | `1e-4` | `1e-4` |
+| Gradient clipping | norma massima `1.0` | norma massima `1.0` | norma massima `1.0` | norma massima `1.0` |
+| Seed | 42 | 42 | 42 | 42 |
+| DataLoader workers | 0 | 0 | 0 | 0 |
+| Device | CUDA se disponibile, altrimenti CPU | CUDA se disponibile, altrimenti CPU | CUDA se disponibile, altrimenti CPU | CUDA se disponibile, altrimenti CPU |
+| Log batch | ogni 50 batch | ogni 50 batch | ogni 50 batch | ogni 50 batch |
+| Grafici | abilitati | abilitati | abilitati | abilitati |
+| Checkpoint | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca |
+
+Lo stage 1 è un baseline indipendente. La catena progressiva usa invece
+`02_fc_only_base → 03_layer4_plateau → 04_full_low_lr`.
+
+```powershell
+python -m training.cp.run_training_series
+```
+
+Anteprima senza allenare:
+
+```powershell
+python -m training.cp.run_training_series --dry-run
+```
+
+Gli artefatti finiscono in `checkpoints/cp_training_series/<nome-stage>/`.
+`--start-stage 3` riparte dal confine di uno stage già completato e verifica
+che il checkpoint sorgente esista. Directory contenenti checkpoint non vengono
+sovrascritte. Poiché il paper non dichiara il numero di epoche, lo stage 1 usa
+30 epoche per default, modificabili con `--paper-epochs`.
+
+## Flag CLI fine-tuning
 
 ```powershell
 python -m training.cp.fine_tune_cp --help
@@ -311,6 +428,8 @@ python -m training.cp.fine_tune_cp --help
 | `--focal-alpha` | `0.5` | alpha Focal Loss; `none` lo disabilita |
 | `--focal-gamma` | `1.0` | gamma Focal Loss |
 | `--best-metric` | `val_auc` | selezione best: `val_loss`, `val_accuracy` o `val_auc` |
+| `--early-stopping-patience` | disabilitato | epoche senza miglioramento prima dello stop |
+| `--early-stopping-min-delta` | `0.0` | miglioramento minimo; richiede patience |
 | `--max-grad-norm` | `1.0` | gradient clipping globale; `none` lo disabilita |
 | `--image-fine-tune-mode` | `fc_and_layer4` | politica ResNet: `fc_only`, `fc_and_layer4` o `full` |
 | `--dropout` | valore del checkpoint | override dropout senza cambiare shape dei pesi |
@@ -331,9 +450,9 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 |---|---:|---|
 | `--variant` | `disjoint` | variante Polyvore |
 | `--epochs` | `30` | ultima epoca totale |
-| `--batch-size` | `32` | outfit per batch |
-| `--learning-rate` | `5e-5` | learning rate Adam |
-| `--weight-decay` | `1e-4` | weight decay Adam |
+| `--batch-size` | `50` | outfit per batch |
+| `--learning-rate` | `1e-5` | learning rate Adam |
+| `--weight-decay` | `0.0` | weight decay Adam |
 | `--lr-step-size` | `10` | periodo StepLR |
 | `--lr-gamma` | `0.5` | fattore StepLR |
 | `--focal-alpha` | `0.5` | alpha Focal Loss |
@@ -345,26 +464,16 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--device` | automatico | CUDA quando disponibile, altrimenti CPU |
 | `--cache-dir` | cache HF | cache dataset e Hub |
 | `--checkpoint` | `checkpoints/cp_best.pt` | checkpoint migliore |
-| `--best-metric` | `val_loss` | `val_loss`, `val_accuracy` o `val_auc` |
+| `--best-metric` | `val_auc` | `val_loss`, `val_accuracy` o `val_auc` |
+| `--early-stopping-patience` | disabilitato | epoche senza miglioramento prima dello stop |
+| `--early-stopping-min-delta` | `0.0` | miglioramento minimo; richiede patience |
 | `--checkpoint-dir` | `checkpoints/cp_epochs` | checkpoint per epoca |
 | `--resume` | disabilitato | checkpoint da riprendere |
 | `--plot-dir` | `checkpoints/cp_plots` | grafici cumulativi |
 | `--no-plots` | falso | disabilita grafici |
 | `--text-model` | `all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
 | `--no-pretrained-image` | falso | niente inizializzazione ImageNet |
-| `--image-fine-tune-mode` | `fc_only` | `fc_only`, `fc_and_layer4` o `full` |
-
-## Test
-
-I test non richiedono Polyvore né download di modelli:
-
-```powershell
-python -m unittest discover -v
-```
-
-Coprono runner train/validation, AUC, checkpoint nuovo e legacy, best storico,
-schema checkpoint, equivalenza run continua/resume con RNG, grafici PNG, flag
-ResNet, parametri allenabili, stato BatchNorm e gruppi LR del fine-tuning.
+| `--image-fine-tune-mode` | `full` | `fc_only`, `fc_and_layer4` o `full` |
 
 ## File e flusso dei moduli
 
@@ -381,6 +490,8 @@ flowchart TD
     EPOCH -->|metriche della fase| TRAINER
 
     TRAINER -->|aggiunge le metriche| TYPES["types.py<br/>CPTrainingHistory e tipi condivisi"]
+    TYPES --> EARLY["early_stopping.py<br/>patience e min_delta"]
+    EARLY -->|se plateau| TRAINER
     TYPES -->|history completa| CHECKPOINT["checkpointing.py<br/>checkpoint per epoca e best"]
     TYPES -->|history completa| PLOT["plotting.py<br/>quattro grafici cumulativi"]
 
@@ -398,7 +509,8 @@ Il flusso completo di ogni epoca è:
 4. le metriche vengono aggiunte a `CPTrainingHistory` in `types.py`;
 5. `checkpointing.py` salva stato corrente, best e history;
 6. `plotting.py` legge la stessa history e genera i quattro grafici cumulativi;
-7. callback e log ricevono i risultati dell'epoca completata.
+7. `early_stopping.py` aggiorna la patience sulla metrica di validation;
+8. callback e log ricevono i risultati dell'epoca completata.
 
 ### Responsabilità di ogni file
 
@@ -411,16 +523,11 @@ Il flusso completo di ogni epoca è:
 | `checkpointing.py` | Checkpoint atomici, schema, best loss, config, RNG e compatibilità legacy | Per cambiare formato o politica di salvataggio e resume |
 | `fine_tuning.py` | Lettura pesi sorgente e optimizer con gruppi LR distinti | Per cambiare semantica della nuova fase o gruppi di parametri |
 | `fine_tune_cp.py` | CLI della nuova fase di fine-tuning | Per aggiungere flag specifici al fine-tuning |
+| `early_stopping.py` | Stato puro di patience, `min_delta` e criterio di arresto | Per cambiare la politica di early stopping |
+| `run_training_series.py` | Sequenza le quattro CLI di esperimento senza duplicare il training | Per cambiare ordine, nomi o iperparametri degli stage |
 | `plotting.py` | Backend `Agg` e generazione dei quattro PNG cumulativi | Per cambiare stile, nomi o contenuto dei grafici |
 | `__init__.py` | Export pubblici del package `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
 | `README.md` | Documentazione operativa del training CP | Quando cambiano flusso, flag o formato degli artefatti |
-
-I test aggiunti sono separati dal codice di produzione:
-
-| File | Copertura |
-|---|---|
-| `tests/training/cp/test_epoch_and_trainer.py` | runner, AUC, history, best checkpoint, schema, RNG e resume |
-| `tests/training/cp/test_plotting_and_resnet.py` | grafici PNG, flag ResNet, parametri allenabili e BatchNorm |
 
 ### Come sostituire il runner senza perdere gli altri componenti
 
@@ -465,7 +572,7 @@ python -m training.cp.train_cp
 python -m training.cp.train_cp `
   --variant disjoint `
   --epochs 20 `
-  --batch-size 32 `
+  --batch-size 50 `
   --image-fine-tune-mode fc_and_layer4
 
 # Fine-tuning completo della ResNet
@@ -475,6 +582,11 @@ python -m training.cp.train_cp `
 # Sceglie il checkpoint migliore tramite validation AUC
 python -m training.cp.train_cp `
   --best-metric val_auc
+
+# Ferma il training dopo 4 epoche senza un aumento AUC superiore a 0.0001
+python -m training.cp.train_cp `
+  --early-stopping-patience 4 `
+  --early-stopping-min-delta 0.0001
 
 # Usa una GPU specifica e riduce la frequenza dei log batch
 python -m training.cp.train_cp `
@@ -532,7 +644,7 @@ python -m training.cp.train_cp `
   --plot-dir checkpoints\resume_01\plots
 ```
 
-### fase di fine-tuning
+### Fase di fine-tuning
 
 ```powershell
 # Sblocca layer4 con LR dieci volte inferiore al resto del modello
@@ -543,7 +655,9 @@ python -m training.cp.fine_tune_cp `
   --image-fine-tune-mode fc_and_layer4 `
   --learning-rate 1e-5 `
   --image-backbone-learning-rate 1e-6 `
-  --best-metric val_auc
+  --best-metric val_auc `
+  --early-stopping-patience 4 `
+  --early-stopping-min-delta 0.0001
 
 # Nuova fase BCE + AdamW + cosine scheduler
 python -m training.cp.fine_tune_cp `
@@ -571,4 +685,5 @@ python -m training.cp.fine_tune_cp `
 ```powershell
 python -m training.cp.train_cp --help
 python -m training.cp.fine_tune_cp --help
+python -m training.cp.run_training_series --help
 ```

@@ -29,6 +29,11 @@ Ogni epoca produce:
 - quattro grafici cumulativi: loss, accuracy, ROC AUC train/validation e
   validation accuracy/AUC.
 
+I default del training normale seguono gli iperparametri dichiarati nel paper:
+batch size 50, Adam a `1e-5`, StepLR ogni 10 epoche con fattore `0.5` e
+ResNet-18 end-to-end. Il paper non dichiara epoche, weight decay o criterio del
+best; il progetto usa rispettivamente 30, `0.0` e validation AUC.
+
 ### Cosa viene aggiornato nel training
 
 Il grafo mostra il percorso del gradiente durante `loss.backward()`. Dopo il
@@ -124,6 +129,20 @@ automaticamente allenabili i blocchi congelati. Combinandolo con
 SentenceBERT resta congelato; la sua proiezione FC, il token `OUTFIT`, il
 Transformer e il classificatore CP restano allenabili.
 
+### Early stopping
+
+Training e fine-tuning possono arrestarsi sulla stessa metrica di validation
+usata per il best checkpoint:
+
+```powershell
+python -m training.cp.train_cp `
+  --early-stopping-patience 4 `
+  --early-stopping-min-delta 0.0001
+```
+
+Senza `--early-stopping-patience` è disabilitato. Checkpoint e grafici
+dell'ultima epoca vengono completati prima dello stop.
+
 Dettagli, flag, resume, formato checkpoint, grafici ed esempi:
 [guida completa CP](cp/README.md).
 
@@ -148,7 +167,7 @@ python -m training.cp.train_cp
 python -m training.cp.train_cp `
   --variant disjoint `
   --epochs 20 `
-  --batch-size 32 `
+  --batch-size 50 `
   --image-fine-tune-mode fc_and_layer4
 
 # Fine-tuning completo della ResNet
@@ -158,6 +177,11 @@ python -m training.cp.train_cp `
 # Sceglie il checkpoint migliore tramite validation AUC
 python -m training.cp.train_cp `
   --best-metric val_auc
+
+# Ferma dopo 4 epoche senza un aumento AUC superiore a 0.0001
+python -m training.cp.train_cp `
+  --early-stopping-patience 4 `
+  --early-stopping-min-delta 0.0001
 
 # Usa una GPU specifica e riduce la frequenza dei log batch
 python -m training.cp.train_cp `
@@ -215,7 +239,7 @@ python -m training.cp.train_cp `
   --plot-dir checkpoints\resume_01\plots
 ```
 
-### fase di fine-tuning
+### Fase di fine-tuning
 
 ```powershell
 # Sblocca layer4 con LR dieci volte inferiore al resto del modello
@@ -226,7 +250,9 @@ python -m training.cp.fine_tune_cp `
   --image-fine-tune-mode fc_and_layer4 `
   --learning-rate 1e-5 `
   --image-backbone-learning-rate 1e-6 `
-  --best-metric val_auc
+  --best-metric val_auc `
+  --early-stopping-patience 4 `
+  --early-stopping-min-delta 0.0001
 
 # Nuova fase BCE + AdamW + cosine scheduler
 python -m training.cp.fine_tune_cp `
@@ -254,4 +280,21 @@ python -m training.cp.fine_tune_cp `
 ```powershell
 python -m training.cp.train_cp --help
 python -m training.cp.fine_tune_cp --help
+python -m training.cp.run_training_series --help
 ```
+
+### Serie completa
+
+Il comando seguente esegue in ordine il baseline end-to-end del paper, la base
+FC-only, `fc_and_layer4` fino al plateau AUC e infine full per poche epoche con
+LR backbone molto basso:
+
+```powershell
+python -m training.cp.run_training_series
+```
+
+Usare `--dry-run` per vedere i comandi e `--start-stage N` per ripartire da
+uno stage già preparato. I checkpoint hanno directory
+`01_paper_end_to_end`, `02_fc_only_base`, `03_layer4_plateau` e
+`04_full_low_lr`. Lo stage paper usa 30 epoche per default perché il paper non
+ne dichiara il numero; `--paper-epochs` lo modifica.

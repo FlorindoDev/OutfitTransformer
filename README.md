@@ -45,6 +45,13 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
 ### 2. Eseguire l'esempio
 
 ```powershell
@@ -248,30 +255,42 @@ Dopo avere ottenuto l'accesso al dataset gated e avere eseguito
 
 ```powershell
 pip install -r requirements.txt
-python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 32
+python -m training.cp.train_cp --variant nondisjoint --epochs 20 --batch-size 50
 ```
 
 usa il dataset per allenare il modello, salva un checkpoint per epoca in
 `checkpoints/cp_epochs/`, il migliore in `checkpoints/cp_best.pt` e quattro
 grafici cumulativi in `checkpoints/cp_plots/`. La ROC AUC viene calcolata su
-train e validation a ogni epoca. Il checkpoint migliore usa `val_loss` per default; si può scegliere
-`val_accuracy` o `val_auc` con `--best-metric`:
+train e validation a ogni epoca. I default dichiarati dal paper sono batch
+size 50, Adam con learning rate `1e-5`, dimezzamento ogni 10 epoche e training
+end-to-end della ResNet. Il paper non dichiara numero di epoche, weight decay o
+criterio del best: il progetto usa 30, `0.0` e `val_auc`. Si può scegliere
+`val_loss` o `val_accuracy` con `--best-metric`.
 
 ```powershell
-python -m training.cp.train_cp --best-metric val_auc
+python -m training.cp.train_cp `
+  --early-stopping-patience 4 `
+  --early-stopping-min-delta 0.0001
 ```
 
 Il nuovo comportamento ResNet è controllato esplicitamente:
 
 ```powershell
-# Allena soltanto la FC visuale (default)
+# Allena soltanto la FC visuale
 python -m training.cp.train_cp --image-fine-tune-mode fc_only
 
 # Allena layer4 e FC visuale
 python -m training.cp.train_cp --image-fine-tune-mode fc_and_layer4
 
-# Fine-tuning completo della ResNet
+# Fine-tuning completo della ResNet (default, come nel paper)
 python -m training.cp.train_cp --image-fine-tune-mode full
+```
+
+La sequenza completa paper → FC-only → layer4 fino al plateau → full con LR
+molto basso si avvia con:
+
+```powershell
+python -m training.cp.run_training_series
 ```
 
 La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
@@ -303,7 +322,7 @@ Le metriche e tutte le opzioni sono descritte nella
 | Binary Focal Loss | Implementata |
 | Target item token e target embedding | Implementati |
 | Set-wise Ranking Loss | Implementata |
-| Training CP modulare, ADAM, scheduler, checkpoint e grafici | Implementati |
+| Training CP modulare, Adam, scheduler, early stopping, checkpoint e grafici | Implementati |
 | Costruzione automatica degli outfit parziali | Non implementata |
 | Negative sampler e curriculum learning | Non implementati |
 | Indicizzazione KNN e ricerca top-k | Non implementate |
@@ -359,9 +378,11 @@ training/
     train_cp.py         CLI training CP su Polyvore
     trainer.py          orchestratore modulare CP
     epoch.py            runner e metriche di una fase
+    early_stopping.py   patience e arresto su metrica di validation
     types.py            history e tipi del training
     checkpointing.py    checkpoint atomici e resume
     plotting.py         grafici cumulativi per epoca
+    run_training_series.py sequenza dei quattro stage di training
   cir/
     README.md           training CIR previsto, non ancora implementato
 requirements.txt
