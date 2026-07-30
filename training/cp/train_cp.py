@@ -153,6 +153,7 @@ def main() -> None:
         image_fine_tune_mode=args.image_fine_tune_mode,
     )
     model = CompatibilityPredictor(config=model_config)
+    model.to(args.device)
     _print_parameter_summary(model)
     criterion = BinaryFocalLoss(
         alpha=args.focal_alpha,
