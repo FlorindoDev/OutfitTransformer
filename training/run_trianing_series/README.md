@@ -33,9 +33,9 @@ training, loader o checkpointing:
 | Stage | ResNet | Epoche max | LR task | LR backbone | Weight decay | Scheduler | Early stopping |
 |---|---|---:|---:|---:|---:|---|---|
 | `01_paper_end_to_end` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `02_fc_only_base` | `fc_only` | 12 | `1e-5` | Backbone congelato | `1e-4` | StepLR, ogni 10 epoche × `0.5` | patience 3, delta `1e-4` |
-| `03_layer4_plateau` | `fc_and_layer4` | 30 aggiuntive | `1e-5` | `1e-6` | `1e-4` | Cosine, `T_max=30`, minimo `0` | patience 4, delta `1e-4` |
-| `04_full_low_lr` | `full` | 4 aggiuntive | `3e-6` | `3e-7` | `1e-4` | Cosine, `T_max=4`, minimo `0` | patience 2, delta `1e-4` |
+| `02_fc_only_base` | `fc_only` | 12 | `1e-5` | Backbone congelato | `1e-4` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `03_layer4_plateau` | `fc_and_layer4` | 30 aggiuntive | `1e-5` | `1e-6` | `1e-4` | Cosine, `T_max=30`, minimo `0` | patience 5, delta `1e-4` |
+| `04_full_low_lr` | `full` | 4 aggiuntive | `3e-6` | `3e-7` | `1e-4` | Cosine, `T_max=4`, minimo `0` | patience 5, delta `1e-4` |
 
 ## Iperparametri completi dei quattro training
 
@@ -81,7 +81,7 @@ precedente.
 | LR minimo cosine | non applicabile | non applicabile | `0.0` | `0.0` |
 | Metrica best checkpoint | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC |
 | Early stopping | disabilitato | abilitato | abilitato | abilitato |
-| Patience | non applicabile | 3 | 4 | 2 |
+| Patience | non applicabile | 5 | 5 | 5 |
 | `min_delta` | non applicabile | `1e-4` | `1e-4` | `1e-4` |
 | Gradient clipping | disabilitato | disabilitato | disabilitato | disabilitato |
 | Seed | 42 | 42 | 42 | 42 |
@@ -101,19 +101,21 @@ riparte da ResNet-18 ImageNet e SentenceBERT preaddestrati, senza ereditare pesi
 da altri stage. Tutti mantengono i parametri dichiarati dal paper: fine-tuning
 ResNet end-to-end, embedding immagine e testo da 64, Transformer con 6 layer e
 16 teste, batch 50, Adam con LR `1e-5`, StepLR ogni 10 epoche × `0.5` e Focal
-Loss. I parametri non dichiarati dal paper sono confrontati nella tabella.
+Loss. Tutti usano early stopping su validation AUC con patience 5 e
+`min_delta=1e-4`. I parametri non dichiarati dal paper sono confrontati nella
+tabella.
 
 | Stage | ResNet | Epoche max | LR task | LR backbone | Weight decay | Scheduler | Early stopping |
 |---|---|---:|---:|---:|---:|---|---|
-| `01_paper_standard_defaults` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `02_seed_7` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `03_seed_123` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `04_dropout_0` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `05_dropout_02` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `06_pre_norm` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `07_weight_decay_1e4` | `full` | 30 | `1e-5` | `1e-5` | `1e-4` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `08_grad_clip_1` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
-| `09_focal_alpha_05` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | Disabilitato |
+| `01_paper_standard_defaults` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `02_seed_7` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `03_seed_123` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `04_dropout_0` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `05_dropout_02` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `06_pre_norm` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `07_weight_decay_1e4` | `full` | 30 | `1e-5` | `1e-5` | `1e-4` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `08_grad_clip_1` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
+| `09_focal_alpha_05` | `full` | 30 | `1e-5` | `1e-5` | `0.0` | StepLR, ogni 10 epoche × `0.5` | patience 5, delta `1e-4` |
 
 ### Iperparametri completi dei nove training
 
@@ -158,9 +160,9 @@ precedente.
 | `T_max` cosine | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile |
 | LR minimo cosine | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile |
 | Metrica best checkpoint | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC |
-| Early stopping | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato |
-| Patience | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile |
-| `min_delta` | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile | non applicabile |
+| Early stopping | abilitato | abilitato | abilitato | abilitato | abilitato | abilitato | abilitato | abilitato | abilitato |
+| Patience | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 |
+| `min_delta` | `1e-4` | `1e-4` | `1e-4` | `1e-4` | `1e-4` | `1e-4` | `1e-4` | `1e-4` | `1e-4` |
 | Gradient clipping | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato | norma massima `1.0` | disabilitato |
 | Seed | 42 | 7 | 123 | 42 | 42 | 42 | 42 | 42 | 42 |
 | DataLoader workers | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -169,58 +171,11 @@ precedente.
 | Grafici | abilitati | abilitati | abilitati | abilitati | abilitati | abilitati | abilitati | abilitati | abilitati |
 | Checkpoint | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca |
 
-### Perché la FFN è larga 512 e dove si trova
-
-Qui `512` indica la larghezza nascosta della **FFN interna al Transformer**,
-non la FC visuale `512 → 64` della ResNet. Ogni item nasce concatenando image
-embedding 64 e text embedding 64, quindi `d_model = 64 + 64 = 128`.
-
-Il fattore `4` non deriva dal numero di item, dai 6 layer o dalle 16 teste. È
-un rapporto di espansione architetturale: il Transformer originale usa
-`d_model=512` e `d_ff=2048`, quindi `d_ff / d_model = 4`. Applicando stessa
-convenzione qui: `d_ff = 4 × 128 = 512`. È default standard scelto perché il
-paper OutfitTransformer non dichiara `d_ff`; non è valore appreso dai dati.
-
-La FFN è seconda sottorete di **ciascuno dei 6 layer encoder**, dopo
-self-attention. Opera separatamente su ogni token, incluso `OUTFIT`:
-
-```text
-image 64 + text 64 → token 128
-                       ↓
-        self-attention tra tutti i token
-                       ↓
-Linear(128, 512) → ReLU → Dropout → Linear(512, 128)
-                       ↓
-              layer encoder successivo
-```
-
-Ogni layer possiede pesi FFN distinti. Uscita torna a 128 per permettere
-connessione residua con input del sottoblocco. In post-norm la LayerNorm segue
-sottoblocco e residuo; nello stage `06_pre_norm` la LayerNorm li precede, ma
-posizione e dimensioni della FFN non cambiano.
-
-Gli stage 1–3 misurano la variabilità dovuta al seed. Gli stage 4–9 cambiano
-un solo parametro rispetto allo stage 1. `--epochs` permette di sostituire le
-30 epoche per tutta la serie.
-
-Anteprima dei comandi:
-
-```powershell
-python -m training.run_trianing_series.run_paper_end_to_end_series --dry-run
-```
-
-Esecuzione completa o di un sottoinsieme:
-
-```powershell
-python -m training.run_trianing_series.run_paper_end_to_end_series
-
-python -m training.run_trianing_series.run_paper_end_to_end_series `
-  --stages 1 2 3 6
-```
-
-Gli artefatti finiscono in
-`checkpoints/cp_paper_end_to_end_series/<nome-stage>/`. Per evitare di
-sovrascrivere risultati, uno stage con checkpoint già presenti viene rifiutato.
+Early stopping è il meccanismo che controlla validation AUC e può terminare la
+run prima delle 30 epoche massime. Patience è una sua impostazione: indica
+quante epoche consecutive senza miglioramento sufficiente vengono tollerate.
+`min_delta=1e-4` richiede un aumento AUC superiore a `0.0001` per azzerare il
+conteggio. Un miglioramento uguale o inferiore viene trattato come plateau.
 
 ## Avvio della serie
 
@@ -311,7 +266,7 @@ python -m training.cp.train_cp `
   --image-fine-tune-mode fc_only `
   --checkpoint checkpoints\cp_training_series\02_fc_only_base\best.pt `
   --checkpoint-dir checkpoints\cp_training_series\02_fc_only_base\epochs `
-  --early-stopping-patience 3 `
+  --early-stopping-patience 5 `
   --early-stopping-min-delta 0.0001
 ```
 

@@ -111,6 +111,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=50)
+    parser.add_argument("--early-stopping-patience", type=int, default=5)
+    parser.add_argument("--early-stopping-min-delta", type=float, default=1e-4)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--device", default=None)
     parser.add_argument("--cache-dir", type=Path, default=None)
@@ -198,6 +200,10 @@ def _build_stage_command(
         str(stage.seed),
         "--best-metric",
         "val_auc",
+        "--early-stopping-patience",
+        str(args.early_stopping_patience),
+        "--early-stopping-min-delta",
+        str(args.early_stopping_min_delta),
         "--image-fine-tune-mode",
         "full",
         "--text-model",
@@ -246,6 +252,10 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--epochs must be positive")
     if args.batch_size <= 0:
         raise ValueError("--batch-size must be positive")
+    if args.early_stopping_patience <= 0:
+        raise ValueError("--early-stopping-patience must be positive")
+    if args.early_stopping_min_delta < 0.0:
+        raise ValueError("--early-stopping-min-delta must be non-negative")
     if args.workers < 0:
         raise ValueError("--workers must be non-negative")
     if args.log_interval < 0:
