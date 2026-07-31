@@ -286,12 +286,46 @@ python -m training.cp.train_cp --image-fine-tune-mode fc_and_layer4
 python -m training.cp.train_cp --image-fine-tune-mode full
 ```
 
+Il Transformer usa i default standard del progetto: `dropout=0.1`, post-norm
+(`norm_first=False`) e FFN `128 → 512 → 128`. `d_model` vale 128 perché un item
+concatena image embedding 64 e text embedding 64. Il fattore 4 viene dal
+rapporto di espansione del Transformer originale (`d_ff=2048`, `d_model=512`):
+qui `d_ff = 4 × 128 = 512`. Non deriva da numero di item, layer o teste.
+
+Questa FFN non è la FC visuale ResNet `512 → 64`: è dentro ciascuno dei 6
+`TransformerEncoderLayer`, dopo self-attention, e lavora token per token come
+`Linear(128, 512) → ReLU → Dropout → Linear(512, 128)`. Ogni layer usa pesi FFN
+distinti; ritorno a 128 permette connessione residua con input del sottoblocco.
+
+Un fine-tuning interrotto si riprende con tutto lo stato della run:
+
+```powershell
+python -m training.cp.fine_tune_cp `
+  --resume checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt
+```
+
+Vengono ripristinati modello, optimizer, scheduler, history, early stopping e
+RNG. Senza `--output-dir`, i nuovi artefatti restano nella directory della run.
+`--source-checkpoint` avvia invece una nuova fase e azzera lo stato di training.
+Il gradient clipping è disattivato per default; per abilitarlo usare, per
+esempio, `--max-grad-norm 1.0`.
+
 La sequenza completa paper → FC-only → layer4 fino al plateau → full con LR
 molto basso si avvia con:
 
 ```powershell
 python -m training.run_trianing_series.run_training_series
 ```
+
+Una seconda serie mantiene tutti gli stage end-to-end e varia soltanto
+parametri non dichiarati dal paper, un fattore alla volta:
+
+```powershell
+python -m training.run_trianing_series.run_paper_end_to_end_series --dry-run
+```
+
+La configurazione e i nove stage sono descritti nella
+[guida delle serie CP](training/run_trianing_series/README.md#serie-paper-like-end-to-end).
 
 La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
 
@@ -385,6 +419,7 @@ training/
   run_trianing_series/
     README.md           guida alla serie dei training CP
     run_training_series.py sequenza dei quattro stage di training
+    run_paper_end_to_end_series.py nove run paper-like indipendenti
   cir/
     README.md           training CIR previsto, non ancora implementato
 requirements.txt

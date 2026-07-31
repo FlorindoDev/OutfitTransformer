@@ -38,8 +38,8 @@ best; il progetto usa rispettivamente 30, `0.0` e validation AUC.
 ### Cosa viene aggiornato nel training
 
 Il grafo mostra il percorso del gradiente durante `loss.backward()`. Dopo il
-backward viene applicato il gradient clipping; Adam aggiorna soltanto i
-parametri allenabili che hanno ricevuto un gradiente.
+backward viene applicato il gradient clipping soltanto quando configurato;
+Adam aggiorna i parametri allenabili che hanno ricevuto un gradiente.
 
 ```mermaid
 flowchart TD
@@ -106,13 +106,16 @@ checkpoint nuovo. Learning rate, weight decay e configurazione StepLR salvati
 nel checkpoint prevalgono sugli stessi flag CLI. Cambiare
 `--image-fine-tune-mode` è invece consentito e permette un fine-tuning a fasi.
 
-Quando serve cambiare anche optimizer, learning rate, scheduler, loss o seed,
-usare `python -m training.cp.fine_tune_cp`: carica soltanto i pesi del modello
-e avvia una nuova fase con stato di training pulito. Supporta anche un learning
-rate separato per i blocchi ResNet allenabili.
+`fine_tune_cp --resume` effettua lo stesso ripristino completo per una fase di
+fine-tuning interrotta. In questo caso la configurazione salvata, inclusi
+optimizer, scheduler, loss, seed, dataset, modalità ResNet e numero finale di
+epoche, è autorevole. `fine_tune_cp --source-checkpoint` carica invece soltanto
+i pesi e avvia una nuova fase con stato pulito; è la modalità da usare per
+cambiare gli iperparametri o la politica ResNet.
 
 I checkpoint legacy restano caricabili, ma non possono fornire history, RNG e
-migliore metrica precedenti completi.
+migliore metrica precedenti completi. Per questo non supportano il resume esatto
+del fine-tuning, ma possono ancora essere usati come `--source-checkpoint`.
 
 ### ResNet-18
 
@@ -265,16 +268,14 @@ python -m training.cp.fine_tune_cp `
   --loss bce `
   --image-fine-tune-mode fc_only
 
-# Continua da un checkpoint prodotto da una fase di fine-tuning
+# Riprende esattamente una fase di fine-tuning interrotta
 python -m training.cp.fine_tune_cp `
-  --source-checkpoint checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt `
-  --additional-epochs 5 `
-  --output-dir checkpoints\experiment_01_stage2_continued `
-  --image-fine-tune-mode fc_and_layer4 `
-  --learning-rate 5e-6 `
-  --image-backbone-learning-rate 5e-7 `
-  --best-metric val_auc
+  --resume checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt
 ```
+
+Il resume usa la directory e la configurazione originali. Per abilitare il
+gradient clipping, disattivato per default nelle nuove run, aggiungere per
+esempio `--max-grad-norm 1.0`.
 
 ### Help CLI
 
@@ -282,6 +283,7 @@ python -m training.cp.fine_tune_cp `
 python -m training.cp.train_cp --help
 python -m training.cp.fine_tune_cp --help
 python -m training.run_trianing_series.run_training_series --help
+python -m training.run_trianing_series.run_paper_end_to_end_series --help
 ```
 
 ### Serie completa
@@ -299,3 +301,18 @@ uno stage già preparato. I checkpoint hanno directory
 `01_paper_end_to_end`, `02_fc_only_base`, `03_layer4_plateau` e
 `04_full_low_lr`. Lo stage paper usa 30 epoche per default perché il paper non
 ne dichiara il numero; `--paper-epochs` lo modifica.
+
+### Serie paper-like end-to-end
+
+Per confrontare soltanto parametri non dichiarati dal paper, mantenendo ogni
+run end-to-end:
+
+```powershell
+python -m training.run_trianing_series.run_paper_end_to_end_series --dry-run
+python -m training.run_trianing_series.run_paper_end_to_end_series `
+  --stages 1 2 3 6
+```
+
+Lo stage 1 usa default standard; gli altri cambiano un solo fattore tra seed,
+dropout, pre/post-norm, weight decay, clipping e Focal alpha. Dettagli e tabella
+comparativa nella [guida delle serie CP](run_trianing_series/README.md#serie-paper-like-end-to-end).

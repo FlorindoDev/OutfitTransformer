@@ -20,7 +20,7 @@ Prediction (CP)**. Il modello riceve un outfit e predice se è compatibile
 - [Grafici](#grafici)
 - [Checkpoint e resume](#checkpoint-e-resume)
 - [Early stopping](#early-stopping)
-- [Nuova fase di fine-tuning](#nuova-fase-di-fine-tuning)
+- [fine-tuning](#fine-tuning)
 - [Flag CLI fine-tuning](#flag-cli-fine-tuning)
 - [Flag CLI training normale](#flag-cli-training-normale)
 - [File e flusso dei moduli](#file-e-flusso-dei-moduli)
@@ -53,6 +53,7 @@ Il comando di training predefinito è riportato nella sezione
 - validation ROC AUC per scegliere il checkpoint migliore, configurabile con
   `--best-metric`;
 - early stopping disabilitato finché non viene richiesto via CLI;
+- gradient clipping disabilitato finché non viene richiesto via CLI;
 - ROC AUC calcolata su train e validation a ogni epoca;
 - quattro grafici cumulativi salvati dopo ogni epoca.
 
@@ -60,13 +61,14 @@ Batch size, ResNet-18 preaddestrata, fine-tuning dell'image encoder, Adam,
 learning rate e scheduler sono dichiarati nel paper. Il paper non specifica
 numero di epoche, weight decay, criterio del best checkpoint, seed, gradient
 clipping né iperparametri della focal loss: i default di progetto sono
-rispettivamente 30, `0.0`, `val_auc`, 42, `1.0`, alpha `0.5` e gamma `1.0`.
+rispettivamente 30, `0.0`, `val_auc`, 42, clipping disabilitato, alpha `0.5` e
+gamma `2.0`.
 
 ## Cosa viene aggiornato nel training
 
 Il grafo mostra il percorso del gradiente durante `loss.backward()`. Dopo il
-backward viene applicato il gradient clipping; Adam aggiorna soltanto i
-parametri allenabili che hanno ricevuto un gradiente.
+backward viene applicato il gradient clipping soltanto quando configurato;
+Adam aggiorna i parametri allenabili che hanno ricevuto un gradiente.
 
 ```mermaid
 flowchart TD
@@ -214,31 +216,42 @@ file finale solo dopo che la scrittura è terminata.
 
 I comandi di resume sono raccolti nella sezione [Esempi](#esempi).
 
-Con i nuovi checkpoint, history, migliore metrica, optimizer, scheduler e RNG
-vengono ripristinati. I grafici delle epoche successive includono anche le
-epoche precedenti. A parità di ambiente e input, una run interrotta può quindi
-continuare con la stessa sequenza di shuffle e dropout.
+Con i nuovi checkpoint, `train_cp --resume` e `fine_tune_cp --resume`
+ripristinano history, migliore metrica, optimizer, scheduler e RNG. I grafici
+delle epoche successive includono anche le epoche precedenti. A parità di
+ambiente e input, una run interrotta può continuare con la stessa sequenza di
+shuffle e dropout.
 
-Nel resume, stato optimizer e scheduler del checkpoint è autorevole. Eventuali
+Nel resume di `train_cp`, stato optimizer e scheduler del checkpoint è
+autorevole. Eventuali
 valori CLI diversi per learning rate, weight decay, `lr-step-size` e
 `lr-gamma` non vengono applicati: il log mostra il valore ignorato e quello
 effettivo. Batch size, loss e gradient clipping usano invece i valori della
 nuova invocazione e ogni differenza dalla configurazione salvata viene
 segnalata.
 
-I checkpoint legacy restano caricabili. Non contengono però la storia completa
-né il migliore storico né la modalità ResNet: il resume può recuperare soltanto
-le metriche dell'ultima epoca salvata, usa quella loss come riferimento iniziale
-e applica la modalità scelta nella nuova CLI. Il log segnala
-`history=legacy_partial`.
+Nel resume di `fine_tune_cp`, l'intera configurazione salvata è autorevole:
+dataset, batch size, modello, optimizer, learning rate dei gruppi, scheduler,
+loss, clipping, seed, best metric, early stopping e numero finale di epoche.
+Restano configurabili soltanto opzioni operative come device, worker, cache,
+log, grafici e directory di output.
 
-I checkpoint schema 2 vengono interpretati come selezionati tramite `val_loss`.
+I checkpoint legacy restano caricabili come sorgente di una nuova fase e
+`train_cp` ne consente un resume limitato. Non contengono però la storia
+completa né il migliore storico né la modalità ResNet: `train_cp` può recuperare
+soltanto le metriche dell'ultima epoca salvata, usa quella loss come riferimento
+iniziale e applica la modalità scelta nella nuova CLI. Il log segnala
+`history=legacy_partial`. `fine_tune_cp --resume` li rifiuta perché non potrebbe
+garantire un ripristino esatto.
+
+
 Se `--best-metric` cambia durante il resume, il migliore storico viene
 ricalcolato dalla `training_history`; con un checkpoint legacy privo di history
 completa il log segnala che le epoche precedenti non sono ricostruibili.
 
-Cambiare `--image-fine-tune-mode` durante un resume è consentito per supportare
-strategie a fasi, ma viene segnalato nel log.
+Cambiare `--image-fine-tune-mode` durante un resume di `train_cp` è consentito
+per supportare strategie a fasi, ma viene segnalato nel log. Il resume esatto di
+`fine_tune_cp` mantiene invece la modalità salvata.
 
 ## Early stopping
 
@@ -255,13 +268,18 @@ azzerare la patience. Senza `--early-stopping-patience` la funzione resta
 disabilitata. Checkpoint, grafici e callback dell'ultima epoca vengono
 completati prima dell'interruzione.
 
-Nel resume esatto di `train_cp`, lo stato viene ricostruito dalla history del
-checkpoint. In `fine_tune_cp` la nuova fase parte invece con history e patience
-nuove.
+Nel resume esatto di `train_cp` e `fine_tune_cp`, lo stato viene ricostruito
+dalla history del checkpoint. Una nuova fase `fine_tune_cp --source-checkpoint`
+parte invece con history e patience nuove.
 
-## Nuova fase di fine-tuning
+## fine-tuning
 
-`fine_tune_cp` differisce dal resume esatto di `train_cp`:
+`fine_tune_cp` offre due modalità mutuamente esclusive:
+
+- `--source-checkpoint` apre una nuova fase;
+- `--resume` continua esattamente una fase di fine-tuning interrotta.
+
+Con `--source-checkpoint` la CLI:
 
 - carica dal checkpoint soltanto i pesi del modello e il numero di epoca;
 - crea optimizer, scheduler, loss, history, RNG e migliore metrica nuovi;
@@ -288,36 +306,37 @@ python -m training.cp.fine_tune_cp `
   --best-metric val_auc
 ```
 
-Per riprendere il fine-tuning da una sua epoca, usare quel checkpoint come
-nuova sorgente e una directory di output nuova:
+Per riprendere il fine-tuning da una sua epoca:
 
 ```powershell
 python -m training.cp.fine_tune_cp `
-  --source-checkpoint checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt `
-  --additional-epochs 5 `
-  --output-dir checkpoints\experiment_01_stage2_continued `
-  --image-fine-tune-mode fc_and_layer4 `
-  --learning-rate 5e-6 `
-  --image-backbone-learning-rate 5e-7 `
-  --optimizer adamw `
-  --scheduler cosine `
-  --best-metric val_auc
+  --resume checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt
 ```
 
-La numerazione continua dall'epoca sorgente, ma questa operazione apre una
-nuova fase: optimizer, scheduler, history, RNG e best precedente non vengono
-ripristinati. I relativi flag definiscono interamente il nuovo stato.
+Il resume ripristina modello, optimizer, scheduler, history, migliore metrica,
+patience e RNG. Senza `--output-dir`, riconosce la directory della run dalla
+cartella `epochs` e continua a scrivere lì. Mantiene anche l'epoca finale
+originariamente pianificata: `--additional-epochs` non apre un nuovo ciclo e
+non estende una run già completata. Per estenderla o cambiare iperparametri,
+avviare una nuova fase con `--source-checkpoint`.
 
-Sono disponibili optimizer `adam` e `adamw`, scheduler `none`, `step` e
-`cosine`, loss `focal` e `bce`, gradient clipping configurabile, override di
+Il resume esatto richiede un checkpoint moderno con `run_config`, history e
+RNG completi. Un checkpoint legacy può ancora iniziare una nuova fase.
+
+Nelle nuove fasi sono disponibili optimizer `adam` e `adamw`, scheduler `none`,
+`step` e `cosine`, loss `focal` e `bce`, gradient clipping configurabile,
+override di
 dropout, batch size, seed, dataset e politica ResNet. `--focal-alpha none` e
-`--max-grad-norm none` disabilitano rispettivamente alpha e clipping.
+`--max-grad-norm none` disabilitano rispettivamente alpha e clipping. Il
+clipping è già disabilitato per default; un valore come
+`--max-grad-norm 1.0` lo abilita.
 
 Cambiare dropout è sicuro perché non modifica le shape dei pesi. Dimensioni
 embedding, numero di layer Transformer e numero di teste vengono invece
 ereditati dal checkpoint: cambiarli renderebbe lo state dict incompatibile.
-Per evitare sovrascritture accidentali, la CLI rifiuta una `--output-dir` che
-contiene già file `.pt`.
+Per evitare sovrascritture accidentali, una nuova fase rifiuta una
+`--output-dir` che contiene già file `.pt`; il resume può invece riutilizzare
+la directory originale.
 
 
 ## Flag CLI fine-tuning
@@ -329,9 +348,10 @@ python -m training.cp.fine_tune_cp --help
 | Flag | Default | Funzione |
 |---|---:|---|
 | `-h`, `--help` | — | mostra help completo |
-| `--source-checkpoint` | obbligatorio | checkpoint CP da cui caricare pesi e numero epoca |
-| `--additional-epochs` | `10` | numero di nuove epoche da eseguire |
-| `--output-dir` | `checkpoints/cp_fine_tune` | directory per `best.pt`, checkpoint epoca e grafici |
+| `--source-checkpoint` | alternativo a `--resume` | checkpoint CP da cui iniziare una nuova fase |
+| `--resume` | alternativo a `--source-checkpoint` | checkpoint di fine-tuning da riprendere con stato completo |
+| `--additional-epochs` | `10` nuova fase; checkpoint nel resume | numero di epoche della fase; non estende un resume |
+| `--output-dir` | `checkpoints/cp_fine_tune` nuova fase; directory originale nel resume | directory per `best.pt`, checkpoint epoca e grafici |
 | `--variant` | checkpoint, altrimenti `disjoint` | variante Polyvore: `disjoint` o `nondisjoint` |
 | `--batch-size` | `50` | outfit per batch |
 | `--learning-rate` | `1e-5` | LR per FC visuale, proiezione testo, token, Transformer e classificatore |
@@ -351,7 +371,7 @@ python -m training.cp.fine_tune_cp --help
 | `--best-metric` | `val_auc` | selezione best: `val_loss`, `val_accuracy` o `val_auc` |
 | `--early-stopping-patience` | disabilitato | epoche senza miglioramento prima dello stop |
 | `--early-stopping-min-delta` | `0.0` | miglioramento minimo; richiede patience |
-| `--max-grad-norm` | `1.0` | gradient clipping globale; `none` lo disabilita |
+| `--max-grad-norm` | disabilitato | gradient clipping globale; un numero positivo lo abilita |
 | `--image-fine-tune-mode` | `fc_and_layer4` | politica ResNet: `fc_only`, `fc_and_layer4` o `full` |
 | `--dropout` | valore del checkpoint | override dropout senza cambiare shape dei pesi |
 | `--text-model` | valore del checkpoint | override percorso SentenceBERT; architettura deve restare compatibile |
@@ -360,7 +380,11 @@ python -m training.cp.fine_tune_cp --help
 | `--device` | automatico | CUDA quando disponibile, altrimenti CPU |
 | `--cache-dir` | cache HF | cache dataset e Hub |
 | `--log-interval` | `50` | intervallo log batch; `0` disabilita |
-| `--no-plots` | falso | disabilita grafici della nuova fase |
+| `--no-plots` | falso | disabilita grafici della fase |
+
+I default degli iperparametri nella tabella descrivono una nuova fase. Con
+`--resume`, i valori salvati nel checkpoint sono autorevoli anche se vengono
+passati flag diversi.
 
 ## Flag CLI training normale
 
@@ -377,8 +401,11 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--lr-step-size` | `10` | periodo StepLR |
 | `--lr-gamma` | `0.5` | fattore StepLR |
 | `--focal-alpha` | `0.5` | alpha Focal Loss |
-| `--focal-gamma` | `1.0` | gamma Focal Loss |
-| `--max-grad-norm` | `1.0` | gradient clipping globale |
+| `--focal-gamma` | `2.0` | gamma Focal Loss |
+| `--dropout` | `0.1` | dropout del Transformer |
+| `--pre-norm` | disabilitato | LayerNorm prima dei blocchi attention/FFN |
+| `--post-norm` | abilitato | LayerNorm dopo i collegamenti residui |
+| `--max-grad-norm` | disabilitato | gradient clipping globale; un numero positivo lo abilita |
 | `--workers` | `0` | worker DataLoader |
 | `--seed` | `42` | seed Python, NumPy e PyTorch CPU/CUDA |
 | `--log-interval` | `50` | intervallo log batch; `0` disabilita |
@@ -394,7 +421,7 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--no-plots` | falso | disabilita grafici |
 | `--text-model` | `all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
 | `--no-pretrained-image` | falso | niente inizializzazione ImageNet |
-| `--image-fine-tune-mode` | `fc_only` | `fc_only`, `fc_and_layer4` o `full` |
+| `--image-fine-tune-mode` | `full` | `fc_only`, `fc_and_layer4` o `full` |
 
 
 ## File e flusso dei moduli
@@ -444,7 +471,7 @@ Il flusso completo di ogni epoca è:
 | `types.py` | `CPEpochMetrics`, `CPTrainingHistory`, progress batch e informazioni checkpoint | Per aggiungere nuove metriche o dati condivisi, senza introdurre I/O |
 | `checkpointing.py` | Checkpoint atomici, schema, best loss, config, RNG e compatibilità legacy | Per cambiare formato o politica di salvataggio e resume |
 | `fine_tuning.py` | Lettura pesi sorgente e optimizer con gruppi LR distinti | Per cambiare semantica della nuova fase o gruppi di parametri |
-| `fine_tune_cp.py` | CLI della nuova fase di fine-tuning | Per aggiungere flag specifici al fine-tuning |
+| `fine_tune_cp.py` | CLI per nuova fase e resume esatto del fine-tuning | Per aggiungere flag specifici al fine-tuning |
 | `early_stopping.py` | Stato puro di patience, `min_delta` e criterio di arresto | Per cambiare la politica di early stopping |
 | `plotting.py` | Backend `Agg` e generazione dei quattro PNG cumulativi | Per cambiare stile, nomi o contenuto dei grafici |
 | `__init__.py` | Export pubblici del package `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
@@ -499,6 +526,11 @@ python -m training.cp.train_cp `
 # Fine-tuning completo della ResNet
 python -m training.cp.train_cp `
   --image-fine-tune-mode full
+
+# Cambia dropout e usa pre-norm
+python -m training.cp.train_cp `
+  --dropout 0.2 `
+  --pre-norm
 
 # Sceglie il checkpoint migliore tramite validation AUC
 python -m training.cp.train_cp `
@@ -590,15 +622,9 @@ python -m training.cp.fine_tune_cp `
   --loss bce `
   --image-fine-tune-mode fc_only
 
-# Continua da un checkpoint prodotto da una fase di fine-tuning
+# Riprende esattamente una fase di fine-tuning interrotta
 python -m training.cp.fine_tune_cp `
-  --source-checkpoint checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt `
-  --additional-epochs 5 `
-  --output-dir checkpoints\experiment_01_stage2_continued `
-  --image-fine-tune-mode fc_and_layer4 `
-  --learning-rate 5e-6 `
-  --image-backbone-learning-rate 5e-7 `
-  --best-metric val_auc
+  --resume checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt
 ```
 
 ### Help CLI
