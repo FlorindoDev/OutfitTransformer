@@ -463,19 +463,19 @@ Il flusso completo di ogni epoca è:
 
 ### Responsabilità di ogni file
 
-| File | Cosa contiene | Quando modificarlo |
+| File | A cosa serve | Quando modificarlo |
 |---|---|---|
-| `train_cp.py` | Parser CLI, creazione loader, modello, loss, Adam, StepLR, resume e collegamento callback | Per aggiungere flag, cambiare default o cambiare la composizione della run |
-| `trainer.py` | `CPTrainer`, `CPTrainerConfig`, callback e API breve `train_cp()` | Per cambiare l'ordine delle fasi o il comportamento generale tra le epoche |
-| `epoch.py` | `run_cp_epoch()` e `CPEpochAccumulator`; forward, loss, backward, clipping, optimizer e metriche | Per cambiare ciò che accade dentro un batch o dentro una singola fase |
-| `types.py` | `CPEpochMetrics`, `CPTrainingHistory`, progress batch e informazioni checkpoint | Per aggiungere nuove metriche o dati condivisi, senza introdurre I/O |
-| `checkpointing.py` | Checkpoint atomici, schema, best loss, config, RNG e compatibilità legacy | Per cambiare formato o politica di salvataggio e resume |
-| `fine_tuning.py` | Lettura pesi sorgente e optimizer con gruppi LR distinti | Per cambiare semantica della nuova fase o gruppi di parametri |
-| `fine_tune_cp.py` | CLI per nuova fase e resume esatto del fine-tuning | Per aggiungere flag specifici al fine-tuning |
-| `early_stopping.py` | Stato puro di patience, `min_delta` e criterio di arresto | Per cambiare la politica di early stopping |
-| `plotting.py` | Backend `Agg` e generazione dei quattro PNG cumulativi | Per cambiare stile, nomi o contenuto dei grafici |
-| `__init__.py` | Export pubblici del package `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
-| `README.md` | Documentazione operativa del training CP | Quando cambiano flusso, flag o formato degli artefatti |
+| `train_cp.py` | Avvia il training CP: interpreta la CLI, costruisce dipendenze e gestisce il resume | Per aggiungere flag, cambiare default o cambiare la composizione della run |
+| `trainer.py` | Coordina ciclo delle epoche, train, validation, checkpoint, grafici e callback | Per cambiare l'ordine delle fasi o il comportamento generale tra le epoche |
+| `epoch.py` | Esegue una fase batch per batch, calcolando loss, gradienti e metriche | Per cambiare ciò che accade dentro un batch o dentro una singola fase |
+| `types.py` | Definisce strutture dati condivise per metriche, history e avanzamento | Per aggiungere nuove metriche o dati condivisi, senza introdurre I/O |
+| `checkpointing.py` | Salva e ripristina stato completo della run in modo atomico e compatibile | Per cambiare formato o politica di salvataggio e resume |
+| `fine_tuning.py` | Carica pesi sorgente e crea gruppi optimizer con learning rate distinti | Per cambiare semantica della nuova fase o gruppi di parametri |
+| `fine_tune_cp.py` | Avvia una nuova fase o riprende esattamente un fine-tuning interrotto | Per aggiungere flag specifici al fine-tuning |
+| `early_stopping.py` | Decide quando fermare il training in base ai miglioramenti di validation | Per cambiare la politica di early stopping |
+| `plotting.py` | Trasforma la history nei quattro grafici cumulativi della run | Per cambiare stile, nomi o contenuto dei grafici |
+| `__init__.py` | Espone i componenti che formano l'API pubblica di `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
+| `README.md` | Spiega uso, configurazione, flusso e artefatti del training CP | Quando cambiano flusso, flag o formato degli artefatti |
 
 ### Come sostituire il runner senza perdere gli altri componenti
 
