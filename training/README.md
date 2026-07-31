@@ -3,6 +3,7 @@
 Il package separa il training per task:
 
 - [Compatibility Prediction](cp/README.md): implementato;
+- [Serie di training CP](run_trianing_series/README.md): runner dei quattro esperimenti;
 - [Complementary Item Retrieval](cir/README.md): non ancora implementato.
 
 ## Indice
@@ -280,7 +281,7 @@ python -m training.cp.fine_tune_cp `
 ```powershell
 python -m training.cp.train_cp --help
 python -m training.cp.fine_tune_cp --help
-python -m training.cp.run_training_series --help
+python -m training.run_trianing_series.run_training_series --help
 ```
 
 ### Serie completa
@@ -290,7 +291,7 @@ FC-only, `fc_and_layer4` fino al plateau AUC e infine full per poche epoche con
 LR backbone molto basso:
 
 ```powershell
-python -m training.cp.run_training_series
+python -m training.run_trianing_series.run_training_series
 ```
 
 Usare `--dry-run` per vedere i comandi e `--start-stage N` per ripartire da

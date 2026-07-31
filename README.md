@@ -290,7 +290,7 @@ La sequenza completa paper → FC-only → layer4 fino al plateau → full con L
 molto basso si avvia con:
 
 ```powershell
-python -m training.cp.run_training_series
+python -m training.run_trianing_series.run_training_series
 ```
 
 La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
@@ -382,6 +382,8 @@ training/
     types.py            history e tipi del training
     checkpointing.py    checkpoint atomici e resume
     plotting.py         grafici cumulativi per epoca
+  run_trianing_series/
+    README.md           guida alla serie dei training CP
     run_training_series.py sequenza dei quattro stage di training
   cir/
     README.md           training CIR previsto, non ancora implementato

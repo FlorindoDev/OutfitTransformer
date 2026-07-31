@@ -1,3 +1,5 @@
+"""Run the CP training experiment series."""
+
 from __future__ import annotations
 
 import argparse
