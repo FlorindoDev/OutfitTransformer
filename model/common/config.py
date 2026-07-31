@@ -18,6 +18,7 @@ class OutfitEncoderConfig:
     attention_heads: int = 16
     feedforward_dim: int = 512
     dropout: float = 0.1
+    norm_first: bool = False
     text_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     pretrained_image_encoder: bool = True
     image_fine_tune_mode: ImageFineTuneMode = "fc_only"
@@ -41,3 +42,5 @@ class OutfitEncoderConfig:
             raise ValueError("feedforward dimension must be positive")
         if not 0.0 <= self.dropout < 1.0:
             raise ValueError("dropout must be in [0, 1)")
+        if not isinstance(self.norm_first, bool):
+            raise ValueError("norm_first must be a boolean")

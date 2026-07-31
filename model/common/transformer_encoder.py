@@ -12,6 +12,7 @@ class OutfitContextEncoder(nn.Module):
         attention_heads: int = 16,
         feedforward_dim: int = 512,
         dropout: float = 0.1,
+        norm_first: bool = False,
     ) -> None:
         super().__init__()
         encoder_layer = nn.TransformerEncoderLayer(
@@ -21,7 +22,7 @@ class OutfitContextEncoder(nn.Module):
             dropout=dropout,
             activation="relu",
             batch_first=True,
-            norm_first=False,
+            norm_first=norm_first,
         )
         self.encoder = nn.TransformerEncoder(
             encoder_layer=encoder_layer,

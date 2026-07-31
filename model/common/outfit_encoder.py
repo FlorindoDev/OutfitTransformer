@@ -45,6 +45,7 @@ class OutfitEncoder(nn.Module):
             attention_heads=self.config.attention_heads,
             feedforward_dim=self.config.feedforward_dim,
             dropout=self.config.dropout,
+            norm_first=self.config.norm_first,
         )
 
     def forward(

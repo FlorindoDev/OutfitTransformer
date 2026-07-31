@@ -53,8 +53,33 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lr-step-size", type=int, default=10)
     parser.add_argument("--lr-gamma", type=float, default=0.5)
     parser.add_argument("--focal-alpha", type=float, default=0.5)
-    parser.add_argument("--focal-gamma", type=float, default=1.0)
-    parser.add_argument("--max-grad-norm", type=float, default=1.0)
+    parser.add_argument("--focal-gamma", type=float, default=2.0)
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.1,
+        help="Transformer dropout probability",
+    )
+    normalization_group = parser.add_mutually_exclusive_group()
+    normalization_group.add_argument(
+        "--pre-norm",
+        dest="norm_first",
+        action="store_true",
+        help="apply LayerNorm before attention and feed-forward blocks",
+    )
+    normalization_group.add_argument(
+        "--post-norm",
+        dest="norm_first",
+        action="store_false",
+        help="apply LayerNorm after residual connections (default)",
+    )
+    parser.set_defaults(norm_first=False)
+    parser.add_argument(
+        "--max-grad-norm",
+        type=_optional_float,
+        default=None,
+        help="gradient clipping norm; disabled by default, or pass 'none'",
+    )
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -148,6 +173,8 @@ def main() -> None:
     _print_data_summary(train_loader, validation_loader)
 
     model_config = OutfitEncoderConfig(
+        dropout=args.dropout,
+        norm_first=args.norm_first,
         text_model_name=args.text_model,
         pretrained_image_encoder=not args.no_pretrained_image,
         image_fine_tune_mode=args.image_fine_tune_mode,
@@ -224,6 +251,15 @@ def main() -> None:
         on_epoch_end=partial(_print_epoch, optimizer=optimizer),
         on_early_stopping=_print_early_stopping,
     )
+
+
+def _optional_float(value: str) -> float | None:
+    if value.lower() == "none":
+        return None
+    try:
+        return float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("expected a number or 'none'") from error
 
 
 def _create_loaders(
@@ -304,8 +340,10 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--focal-alpha must be in [0, 1]")
     if args.focal_gamma < 0.0:
         raise ValueError("--focal-gamma must be non-negative")
-    if args.max_grad_norm <= 0.0:
-        raise ValueError("--max-grad-norm must be positive")
+    if not 0.0 <= args.dropout < 1.0:
+        raise ValueError("--dropout must be in [0, 1)")
+    if args.max_grad_norm is not None and args.max_grad_norm <= 0.0:
+        raise ValueError("--max-grad-norm must be positive or none")
     if args.workers < 0:
         raise ValueError("--workers must be non-negative")
     if args.log_interval < 0:
@@ -362,6 +400,8 @@ def _print_startup(args: argparse.Namespace) -> None:
         f"{not args.no_pretrained_image} "
         f"resnet_fine_tune_mode={args.image_fine_tune_mode}"
     )
+    normalization = "pre_norm" if args.norm_first else "post_norm"
+    print(f"transformer_dropout={args.dropout} normalization={normalization}")
     print(f"checkpoint_best={args.checkpoint.resolve()}")
     print(f"checkpoint_best_metric={args.best_metric}")
     print(f"checkpoint_epochs={args.checkpoint_dir.resolve()}")
@@ -545,6 +585,17 @@ def _validate_and_warn_model_configuration(
             f"warning=ResNet fine-tune mode changed from {previous_mode} "
             f"to {args.image_fine_tune_mode}"
         )
+    comparisons = (
+        ("dropout", args.dropout),
+        ("norm_first", args.norm_first),
+    )
+    for name, current_value in comparisons:
+        previous_value = model_config.get(name)
+        if previous_value is not None and previous_value != current_value:
+            print(
+                f"warning={name} changed from {previous_value} "
+                f"to {current_value}"
+            )
 
 
 def _warn_loss_and_data_configuration(
@@ -654,7 +705,13 @@ def _effective_model_config(
         return current_config
     effective_config = dict(current_config)
     effective_config.update(previous_config)
-    effective_config["image_fine_tune_mode"] = model_config.image_fine_tune_mode
+    effective_config.update(
+        {
+            "image_fine_tune_mode": model_config.image_fine_tune_mode,
+            "dropout": model_config.dropout,
+            "norm_first": model_config.norm_first,
+        }
+    )
     return effective_config
 
 
