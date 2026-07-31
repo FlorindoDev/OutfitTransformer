@@ -149,21 +149,17 @@ contestualizza gli item embedding e il task token tramite self-attention.
 La configurazione predefinita usa:
 
 ```text
-dimensione embedding: 128
-layer:                 6
-teste di attenzione:   16
+dimensione embedding:   128
+layer:                  6
+teste di attenzione:    16
 dimensione FFN:         512
 dropout:                0.1
 normalizzazione:        post-norm (norm_first=False)
 positional encoding:   assente
 ```
 
-La FFN è la rete token-wise interna a ogni layer Transformer, dopo la
-self-attention: `Linear(128, 512) → ReLU → Dropout → Linear(512, 128)`. Non è
-la FC `512 → 64` della ResNet e non è il classificatore CP. Con `d_model=128`,
-512 è la larghezza standard `4 × d_model`; viene istanziata in ciascuno dei 6
-layer encoder. Una FFN da 2048 sarebbe `16 × d_model` e, per questa architettura,
-molto più costosa senza essere il default coerente.
+La FFN è la rete interna a ogni layer Transformer, dopo la
+self-attention: `Linear(128, 512) → ReLU → Dropout → Linear(512, 128)`
 
 `dropout=0.1` è il valore Transformer comunemente usato. La post-norm applica
 LayerNorm dopo il collegamento residuo ed è il comportamento dell'architettura

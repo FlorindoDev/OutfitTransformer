@@ -99,7 +99,7 @@ outfit ed è passata alla testa di classificazione.
 | Positional embedding | Nessuno |
 | Mascheramento | Solo padding, non causale |
 
-La dimensione FFN 512 è `4 × d_model`, rapporto standard per un embedding da
+La dimensione FFN 512, rapporto standard per un embedding da
 128. In ognuno dei 6 layer opera su ciascun token come
 `128 → 512 → ReLU → dropout → 128`; non coincide con la FC `512 → 64` della
 ResNet né con la testa di classificazione. `Dropout=0.1` e post-norm
