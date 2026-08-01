@@ -331,13 +331,11 @@ La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
 
 ```powershell
 python -m evaluate.cp `
-  --variant disjoint `
-  --checkpoint checkpoints\cp_best.pt `
-  --focal-gamma 1.0
+  --checkpoint checkpoints\cp_best.pt
 ```
 
-Il comando non aggiorna i pesi e stampa test loss, accuracy, ROC AUC e numero
-di esempi.
+Il comando riprende configurazione e pesi dal checkpoint, non aggiorna il
+modello e stampa test loss, accuracy, ROC AUC e numero di esempi.
 Configurazione del loader e opzioni di training sono descritte nei
 [dati Polyvore](data/README.md#come-prepariamo-polyvore-per-compatibility-prediction)
 e nella [guida completa al training CP](training/cp/README.md).
