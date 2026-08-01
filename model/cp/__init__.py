@@ -1,4 +1,8 @@
-from .checkpoint import load_cp_checkpoint
+from .checkpoint import (
+    load_cp_checkpoint,
+    load_cp_checkpoint_weights,
+    read_cp_checkpoint,
+)
 from .compatibility import CompatibilityOutput, CompatibilityPredictor
 from .focal_loss import BinaryFocalLoss
 
@@ -7,4 +11,6 @@ __all__ = [
     "CompatibilityOutput",
     "CompatibilityPredictor",
     "load_cp_checkpoint",
+    "load_cp_checkpoint_weights",
+    "read_cp_checkpoint",
 ]

@@ -11,6 +11,8 @@ from .cp import (
     CompatibilityOutput,
     CompatibilityPredictor,
     load_cp_checkpoint,
+    load_cp_checkpoint_weights,
+    read_cp_checkpoint,
 )
 
 __all__ = [
@@ -26,4 +28,6 @@ __all__ = [
     "RetrievalOutput",
     "SetWiseRankingLoss",
     "load_cp_checkpoint",
+    "load_cp_checkpoint_weights",
+    "read_cp_checkpoint",
 ]
