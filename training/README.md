@@ -8,12 +8,130 @@ Il package separa il training per task:
 
 ## Indice
 
+- [Parametri e iperparametri comuni](#parametri-e-iperparametri-comuni)
+  - [Parametri della rete](#parametri-della-rete)
+  - [Iperparametri del training normale](#iperparametri-del-training-normale)
+  - [Iperparametri del fine-tuning](#iperparametri-del-fine-tuning)
 - [Compatibility Prediction](#compatibility-prediction)
   - [Cosa viene aggiornato nel training](#cosa-viene-aggiornato-nel-training)
   - [Checkpoint e resume](#checkpoint-e-resume)
   - [ResNet-18](#resnet-18)
 - [Complementary Item Retrieval](#complementary-item-retrieval)
 - [Esempi](#esempi)
+
+## Parametri e iperparametri comuni
+
+### Parametri della rete
+
+| Nome del parametro | Valore | A cosa serve |
+|---|---:|---|
+| Input immagine | `3 × 224 × 224` | resize e normalizzazione ImageNet |
+| Encoder immagine | ResNet-18 | pesi iniziali ImageNet |
+| Feature ResNet | `512` | output backbone prima della FC visuale |
+| FC visuale | `Linear(512, 64)` | produce image embedding |
+| Image embedding | `64` | metà visuale dell'item embedding |
+| Encoder testo | `sentence-transformers/all-MiniLM-L6-v2` | SentenceBERT congelato |
+| Feature SentenceBERT | `384` | output del backbone testuale |
+| FC testuale | `Linear(384, 64)` | unica parte testuale allenabile |
+| Text embedding | `64` | metà testuale dell'item embedding |
+| Fusione item | concatenazione | image `64` + text `64` |
+| Item embedding / `d_model` | `128` | divisibile per il numero di teste |
+| Task token | `1 × 128` | `OUTFIT` per CP, `TARGET` per CIR |
+| Layer Transformer encoder | `6` | pesi distinti per layer |
+| Teste attention | `16` | self-attention multi-head |
+| Dimensione per testa | `8` | `128 / 16` |
+| FFN Transformer | `128 → 512 → 128` | espansione interna per token |
+| Attivazione Transformer | ReLU | attivazione FFN |
+| Dropout Transformer | `0.1` | attention, FFN e connessioni residue |
+| Normalizzazione | post-norm | `norm_first=False` |
+| Positional encoding | assente | outfit trattato come insieme |
+| Padding mask | booleana | esclude item padded dall'attention |
+| CP TaskMLP | `128 → 128 → 1` | ReLU tra i due layer lineari |
+| Output CP | logit + sigmoid | logit per loss, score per inferenza |
+| ResNet allenabile nel training normale | `full` | intera ResNet e BatchNorm |
+| ResNet allenabile nel fine-tuning | `fc_and_layer4` | default nuova fase |
+| SentenceBERT allenabile | no | sempre in evaluation e senza gradienti |
+
+### Iperparametri del training normale
+
+| Nome dell'iperparametro | Valore | A cosa serve |
+|---|---:|---|
+| Variante del dataset | `disjoint` | Seleziona lo split `disjoint` o `nondisjoint` del dataset. |
+| Numero di epoche | `30` | Stabilisce quante volte il modello percorre l'intero training set. |
+| Batch size | `50` | Stabilisce quanti outfit vengono elaborati prima di ogni aggiornamento dei pesi. |
+| Ottimizzatore | Adam | Aggiorna tutti i parametri allenabili usando i gradienti calcolati dalla loss. |
+| Primo momento di Adam (β₁) | `0.9` | Controlla la media mobile del gradiente. |
+| Secondo momento di Adam (β₂) | `0.999` | Controlla la media mobile del gradiente al quadrato. |
+| Stabilità numerica di Adam (ε) | `1e-8` | Evita divisioni numericamente instabili durante l'aggiornamento dei pesi. |
+| Learning rate base | `1e-5` | Regola l'ampiezza degli aggiornamenti di FC visuale, proiezione testuale, task token e testa CP. |
+| Learning rate del Transformer | Learning rate base | Permette al Transformer di usare un'ampiezza di aggiornamento distinta. |
+| Learning rate di ResNet | Learning rate base | Permette ai blocchi allenabili di ResNet di usare un'ampiezza di aggiornamento distinta. |
+| Weight decay | `0.0` | Applica la regolarizzazione dei pesi nell'ottimizzatore. |
+| Scheduler del learning rate base | StepLR | Modifica il learning rate base durante il training; può essere disabilitato o sostituito da CosineAnnealingLR. |
+| Scheduler del Transformer | Scheduler base | Consente di variare separatamente il learning rate del Transformer. |
+| Scheduler di ResNet | Scheduler base | Consente di variare separatamente il learning rate dei blocchi ResNet. |
+| Periodo di StepLR | `10` epoche | Indica ogni quante epoche ridurre il learning rate. |
+| Fattore di riduzione di StepLR | `0.5` | Moltiplica il learning rate per questo valore a ogni riduzione. |
+| Learning rate minimo del cosine scheduler | `0.0` | Imposta il limite inferiore raggiungibile da CosineAnnealingLR. |
+| Periodo di StepLR del Transformer | Periodo di StepLR base | Permette di scegliere una frequenza di riduzione distinta per il Transformer. |
+| Fattore di riduzione di StepLR del Transformer | Fattore di StepLR base | Permette di scegliere una riduzione distinta per il Transformer. |
+| Learning rate minimo cosine del Transformer | Minimo cosine base | Permette di scegliere un limite inferiore distinto per il Transformer. |
+| Periodo di StepLR di ResNet | Periodo di StepLR base | Permette di scegliere una frequenza di riduzione distinta per ResNet. |
+| Fattore di riduzione di StepLR di ResNet | Fattore di StepLR base | Permette di scegliere una riduzione distinta per ResNet. |
+| Learning rate minimo cosine di ResNet | Minimo cosine base | Permette di scegliere un limite inferiore distinto per ResNet. |
+| Funzione di loss | Binary Focal Loss | Misura l'errore della Compatibility Prediction dando più rilievo agli esempi difficili. |
+| Peso della classe positiva nella Focal Loss (α) | `0.5` | Bilancia il contributo degli esempi positivi e negativi alla loss. |
+| Focusing parameter della Focal Loss (γ) | `2.0` | Riduce il peso degli esempi facili; valori maggiori concentrano l'apprendimento su quelli difficili. |
+| Dropout del Transformer | `0.1` | Riduce l'overfitting azzerando casualmente parte delle attivazioni durante il training. |
+| Posizione della LayerNorm | post-norm | Applica la normalizzazione dopo ogni connessione residua del Transformer. |
+| Norma massima del gradiente | Disabilitata | Se impostata, limita la norma globale dei gradienti per stabilizzare il training. |
+| Metrica di selezione del modello | ROC AUC di validation | Determina quale checkpoint viene considerato il migliore. |
+| Pazienza dell'early stopping | Disabilitata | Se impostata, interrompe il training dopo il numero indicato di epoche senza miglioramenti. |
+| Miglioramento minimo dell'early stopping | `0.0` | Definisce la variazione minima della metrica necessaria per considerare un'epoca migliore. |
+| Porzione allenabile di ResNet | Rete completa | Determina quali parti dell'encoder visuale ricevono aggiornamenti. |
+| Inizializzazione di ResNet | Pesi ImageNet | Fornisce al backbone visuale feature pre-addestrate invece di pesi casuali. |
+| Modello SentenceBERT | `all-MiniLM-L6-v2` | Codifica il testo degli item in feature semantiche; il modello resta congelato. |
+| Shuffle del training set | Abilitato | Cambia l'ordine dei campioni a ogni epoca per ridurre dipendenze dall'ordinamento. |
+| Seed casuale | `42` | Rende riproducibili le operazioni casuali di Python, NumPy e PyTorch. |
+
+### Iperparametri del fine-tuning
+
+| Nome dell'iperparametro | Valore | A cosa serve |
+|---|---:|---|
+| Numero di epoche aggiuntive | `10` | Stabilisce la durata della nuova fase di fine-tuning. |
+| Variante del dataset | Valore del checkpoint, altrimenti `disjoint` | Mantiene lo stesso split dei dati della fase precedente oppure ne seleziona uno nuovo. |
+| Batch size | `50` | Stabilisce quanti outfit vengono elaborati prima di ogni aggiornamento dei pesi. |
+| Ottimizzatore | Adam | Aggiorna i parametri allenabili; in alternativa può essere usato AdamW. |
+| Learning rate base | `1e-5` | Regola l'ampiezza degli aggiornamenti dei parametri non appartenenti al Transformer o al backbone ResNet. |
+| Learning rate del Transformer | Learning rate base | Permette al Transformer di usare un'ampiezza di aggiornamento distinta. |
+| Learning rate di ResNet | Learning rate base | Permette ai blocchi allenabili di ResNet di usare un'ampiezza di aggiornamento distinta. |
+| Weight decay | `1e-4` | Regolarizza i pesi del nuovo ottimizzatore per limitare l'overfitting. |
+| Primo momento dell'ottimizzatore (β₁) | `0.9` | Controlla la media mobile del gradiente in Adam o AdamW. |
+| Secondo momento dell'ottimizzatore (β₂) | `0.999` | Controlla la media mobile del gradiente al quadrato. |
+| Stabilità numerica dell'ottimizzatore (ε) | `1e-8` | Evita divisioni numericamente instabili durante gli aggiornamenti. |
+| Scheduler del learning rate base | StepLR | Modifica il learning rate base durante il fine-tuning; può essere disabilitato o sostituito da CosineAnnealingLR. |
+| Scheduler del Transformer | Scheduler base | Consente di variare separatamente il learning rate del Transformer. |
+| Scheduler di ResNet | Scheduler base | Consente di variare separatamente il learning rate dei blocchi ResNet. |
+| Periodo di StepLR | `10` epoche | Indica ogni quante epoche ridurre il learning rate. |
+| Fattore di riduzione di StepLR | `0.5` | Moltiplica il learning rate per questo valore a ogni riduzione. |
+| Learning rate minimo del cosine scheduler | `0.0` | Imposta il limite inferiore raggiungibile da CosineAnnealingLR. |
+| Periodo di StepLR del Transformer | Periodo di StepLR base | Permette di scegliere una frequenza di riduzione distinta per il Transformer. |
+| Fattore di riduzione di StepLR del Transformer | Fattore di StepLR base | Permette di scegliere una riduzione distinta per il Transformer. |
+| Learning rate minimo cosine del Transformer | Minimo cosine base | Permette di scegliere un limite inferiore distinto per il Transformer. |
+| Periodo di StepLR di ResNet | Periodo di StepLR base | Permette di scegliere una frequenza di riduzione distinta per ResNet. |
+| Fattore di riduzione di StepLR di ResNet | Fattore di StepLR base | Permette di scegliere una riduzione distinta per ResNet. |
+| Learning rate minimo cosine di ResNet | Minimo cosine base | Permette di scegliere un limite inferiore distinto per ResNet. |
+| Funzione di loss | Focal Loss | Misura l'errore della Compatibility Prediction; può essere sostituita dalla Binary Cross-Entropy. |
+| Peso della classe positiva nella Focal Loss (α) | `0.5` | Bilancia il contributo degli esempi positivi e negativi alla loss. |
+| Focusing parameter della Focal Loss (γ) | `1.0` | Riduce il peso degli esempi facili durante il fine-tuning. |
+| Metrica di selezione del modello | ROC AUC di validation | Determina quale checkpoint della nuova fase viene considerato il migliore. |
+| Pazienza dell'early stopping | Disabilitata | Se impostata, interrompe il fine-tuning dopo il numero indicato di epoche senza miglioramenti. |
+| Miglioramento minimo dell'early stopping | `0.0` | Definisce la variazione minima necessaria per considerare migliorata la metrica monitorata. |
+| Norma massima del gradiente | Disabilitata | Se impostata, limita la norma globale dei gradienti per stabilizzare il fine-tuning. |
+| Porzione allenabile di ResNet | FC e layer 4 | Aggiorna la testa visuale e l'ultimo blocco residuo, lasciando congelati i blocchi precedenti. |
+| Dropout del Transformer | Valore del checkpoint | Mantiene il dropout della fase precedente, salvo una scelta esplicita diversa. |
+| Modello SentenceBERT | Valore del checkpoint | Riutilizza lo stesso encoder testuale della fase precedente. |
+| Seed casuale | `42` | Rende riproducibili le operazioni casuali della nuova fase. |
 
 ## Compatibility Prediction
 
@@ -178,6 +296,20 @@ python -m training.cp.train_cp `
 python -m training.cp.train_cp `
   --image-fine-tune-mode full
 
+# Scheduler indipendenti: cosine per il Transformer e StepLR per ResNet
+python -m training.cp.train_cp `
+  --epochs 30 `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 1e-5 `
+  --transformer-learning-rate 5e-6 `
+  --resnet-learning-rate 1e-6 `
+  --scheduler none `
+  --transformer-scheduler cosine `
+  --transformer-min-learning-rate 1e-7 `
+  --resnet-scheduler step `
+  --resnet-lr-step-size 5 `
+  --resnet-lr-gamma 0.2
+
 # Sceglie il checkpoint migliore tramite validation AUC
 python -m training.cp.train_cp `
   --best-metric val_auc
@@ -253,7 +385,7 @@ python -m training.cp.fine_tune_cp `
   --output-dir checkpoints\experiment_01_stage2 `
   --image-fine-tune-mode fc_and_layer4 `
   --learning-rate 1e-5 `
-  --image-backbone-learning-rate 1e-6 `
+  --resnet-learning-rate 1e-6 `
   --best-metric val_auc `
   --early-stopping-patience 4 `
   --early-stopping-min-delta 0.0001
@@ -267,6 +399,22 @@ python -m training.cp.fine_tune_cp `
   --scheduler cosine `
   --loss bce `
   --image-fine-tune-mode fc_only
+
+# StepLR per il Transformer e cosine per ResNet nella nuova fase
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01\best.pt `
+  --additional-epochs 12 `
+  --output-dir checkpoints\experiment_01_group_schedulers `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 1e-5 `
+  --transformer-learning-rate 5e-6 `
+  --resnet-learning-rate 1e-6 `
+  --scheduler none `
+  --transformer-scheduler step `
+  --transformer-lr-step-size 4 `
+  --transformer-lr-gamma 0.5 `
+  --resnet-scheduler cosine `
+  --resnet-min-learning-rate 1e-8
 
 # Riprende esattamente una fase di fine-tuning interrotta
 python -m training.cp.fine_tune_cp `

@@ -306,6 +306,18 @@ python -m training.cp.fine_tune_cp `
   --best-metric val_auc
 ```
 
+Esempio con scheduler e parametri indipendenti:
+
+```powershell
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01\best.pt `
+  --transformer-scheduler cosine `
+  --transformer-min-learning-rate 1e-7 `
+  --resnet-scheduler step `
+  --resnet-lr-step-size 5 `
+  --resnet-lr-gamma 0.2
+```
+
 Per riprendere il fine-tuning da una sua epoca:
 
 ```powershell
@@ -354,17 +366,26 @@ python -m training.cp.fine_tune_cp --help
 | `--output-dir` | `checkpoints/cp_fine_tune` nuova fase; directory originale nel resume | directory per `best.pt`, checkpoint epoca e grafici |
 | `--variant` | checkpoint, altrimenti `disjoint` | variante Polyvore: `disjoint` o `nondisjoint` |
 | `--batch-size` | `50` | outfit per batch |
-| `--learning-rate` | `1e-5` | LR per FC visuale, proiezione testo, token, Transformer e classificatore |
-| `--image-backbone-learning-rate` | valore di `--learning-rate` | LR separato per i blocchi ResNet allenabili |
+| `--learning-rate` | `1e-5` | LR base per FC visuale, proiezione testo, token e classificatore |
+| `--transformer-learning-rate` | valore di `--learning-rate` | LR separato per il Transformer |
+| `--resnet-learning-rate` | valore di `--learning-rate` | LR separato per i blocchi ResNet allenabili; alias legacy `--image-backbone-learning-rate` |
 | `--optimizer` | `adam` | optimizer: `adam` o `adamw` |
 | `--weight-decay` | `1e-4` | weight decay del nuovo optimizer |
 | `--adam-beta1` | `0.9` | primo coefficiente beta di Adam/AdamW |
 | `--adam-beta2` | `0.999` | secondo coefficiente beta di Adam/AdamW |
 | `--adam-eps` | `1e-8` | epsilon numerico di Adam/AdamW |
 | `--scheduler` | `step` | scheduler: `none`, `step` o `cosine` |
+| `--transformer-scheduler` | valore di `--scheduler` | scheduler separato del Transformer: `none`, `step` o `cosine` |
+| `--resnet-scheduler` | valore di `--scheduler` | scheduler separato dei blocchi ResNet allenabili: `none`, `step` o `cosine` |
 | `--lr-step-size` | `10` | epoche tra riduzioni LR con scheduler `step` |
 | `--lr-gamma` | `0.5` | fattore di riduzione LR con scheduler `step` |
 | `--min-learning-rate` | `0.0` | LR minimo `eta_min` con scheduler `cosine` |
+| `--transformer-lr-step-size` | valore di `--lr-step-size` | periodo StepLR separato del Transformer |
+| `--transformer-lr-gamma` | valore di `--lr-gamma` | fattore StepLR separato del Transformer |
+| `--transformer-min-learning-rate` | valore di `--min-learning-rate` | LR minimo cosine separato del Transformer |
+| `--resnet-lr-step-size` | valore di `--lr-step-size` | periodo StepLR separato dei blocchi ResNet |
+| `--resnet-lr-gamma` | valore di `--lr-gamma` | fattore StepLR separato dei blocchi ResNet |
+| `--resnet-min-learning-rate` | valore di `--min-learning-rate` | LR minimo cosine separato dei blocchi ResNet |
 | `--loss` | `focal` | loss: `focal` o `bce` |
 | `--focal-alpha` | `0.5` | alpha Focal Loss; `none` lo disabilita |
 | `--focal-gamma` | `1.0` | gamma Focal Loss |
@@ -382,6 +403,10 @@ python -m training.cp.fine_tune_cp --help
 | `--log-interval` | `50` | intervallo log batch; `0` disabilita |
 | `--no-plots` | falso | disabilita grafici della fase |
 
+I parametri specifici di Transformer e ResNet sono opzionali. Ogni valore non
+specificato eredita il parametro base corrispondente; impostarne anche uno solo
+crea una policy separata per quel gruppo.
+
 I default degli iperparametri nella tabella descrivono una nuova fase. Con
 `--resume`, i valori salvati nel checkpoint sono autorevoli anche se vengono
 passati flag diversi.
@@ -396,10 +421,22 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--variant` | `disjoint` | variante Polyvore |
 | `--epochs` | `30` | ultima epoca totale |
 | `--batch-size` | `50` | outfit per batch |
-| `--learning-rate` | `1e-5` | learning rate Adam |
+| `--learning-rate` | `1e-5` | learning rate Adam del gruppo base |
+| `--transformer-learning-rate` | valore di `--learning-rate` | learning rate separato del Transformer |
+| `--resnet-learning-rate` | valore di `--learning-rate` | learning rate separato dei blocchi ResNet allenabili |
 | `--weight-decay` | `0.0` | weight decay Adam |
+| `--scheduler` | `step` | scheduler base: `none`, `step` o `cosine` |
+| `--transformer-scheduler` | valore di `--scheduler` | scheduler separato del Transformer |
+| `--resnet-scheduler` | valore di `--scheduler` | scheduler separato dei blocchi ResNet allenabili |
 | `--lr-step-size` | `10` | periodo StepLR |
 | `--lr-gamma` | `0.5` | fattore StepLR |
+| `--min-learning-rate` | `0.0` | LR minimo per scheduler cosine |
+| `--transformer-lr-step-size` | valore di `--lr-step-size` | periodo StepLR separato del Transformer |
+| `--transformer-lr-gamma` | valore di `--lr-gamma` | fattore StepLR separato del Transformer |
+| `--transformer-min-learning-rate` | valore di `--min-learning-rate` | LR minimo cosine separato del Transformer |
+| `--resnet-lr-step-size` | valore di `--lr-step-size` | periodo StepLR separato dei blocchi ResNet |
+| `--resnet-lr-gamma` | valore di `--lr-gamma` | fattore StepLR separato dei blocchi ResNet |
+| `--resnet-min-learning-rate` | valore di `--min-learning-rate` | LR minimo cosine separato dei blocchi ResNet |
 | `--focal-alpha` | `0.5` | alpha Focal Loss |
 | `--focal-gamma` | `2.0` | gamma Focal Loss |
 | `--dropout` | `0.1` | dropout del Transformer |
@@ -423,65 +460,120 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--no-pretrained-image` | falso | niente inizializzazione ImageNet |
 | `--image-fine-tune-mode` | `full` | `fc_only`, `fc_and_layer4` o `full` |
 
+Anche nel training normale, i parametri scheduler specifici ereditano i valori
+base quando non sono indicati. Un override di ResNet richiede blocchi visuali
+allenabili.
+
 
 ## File e flusso dei moduli
+
+La cartella è divisa in tre livelli:
+
+1. **entry point**: leggono la CLI e costruiscono la run;
+2. **ciclo di training**: esegue train e validation per ogni epoca;
+3. **servizi di supporto**: gestiscono scheduler, selezione del best, early
+   stopping, checkpoint e grafici.
+
+`train_cp.py` e `fine_tune_cp.py` preparano due tipi diversi di avvio, ma dopo
+la costruzione di modello, optimizer e scheduler usano entrambi lo stesso
+`CPTrainer`.
 
 ### Flusso tra i file
 
 ```mermaid
 flowchart TD
-    CLI["train_cp.py<br/>CLI e composition root"] --> BUILD["Costruisce DataLoader, modello,<br/>loss, optimizer e scheduler"]
-    CLI --> TRAINER["trainer.py<br/>train_cp e CPTrainer"]
-    BUILD --> TRAINER
+    NORMAL["1A. train_cp.py<br/>training normale o resume"] --> SETUP["2. Costruzione<br/>loader, modello e loss"]
+    FINE["1B. fine_tune_cp.py<br/>nuova fase o resume"] --> FT["fine_tuning.py<br/>pesi e gruppi optimizer"]
+    FT --> SETUP
 
-    TRAINER -->|fase train| EPOCH["epoch.py<br/>run_cp_epoch"]
-    TRAINER -->|fase validation| EPOCH
-    EPOCH -->|metriche della fase| TRAINER
+    SETUP --> OPT["optimization.py<br/>scheduler per gruppo"]
+    SETUP --> TRAINER["3. trainer.py<br/>CPTrainer"]
+    OPT --> TRAINER
 
-    TRAINER -->|aggiunge le metriche| TYPES["types.py<br/>CPTrainingHistory e tipi condivisi"]
-    TYPES --> EARLY["early_stopping.py<br/>patience e min_delta"]
-    EARLY -->|se plateau| TRAINER
-    TYPES -->|history completa| CHECKPOINT["checkpointing.py<br/>checkpoint per epoca e best"]
-    TYPES -->|history completa| PLOT["plotting.py<br/>quattro grafici cumulativi"]
+    TRAINER -->|train e validation| EPOCH["4. epoch.py<br/>run_cp_epoch"]
+    EPOCH -->|loss, accuracy e AUC| STATE["5. types.py<br/>metriche e history"]
+    STATE --> TRAINER
 
-    CHECKPOINT --> PT["file .pt"]
-    PLOT --> PNG["file .png"]
+    TRAINER --> DECISION["6. selection.py + early_stopping.py<br/>best checkpoint? continuare?"]
+    TRAINER --> CHECKPOINT["7A. checkpointing.py<br/>file .pt"]
+    TRAINER --> PLOT["7B. callback + plotting.py<br/>file .png"]
 
-    TYPES -.->|dataclass metriche e progress| EPOCH
+    DECISION -->|altra epoca| TRAINER
+    DECISION -->|stop| END["Fine run"]
 ```
 
-Il flusso completo di ogni epoca è:
+Il diagramma si legge dall'alto verso il basso. I due entry point convergono
+nel trainer; da quel punto il ciclo è identico per training normale e
+fine-tuning.
 
-1. `train_cp.py` legge i flag e costruisce tutte le dipendenze concrete;
-2. `trainer.py` chiede a `epoch.py` di eseguire la fase train;
-3. `trainer.py` chiede allo stesso runner di eseguire la validation con AUC;
-4. le metriche vengono aggiunte a `CPTrainingHistory` in `types.py`;
-5. `checkpointing.py` salva stato corrente, best e history;
-6. `plotting.py` legge la stessa history e genera i quattro grafici cumulativi;
-7. `early_stopping.py` aggiorna la patience sulla metrica di validation;
-8. callback e log ricevono i risultati dell'epoca completata.
+#### Prima della prima epoca
+
+1. l'entry point legge e valida i flag;
+2. costruisce DataLoader, modello e loss;
+3. crea gruppi optimizer e scheduler, eventualmente distinti per base,
+   Transformer e ResNet;
+4. in caso di resume ripristina pesi, optimizer, scheduler, history e RNG;
+5. passa tutte le dipendenze a `train_cp()` e quindi a `CPTrainer`.
+
+#### Durante ogni epoca
+
+1. `CPTrainer` chiama `run_cp_epoch` una volta per il train e una per la
+   validation;
+2. `epoch.py` esegue i batch e restituisce loss, accuracy e ROC AUC;
+3. il trainer avanza lo scheduler e aggiunge le metriche alla history;
+4. `checkpointing.py` salva il checkpoint dell'epoca e, se necessario, il best;
+5. callback e `plotting.py` aggiornano log e grafici;
+6. `early_stopping.py` decide se iniziare un'altra epoca o fermare la run.
 
 ### Responsabilità di ogni file
 
-| File | A cosa serve | Quando modificarlo |
+#### Avvio e composizione
+
+| File | Responsabilità | Modificalo quando... |
 |---|---|---|
-| `train_cp.py` | Avvia il training CP: interpreta la CLI, costruisce dipendenze e gestisce il resume | Per aggiungere flag, cambiare default o cambiare la composizione della run |
-| `trainer.py` | Coordina ciclo delle epoche, train, validation, checkpoint, grafici e callback | Per cambiare l'ordine delle fasi o il comportamento generale tra le epoche |
-| `epoch.py` | Esegue una fase batch per batch, calcolando loss, gradienti e metriche | Per cambiare ciò che accade dentro un batch o dentro una singola fase |
-| `types.py` | Definisce strutture dati condivise per metriche, history e avanzamento | Per aggiungere nuove metriche o dati condivisi, senza introdurre I/O |
-| `checkpointing.py` | Salva e ripristina stato completo della run in modo atomico e compatibile | Per cambiare formato o politica di salvataggio e resume |
-| `fine_tuning.py` | Carica pesi sorgente e crea gruppi optimizer con learning rate distinti | Per cambiare semantica della nuova fase o gruppi di parametri |
-| `fine_tune_cp.py` | Avvia una nuova fase o riprende esattamente un fine-tuning interrotto | Per aggiungere flag specifici al fine-tuning |
-| `early_stopping.py` | Decide quando fermare il training in base ai miglioramenti di validation | Per cambiare la politica di early stopping |
-| `plotting.py` | Trasforma la history nei quattro grafici cumulativi della run | Per cambiare stile, nomi o contenuto dei grafici |
-| `__init__.py` | Espone i componenti che formano l'API pubblica di `training.cp` | Quando un nuovo componente deve diventare parte dell'API pubblica |
-| `README.md` | Spiega uso, configurazione, flusso e artefatti del training CP | Quando cambiano flusso, flag o formato degli artefatti |
+| `train_cp.py` | CLI del training normale, costruzione delle dipendenze e resume | aggiungi flag, cambi default o modifichi la preparazione della run |
+| `fine_tune_cp.py` | CLI per nuova fase di fine-tuning o resume esatto | aggiungi opzioni o regole specifiche del fine-tuning |
+
+#### Ciclo di training
+
+| File | Responsabilità | Modificalo quando... |
+|---|---|---|
+| `trainer.py` | Ordine delle epoche, train, validation, scheduler, checkpoint e callback | cambia il coordinamento generale tra le fasi |
+| `epoch.py` | Elaborazione batch, forward, backward, clipping e metriche | cambia ciò che avviene dentro train o validation |
+| `types.py` | Dataclass di metriche, history, progress e checkpoint | aggiungi dati condivisi tra i moduli |
+
+#### Ottimizzazione, decisioni e artefatti
+
+| File | Responsabilità | Modificalo quando... |
+|---|---|---|
+| `fine_tuning.py` | Lettura del checkpoint sorgente e gruppi optimizer del fine-tuning | cambi caricamento dei pesi o gruppi e learning rate |
+| `optimization.py` | Scheduler base, Transformer e ResNet, incluso il loro stato | aggiungi una policy LR o cambi la gestione per gruppo |
+| `selection.py` | Valore e direzione della metrica usata per scegliere il best | aggiungi una metrica di selezione |
+| `early_stopping.py` | Patience, `min_delta` e decisione di stop | cambi la politica di interruzione |
+| `checkpointing.py` | Salvataggio atomico e resume di modello, optimizer, scheduler, history e RNG | cambi schema o politica dei checkpoint |
+| `plotting.py` | Generazione dei quattro grafici cumulativi dalla history | cambi contenuto o stile dei grafici |
+
+#### API e documentazione
+
+| File | Responsabilità | Modificalo quando... |
+|---|---|---|
+| `__init__.py` | API pubblica di `training.cp` | un componente deve essere importabile dal package |
+| `README.md` | Uso, configurazione, flusso e artefatti | cambiano CLI, flusso o output |
 
 ### Come sostituire il runner senza perdere gli altri componenti
 
-`CPTrainer` accetta un `epoch_runner` sostituibile. Un runner personalizzato può
-modificare la logica di train/validation riutilizzando comunque history,
-checkpoint, plotting e callback:
+Scegli il punto di estensione più piccolo:
+
+| Obiettivo | Punto di estensione |
+|---|---|
+| cambiare forward, backward o metriche di una fase | `epoch_runner` |
+| eseguire un'azione a fine batch | `on_batch_end` |
+| reagire a history, checkpoint, fine epoca o early stopping | `CPTrainingCallbacks` |
+| cambiare l'ordine globale delle fasi | `CPTrainer` |
+
+`CPTrainer` accetta un `epoch_runner` sostituibile. Il runner personalizzato
+cambia la logica di train e validation, ma continua a riutilizzare history,
+checkpoint, plotting ed early stopping:
 
 ```python
 from training import CPTrainer, CPTrainerConfig
@@ -501,9 +593,8 @@ history = trainer.fit(
 )
 ```
 
-Se cambia soltanto un'azione a fine epoca, è sufficiente aggiungere una
-callback tramite `CPTrainingCallbacks` o tramite gli argomenti callback di
-`train_cp()`; non serve riscrivere il runner.
+Se cambia soltanto una reazione a un evento, usa `CPTrainingCallbacks` o gli
+argomenti callback di `train_cp()`; non serve sostituire il runner.
 
 ## Esempi
 
@@ -526,6 +617,20 @@ python -m training.cp.train_cp `
 # Fine-tuning completo della ResNet
 python -m training.cp.train_cp `
   --image-fine-tune-mode full
+
+# Scheduler indipendenti: cosine per il Transformer e StepLR per ResNet
+python -m training.cp.train_cp `
+  --epochs 30 `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 1e-5 `
+  --transformer-learning-rate 5e-6 `
+  --resnet-learning-rate 1e-6 `
+  --scheduler none `
+  --transformer-scheduler cosine `
+  --transformer-min-learning-rate 1e-7 `
+  --resnet-scheduler step `
+  --resnet-lr-step-size 5 `
+  --resnet-lr-gamma 0.2
 
 # Cambia dropout e usa pre-norm
 python -m training.cp.train_cp `
@@ -607,7 +712,7 @@ python -m training.cp.fine_tune_cp `
   --output-dir checkpoints\experiment_01_stage2 `
   --image-fine-tune-mode fc_and_layer4 `
   --learning-rate 1e-5 `
-  --image-backbone-learning-rate 1e-6 `
+  --resnet-learning-rate 1e-6 `
   --best-metric val_auc `
   --early-stopping-patience 4 `
   --early-stopping-min-delta 0.0001
@@ -621,6 +726,22 @@ python -m training.cp.fine_tune_cp `
   --scheduler cosine `
   --loss bce `
   --image-fine-tune-mode fc_only
+
+# StepLR per il Transformer e cosine per ResNet nella nuova fase
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\experiment_01\best.pt `
+  --additional-epochs 12 `
+  --output-dir checkpoints\experiment_01_group_schedulers `
+  --image-fine-tune-mode fc_and_layer4 `
+  --learning-rate 1e-5 `
+  --transformer-learning-rate 5e-6 `
+  --resnet-learning-rate 1e-6 `
+  --scheduler none `
+  --transformer-scheduler step `
+  --transformer-lr-step-size 4 `
+  --transformer-lr-gamma 0.5 `
+  --resnet-scheduler cosine `
+  --resnet-min-learning-rate 1e-8
 
 # Riprende esattamente una fase di fine-tuning interrotta
 python -m training.cp.fine_tune_cp `
