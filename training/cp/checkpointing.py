@@ -415,7 +415,10 @@ def _normalize_config_value(value: Any) -> Any:
 
 
 def _capture_rng_state() -> dict[str, Any]:
-    numpy_state = np.random.get_state()
+    numpy_state = np.random.get_state(legacy=True)
+    if not isinstance(numpy_state, tuple):
+        raise RuntimeError("NumPy legacy RNG state must be a tuple")
+    bit_generator, state, position, has_gauss, cached_gaussian = numpy_state
     return {
         "python": _tuples_to_lists(random.getstate()),
         "torch_cpu": torch.get_rng_state(),
@@ -423,11 +426,11 @@ def _capture_rng_state() -> dict[str, Any]:
             torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
         ),
         "numpy": {
-            "bit_generator": numpy_state[0],
-            "state": numpy_state[1].tolist(),
-            "position": int(numpy_state[2]),
-            "has_gauss": int(numpy_state[3]),
-            "cached_gaussian": float(numpy_state[4]),
+            "bit_generator": bit_generator,
+            "state": state.tolist(),
+            "position": int(position),
+            "has_gauss": int(has_gauss),
+            "cached_gaussian": float(cached_gaussian),
         },
     }
 
