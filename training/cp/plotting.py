@@ -8,6 +8,9 @@ from typing import Any, Sequence
 from .types import CPEpochMetrics, CPTrainingHistory
 
 
+_UNIT_INTERVAL_Y_TICKS = tuple(index / 10 for index in range(11))
+
+
 class CPHistoryPlotter:
     """Save cumulative CP training charts after each completed epoch."""
 
@@ -184,6 +187,7 @@ class CPHistoryPlotter:
             )
             if y_limits is not None:
                 axis.set_ylim(*y_limits)
+                axis.set_yticks(_UNIT_INTERVAL_Y_TICKS)
             axis.grid(True, alpha=0.3)
             axis.legend()
             figure.tight_layout()
