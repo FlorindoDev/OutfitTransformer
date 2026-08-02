@@ -122,6 +122,7 @@ class CPFineTuneCheckpoint:
 class CPFineTuneOptimizerConfig:
     name: CPOptimizerName = "adam"
     learning_rate: float = 1e-5
+    transformer_learning_rate: float | None = None
     image_backbone_learning_rate: float | None = None
     weight_decay: float = 1e-4
     beta1: float = 0.9
@@ -133,6 +134,11 @@ class CPFineTuneOptimizerConfig:
             raise ValueError(f"optimizer must be one of {CP_OPTIMIZER_NAMES}")
         if self.learning_rate <= 0.0:
             raise ValueError("learning_rate must be positive")
+        if (
+            self.transformer_learning_rate is not None
+            and self.transformer_learning_rate <= 0.0
+        ):
+            raise ValueError("transformer_learning_rate must be positive")
         if (
             self.image_backbone_learning_rate is not None
             and self.image_backbone_learning_rate <= 0.0
@@ -153,24 +159,50 @@ class CPFineTuneOptimizerConfig:
             else self.image_backbone_learning_rate
         )
 
+    @property
+    def resolved_transformer_learning_rate(self) -> float:
+        return (
+            self.learning_rate
+            if self.transformer_learning_rate is None
+            else self.transformer_learning_rate
+        )
+
 
 def build_cp_fine_tune_optimizer(
     model: CompatibilityPredictor,
     config: CPFineTuneOptimizerConfig,
+    *,
+    separate_transformer: bool | None = None,
+    separate_image_backbone: bool = True,
 ) -> Optimizer:
-    """Build fresh optimizer with optional lower LR for ResNet feature blocks."""
+    """Build optimizer groups for task, Transformer and ResNet parameters."""
     config.validate()
     backbone = model.encoder.image_encoder.backbone
     image_feature_parameters = tuple(
         parameter
         for name, parameter in backbone.named_parameters()
-        if not name.startswith("fc.") and parameter.requires_grad
+        if separate_image_backbone
+        and not name.startswith("fc.")
+        and parameter.requires_grad
     )
     image_feature_ids = {id(parameter) for parameter in image_feature_parameters}
+    should_separate_transformer = (
+        config.transformer_learning_rate is not None
+        if separate_transformer is None
+        else separate_transformer
+    )
+    transformer_parameters = tuple(
+        parameter
+        for parameter in model.encoder.context_encoder.parameters()
+        if should_separate_transformer and parameter.requires_grad
+    )
+    transformer_ids = {id(parameter) for parameter in transformer_parameters}
     task_parameters = tuple(
         parameter
         for parameter in model.parameters()
-        if parameter.requires_grad and id(parameter) not in image_feature_ids
+        if parameter.requires_grad
+        and id(parameter) not in image_feature_ids
+        and id(parameter) not in transformer_ids
     )
     if not task_parameters:
         raise ValueError("fine-tuning requires trainable non-backbone parameters")
@@ -182,6 +214,14 @@ def build_cp_fine_tune_optimizer(
             "group_name": "task",
         }
     ]
+    if transformer_parameters:
+        parameter_groups.append(
+            {
+                "params": transformer_parameters,
+                "lr": config.resolved_transformer_learning_rate,
+                "group_name": "transformer",
+            }
+        )
     if image_feature_parameters:
         parameter_groups.append(
             {

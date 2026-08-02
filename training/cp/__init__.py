@@ -19,6 +19,13 @@ from .fine_tuning import (
     build_cp_fine_tune_optimizer,
     optimizer_learning_rates,
 )
+from .optimization import (
+    CPGroupLRScheduler,
+    CPSchedulerParameters,
+    SCHEDULER_NAMES,
+    SchedulerName,
+    create_cp_scheduler,
+)
 from .plotting import CPHistoryPlotter
 from .selection import (
     CP_BEST_METRICS,
@@ -52,6 +59,8 @@ __all__ = [
     "CPEpochMetrics",
     "CPFineTuneCheckpoint",
     "CPFineTuneOptimizerConfig",
+    "CPGroupLRScheduler",
+    "CPSchedulerParameters",
     "CPHistoryPlotter",
     "CPOptimizerName",
     "CP_OPTIMIZER_NAMES",
@@ -61,8 +70,11 @@ __all__ = [
     "CPTrainerConfig",
     "CPTrainingCallbacks",
     "CPTrainingHistory",
+    "SCHEDULER_NAMES",
+    "SchedulerName",
     "binary_roc_auc",
     "build_cp_fine_tune_optimizer",
+    "create_cp_scheduler",
     "create_early_stopping_config",
     "load_cp_training_checkpoint",
     "optimizer_learning_rates",
