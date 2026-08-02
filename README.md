@@ -310,22 +310,19 @@ RNG. Senza `--output-dir`, i nuovi artefatti restano nella directory della run.
 Il gradient clipping è disattivato per default; per abilitarlo usare, per
 esempio, `--max-grad-norm 1.0`.
 
-La sequenza completa paper → FC-only → layer4 fino al plateau → full con LR
-molto basso si avvia con:
+Serie progressiva paper → FC-only → layer4 → full completata; runner rimosso.
+Configurazione reale archiviata in
+[`checkpoints/run_training_series/README.md`](checkpoints/run_training_series/README.md).
+
+Una seconda serie esegue cinque stage end-to-end sullo split `nondisjoint` e
+confronta dropout, weight decay e Focal alpha:
 
 ```powershell
-python -m training.run_trianing_series.run_training_series
+python -m training.run_trianing_series.run_end_to_end_series --dry-run
 ```
 
-Una seconda serie mantiene tutti gli stage end-to-end e varia soltanto
-parametri non dichiarati dal paper, un fattore alla volta:
-
-```powershell
-python -m training.run_trianing_series.run_paper_end_to_end_series --dry-run
-```
-
-La configurazione e i nove stage sono descritti nella
-[guida delle serie CP](training/run_trianing_series/README.md#serie-paper-like-end-to-end).
+Configurazione completa nella
+[guida delle serie CP](training/run_trianing_series/README.md#serie-end-to-end-nondisjoint).
 
 La valutazione sul test set è separata e viene eseguita soltanto su richiesta:
 
@@ -416,8 +413,7 @@ training/
     plotting.py         grafici cumulativi per epoca
   run_trianing_series/
     README.md           guida alla serie dei training CP
-    run_training_series.py sequenza dei quattro stage di training
-    run_paper_end_to_end_series.py nove run paper-like indipendenti
+    run_end_to_end_series.py cinque run nondisjoint end-to-end indipendenti
   cir/
     README.md           training CIR previsto, non ancora implementato
 requirements.txt

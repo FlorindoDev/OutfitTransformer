@@ -430,37 +430,5 @@ esempio `--max-grad-norm 1.0`.
 ```powershell
 python -m training.cp.train_cp --help
 python -m training.cp.fine_tune_cp --help
-python -m training.run_trianing_series.run_training_series --help
-python -m training.run_trianing_series.run_paper_end_to_end_series --help
+python -m training.run_trianing_series.run_end_to_end_series --help
 ```
-
-### Serie completa
-
-Il comando seguente esegue in ordine il baseline end-to-end del paper, la base
-FC-only, `fc_and_layer4` fino al plateau AUC e infine full per poche epoche con
-LR backbone molto basso:
-
-```powershell
-python -m training.run_trianing_series.run_training_series
-```
-
-Usare `--dry-run` per vedere i comandi e `--start-stage N` per ripartire da
-uno stage già preparato. I checkpoint hanno directory
-`01_paper_end_to_end`, `02_fc_only_base`, `03_layer4_plateau` e
-`04_full_low_lr`. Lo stage paper usa 30 epoche per default perché il paper non
-ne dichiara il numero; `--paper-epochs` lo modifica.
-
-### Serie paper-like end-to-end
-
-Per confrontare soltanto parametri non dichiarati dal paper, mantenendo ogni
-run end-to-end:
-
-```powershell
-python -m training.run_trianing_series.run_paper_end_to_end_series --dry-run
-python -m training.run_trianing_series.run_paper_end_to_end_series `
-  --stages 1 2 3 6
-```
-
-Lo stage 1 usa default standard; gli altri cambiano un solo fattore tra seed,
-dropout, pre/post-norm, weight decay, clipping e Focal alpha. Dettagli e tabella
-comparativa nella [guida delle serie CP](run_trianing_series/README.md#serie-paper-like-end-to-end).
