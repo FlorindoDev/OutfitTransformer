@@ -70,7 +70,7 @@ README dentro `checkpoints` documentano invece solo artefatti già prodotti.
 | Scheduler | StepLR | StepLR | StepLR | StepLR | StepLR |
 | Step size / gamma | `10` / `0.5` | `10` / `0.5` | `10` / `0.5` | `10` / `0.5` | `10` / `0.5` |
 | Metrica best checkpoint | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC |
-| Early stopping | patience 5, delta `1e-4` | patience 5, delta `1e-4` | patience 5, delta `1e-4` | patience 5, delta `1e-4` | patience 5, delta `1e-4` |
+| Early stopping | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` |
 | Gradient clipping | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato |
 | Seed | 42 | 42 | 42 | 42 | 42 |
 | DataLoader workers | 0 | 0 | 0 | 0 | 0 |
