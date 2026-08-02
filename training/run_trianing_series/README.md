@@ -1,6 +1,6 @@
 # Serie di training CP
 
-Guida alla serie corrente di cinque esperimenti end-to-end sullo split
+Guida alla serie corrente di dieci esperimenti end-to-end sullo split
 `nondisjoint`. Serie progressiva precedente archiviata accanto ai checkpoint.
 
 - [Training generale](../README.md)
@@ -11,7 +11,8 @@ Guida alla serie corrente di cinque esperimenti end-to-end sullo split
 - [Serie progressiva archiviata](#serie-progressiva-archiviata)
 - [Serie end-to-end nondisjoint](#serie-end-to-end-nondisjoint)
   - [Stage della nuova serie](#stage-della-nuova-serie)
-  - [Iperparametri completi della nuova serie](#iperparametri-completi-della-nuova-serie)
+  - [Iperparametri completi stage 1-5](#iperparametri-completi-stage-1-5)
+  - [Iperparametri completi stage 6-10](#iperparametri-completi-stage-6-10)
   - [Uso della serie](#uso-della-serie)
   - [Artefatti prodotti](#artefatti-prodotti)
   - [Ripresa dopo un blocco](#ripresa-dopo-un-blocco)
@@ -23,22 +24,31 @@ Runner rimosso. Configurazione reale e risultati restano in
 
 ## Serie end-to-end nondisjoint
 
-`run_end_to_end_series.py` esegue cinque training indipendenti sullo split
+`run_end_to_end_series.py` esegue dieci training indipendenti sullo split
 `nondisjoint`. Tutti ripartono dai pesi preaddestrati; nessuno eredita pesi da
 uno stage precedente. Questa sezione descrive anche stage non ancora eseguiti.
 README dentro `checkpoints` documentano invece solo artefatti già prodotti.
 
 ### Stage della nuova serie
 
-| Stage | Variazione rispetto al baseline | Dropout | Weight decay | Focal alpha |
-|---|---|---:|---:|---:|
-| `01_paper_standard_defaults` | baseline paper + default standard | `0.1` | `0.0` | `0.25` |
-| `02_dropout_0` | dropout disabilitato | `0.0` | `0.0` | `0.25` |
-| `03_dropout_0_weight_decay_1e4` | dropout disabilitato + weight decay | `0.0` | `1e-4` | `0.25` |
-| `04_focal_alpha_05` | alpha bilanciato | `0.1` | `0.0` | `0.5` |
-| `05_weight_decay_1e4_focal_alpha_05` | weight decay + alpha bilanciato | `0.1` | `1e-4` | `0.5` |
+| Stage | Variazione rispetto al baseline | Dropout | Weight decay | Focal alpha | StepLR step size |
+|---|---|---:|---:|---:|---:|
+| `01_paper_standard_defaults` | baseline paper + default standard | `0.1` | `0.0` | `0.25` | 10 |
+| `02_dropout_0` | dropout disabilitato | `0.0` | `0.0` | `0.25` | 10 |
+| `03_dropout_0_weight_decay_1e4` | dropout disabilitato + weight decay | `0.0` | `1e-4` | `0.25` | 10 |
+| `04_focal_alpha_05` | dropout disabilitato + alpha bilanciato | `0.0` | `0.0` | `0.5` | 10 |
+| `05_weight_decay_1e4_focal_alpha_05` | dropout disabilitato + weight decay + alpha bilanciato | `0.0` | `1e-4` | `0.5` | 10 |
+| `06_step_lr_3_standard_defaults` | baseline con riduzione LR rapida | `0.1` | `0.0` | `0.25` | 3 |
+| `07_step_lr_3_dropout_0` | dropout disabilitato + riduzione LR rapida | `0.0` | `0.0` | `0.25` | 3 |
+| `08_step_lr_3_dropout_0_weight_decay_1e3` | dropout disabilitato + weight decay medio + riduzione LR rapida | `0.0` | `1e-3` | `0.25` | 3 |
+| `09_step_lr_3_dropout_0_focal_alpha_05` | dropout disabilitato + alpha bilanciato + riduzione LR rapida | `0.0` | `0.0` | `0.5` | 3 |
+| `10_step_lr_3_dropout_0_weight_decay_1e3_focal_alpha_05` | dropout disabilitato + weight decay medio + alpha bilanciato + riduzione LR rapida | `0.0` | `1e-3` | `0.5` | 3 |
 
-### Iperparametri completi della nuova serie
+Negli stage 8 e 10, livello medio più aggressivo significa weight decay
+`1e-3`: dieci volte `1e-4`. Weight decay resta costante dall'inizio alla fine;
+StepLR modifica solo learning rate.
+
+### Iperparametri completi stage 1-5
 
 | Iperparametro | `01_paper_standard_defaults` | `02_dropout_0` | `03_dropout_0_weight_decay_1e4` | `04_focal_alpha_05` | `05_weight_decay_1e4_focal_alpha_05` |
 |---|---|---|---|---|---|
@@ -58,7 +68,7 @@ README dentro `checkpoints` documentano invece solo artefatti già prodotti.
 | Layer Transformer | 6 | 6 | 6 | 6 | 6 |
 | Teste di attenzione | 16 | 16 | 16 | 16 | 16 |
 | Dimensione feed-forward | 512 | 512 | 512 | 512 | 512 |
-| Dropout | `0.1` | `0.0` | `0.0` | `0.1` | `0.1` |
+| Dropout | `0.1` | `0.0` | `0.0` | `0.0` | `0.0` |
 | Normalizzazione Transformer | post-norm | post-norm | post-norm | post-norm | post-norm |
 | Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss |
 | Focal alpha | `0.25` | `0.25` | `0.25` | `0.5` | `0.5` |
@@ -79,6 +89,50 @@ README dentro `checkpoints` documentano invece solo artefatti già prodotti.
 | Grafici | abilitati | abilitati | abilitati | abilitati | abilitati |
 | Checkpoint | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca |
 
+### Iperparametri completi stage 6-10
+
+| Iperparametro | `06_step_lr_3_standard_defaults` | `07_step_lr_3_dropout_0` | `08_step_lr_3_dropout_0_weight_decay_1e3` | `09_step_lr_3_dropout_0_focal_alpha_05` | `10_step_lr_3_dropout_0_weight_decay_1e3_focal_alpha_05` |
+|---|---|---|---|---|---|
+| CLI | `training.cp.train_cp` | `training.cp.train_cp` | `training.cp.train_cp` | `training.cp.train_cp` | `training.cp.train_cp` |
+| Sorgente pesi | ResNet-18 ImageNet + SentenceBERT | ResNet-18 ImageNet + SentenceBERT | ResNet-18 ImageNet + SentenceBERT | ResNet-18 ImageNet + SentenceBERT | ResNet-18 ImageNet + SentenceBERT |
+| Dataset | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` |
+| Variante dataset | `nondisjoint` | `nondisjoint` | `nondisjoint` | `nondisjoint` | `nondisjoint` |
+| Epoche massime | 30 | 30 | 30 | 30 | 30 |
+| Batch size | 50 | 50 | 50 | 50 | 50 |
+| Modalità ResNet | `full` | `full` | `full` | `full` | `full` |
+| Blocchi ResNet allenabili | intera ResNet, FC e BatchNorm | intera ResNet, FC e BatchNorm | intera ResNet, FC e BatchNorm | intera ResNet, FC e BatchNorm | intera ResNet, FC e BatchNorm |
+| SentenceBERT | congelato | congelato | congelato | congelato | congelato |
+| Modello testuale | `all-MiniLM-L6-v2` | `all-MiniLM-L6-v2` | `all-MiniLM-L6-v2` | `all-MiniLM-L6-v2` | `all-MiniLM-L6-v2` |
+| Image embedding | 64 | 64 | 64 | 64 | 64 |
+| Text embedding | 64 | 64 | 64 | 64 | 64 |
+| Item embedding / `d_model` | 128 | 128 | 128 | 128 | 128 |
+| Layer Transformer | 6 | 6 | 6 | 6 | 6 |
+| Teste di attenzione | 16 | 16 | 16 | 16 | 16 |
+| Dimensione feed-forward | 512 | 512 | 512 | 512 | 512 |
+| Dropout | `0.1` | `0.0` | `0.0` | `0.0` | `0.0` |
+| Normalizzazione Transformer | post-norm | post-norm | post-norm | post-norm | post-norm |
+| Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss |
+| Focal alpha | `0.25` | `0.25` | `0.25` | `0.5` | `0.5` |
+| Focal gamma | `2.0` | `2.0` | `2.0` | `2.0` | `2.0` |
+| Optimizer | Adam | Adam | Adam | Adam | Adam |
+| Adam beta1 / beta2 / epsilon | `0.9` / `0.999` / `1e-8` | `0.9` / `0.999` / `1e-8` | `0.9` / `0.999` / `1e-8` | `0.9` / `0.999` / `1e-8` | `0.9` / `0.999` / `1e-8` |
+| LR iniziale task e ResNet | `1e-5` | `1e-5` | `1e-5` | `1e-5` | `1e-5` |
+| Weight decay | `0.0` | `0.0` | `1e-3` | `0.0` | `1e-3` |
+| Scheduler | StepLR | StepLR | StepLR | StepLR | StepLR |
+| Step size / gamma | `3` / `0.5` | `3` / `0.5` | `3` / `0.5` | `3` / `0.5` | `3` / `0.5` |
+| Metrica best checkpoint | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC |
+| Early stopping | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` |
+| Gradient clipping | disabilitato | disabilitato | disabilitato | disabilitato | disabilitato |
+| Seed | 42 | 42 | 42 | 42 | 42 |
+| DataLoader workers | 0 | 0 | 0 | 0 | 0 |
+| Device | CUDA se disponibile, altrimenti CPU | CUDA se disponibile, altrimenti CPU | CUDA se disponibile, altrimenti CPU | CUDA se disponibile, altrimenti CPU | CUDA se disponibile, altrimenti CPU |
+| Log batch | ogni 50 batch | ogni 50 batch | ogni 50 batch | ogni 50 batch | ogni 50 batch |
+| Grafici | abilitati | abilitati | abilitati | abilitati | abilitati |
+| Checkpoint | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca |
+
+Con `step_size=3` e gamma `0.5`, LR vale `1e-5` nelle epoche 1-3 e
+`5e-6` dalla quarta alla sesta; viene poi dimezzato ancora ogni tre epoche.
+
 ### Uso della serie
 
 Eseguire i comandi dalla root del progetto, con ambiente virtuale attivo.
@@ -95,7 +149,7 @@ Mostrare tutti i comandi senza avviare training:
 python -m training.run_trianing_series.run_end_to_end_series --dry-run
 ```
 
-Avviare tutti i cinque stage in una root nuova e vuota:
+Avviare tutti i dieci stage in una root nuova e vuota:
 
 ```powershell
 python -m training.run_trianing_series.run_end_to_end_series `
@@ -106,24 +160,25 @@ Nella root predefinita `checkpoints\nondisjoint`, stage 1 risulta già eseguito.
 Avviare quindi solo stage mancanti:
 
 ```powershell
-python -m training.run_trianing_series.run_end_to_end_series --stages 2 3 4 5
+python -m training.run_trianing_series.run_end_to_end_series `
+  --stages 2 3 4 5 6 7 8 9 10
 ```
 
 Avviare un singolo stage o un sottoinsieme:
 
 ```powershell
-# Solo stage 3
-python -m training.run_trianing_series.run_end_to_end_series --stages 3
+# Solo stage 8
+python -m training.run_trianing_series.run_end_to_end_series --stages 8
 
-# Stage 2 e 5, eseguiti in questo ordine
-python -m training.run_trianing_series.run_end_to_end_series --stages 2 5
+# Stage 6 e 10, eseguiti in questo ordine
+python -m training.run_trianing_series.run_end_to_end_series --stages 6 10
 ```
 
 Opzioni comuni vengono applicate a tutti gli stage selezionati:
 
 ```powershell
 python -m training.run_trianing_series.run_end_to_end_series `
-  --stages 2 3 4 5 `
+  --stages 2 3 4 5 6 7 8 9 10 `
   --device cuda `
   --workers 4 `
   --cache-dir data\huggingface
@@ -161,7 +216,8 @@ Se stage 2 è completo e blocco avviene prima di stage 3, rilanciare solo stage
 rimanenti:
 
 ```powershell
-python -m training.run_trianing_series.run_end_to_end_series --stages 3 4 5
+python -m training.run_trianing_series.run_end_to_end_series `
+  --stages 3 4 5 6 7 8 9 10
 ```
 
 Non includere stage già completati: runner trova loro checkpoint e interrompe
@@ -194,7 +250,8 @@ Non usare direttamente runner sullo stage parziale: protezione contro
 sovrascrittura lo rifiuta. Terminato resume dello stage 3, continuare serie:
 
 ```powershell
-python -m training.run_trianing_series.run_end_to_end_series --stages 4 5
+python -m training.run_trianing_series.run_end_to_end_series `
+  --stages 4 5 6 7 8 9 10
 ```
 
 `--epochs` indica epoca finale totale, non epoche aggiuntive. Con checkpoint

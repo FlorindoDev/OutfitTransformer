@@ -12,6 +12,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATASET_VARIANT = "nondisjoint"
+DEFAULT_LR_STEP_SIZE = 10
+FAST_LR_STEP_SIZE = 3
+MEDIUM_WEIGHT_DECAY = 1e-3
 
 
 @dataclass(frozen=True)
@@ -25,6 +28,7 @@ class EndToEndStage:
     weight_decay: float = 0.0
     max_grad_norm: float | None = None
     focal_alpha: float = 0.25
+    lr_step_size: int = DEFAULT_LR_STEP_SIZE
 
     @property
     def directory_name(self) -> str:
@@ -61,15 +65,60 @@ END_TO_END_STAGES: tuple[EndToEndStage, ...] = (
     EndToEndStage(
         number=4,
         name="focal_alpha_05",
-        changed_parameters=("focal_alpha",),
+        changed_parameters=("dropout", "focal_alpha"),
+        dropout=0.0,
         focal_alpha=0.5,
     ),
     EndToEndStage(
         number=5,
         name="weight_decay_1e4_focal_alpha_05",
-        changed_parameters=("weight_decay", "focal_alpha"),
+        changed_parameters=("dropout", "weight_decay", "focal_alpha"),
+        dropout=0.0,
         weight_decay=1e-4,
         focal_alpha=0.5,
+    ),
+    EndToEndStage(
+        number=6,
+        name="step_lr_3_standard_defaults",
+        changed_parameters=("lr_step_size",),
+        lr_step_size=FAST_LR_STEP_SIZE,
+    ),
+    EndToEndStage(
+        number=7,
+        name="step_lr_3_dropout_0",
+        changed_parameters=("dropout", "lr_step_size"),
+        dropout=0.0,
+        lr_step_size=FAST_LR_STEP_SIZE,
+    ),
+    EndToEndStage(
+        number=8,
+        name="step_lr_3_dropout_0_weight_decay_1e3",
+        changed_parameters=("dropout", "weight_decay", "lr_step_size"),
+        dropout=0.0,
+        weight_decay=MEDIUM_WEIGHT_DECAY,
+        lr_step_size=FAST_LR_STEP_SIZE,
+    ),
+    EndToEndStage(
+        number=9,
+        name="step_lr_3_dropout_0_focal_alpha_05",
+        changed_parameters=("dropout", "focal_alpha", "lr_step_size"),
+        dropout=0.0,
+        focal_alpha=0.5,
+        lr_step_size=FAST_LR_STEP_SIZE,
+    ),
+    EndToEndStage(
+        number=10,
+        name="step_lr_3_dropout_0_weight_decay_1e3_focal_alpha_05",
+        changed_parameters=(
+            "dropout",
+            "weight_decay",
+            "focal_alpha",
+            "lr_step_size",
+        ),
+        dropout=0.0,
+        weight_decay=MEDIUM_WEIGHT_DECAY,
+        focal_alpha=0.5,
+        lr_step_size=FAST_LR_STEP_SIZE,
     ),
 )
 STAGE_NUMBERS = tuple(stage.number for stage in END_TO_END_STAGES)
@@ -78,7 +127,7 @@ STAGE_NUMBERS = tuple(stage.number for stage in END_TO_END_STAGES)
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run five independent nondisjoint end-to-end CP experiments "
+            "Run ten independent nondisjoint end-to-end CP experiments "
             "around the OutfitTransformer paper setup"
         ),
     )
@@ -162,7 +211,7 @@ def _build_stage_command(
         "--weight-decay",
         str(stage.weight_decay),
         "--lr-step-size",
-        "10",
+        str(stage.lr_step_size),
         "--lr-gamma",
         "0.5",
         "--focal-alpha",
@@ -258,6 +307,8 @@ def _validate_stage_definitions(stages: Sequence[EndToEndStage]) -> None:
             raise ValueError(f"invalid dropout in stage {stage.number}")
         if stage.weight_decay < 0.0:
             raise ValueError(f"invalid weight decay in stage {stage.number}")
+        if stage.lr_step_size <= 0:
+            raise ValueError(f"invalid LR step size in stage {stage.number}")
         if stage.max_grad_norm is not None and stage.max_grad_norm <= 0.0:
             raise ValueError(f"invalid gradient clipping in stage {stage.number}")
         if not 0.0 <= stage.focal_alpha <= 1.0:

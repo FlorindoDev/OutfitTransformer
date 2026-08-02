@@ -314,8 +314,8 @@ Serie progressiva paper → FC-only → layer4 → full completata; runner rimos
 Configurazione reale archiviata in
 [`checkpoints/run_training_series/README.md`](checkpoints/run_training_series/README.md).
 
-Una seconda serie esegue cinque stage end-to-end sullo split `nondisjoint` e
-confronta dropout, weight decay e Focal alpha:
+Una seconda serie esegue dieci stage end-to-end sullo split `nondisjoint` e
+confronta dropout, weight decay, Focal alpha e frequenza StepLR:
 
 ```powershell
 python -m training.run_trianing_series.run_end_to_end_series --dry-run
@@ -413,7 +413,7 @@ training/
     plotting.py         grafici cumulativi per epoca
   run_trianing_series/
     README.md           guida alla serie dei training CP
-    run_end_to_end_series.py cinque run nondisjoint end-to-end indipendenti
+    run_end_to_end_series.py dieci run nondisjoint end-to-end indipendenti
   cir/
     README.md           training CIR previsto, non ancora implementato
 requirements.txt
