@@ -1,4 +1,4 @@
-"""Run controlled end-to-end CP experiments around the paper setup."""
+"""Run controlled nondisjoint end-to-end CP experiments."""
 
 from __future__ import annotations
 
@@ -11,13 +11,14 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATASET_VARIANT = "nondisjoint"
 
 
 @dataclass(frozen=True)
-class PaperEndToEndStage:
+class EndToEndStage:
     number: int
     name: str
-    changed_parameter: str
+    changed_parameters: tuple[str, ...]
     seed: int = 42
     dropout: float = 0.1
     norm_first: bool = False
@@ -33,81 +34,58 @@ class PaperEndToEndStage:
     def normalization_flag(self) -> str:
         return "--pre-norm" if self.norm_first else "--post-norm"
 
+    @property
+    def change_summary(self) -> str:
+        return ",".join(self.changed_parameters) or "baseline"
 
-PAPER_END_TO_END_STAGES: tuple[PaperEndToEndStage, ...] = (
-    PaperEndToEndStage(
+
+END_TO_END_STAGES: tuple[EndToEndStage, ...] = (
+    EndToEndStage(
         number=1,
         name="paper_standard_defaults",
-        changed_parameter="baseline",
+        changed_parameters=(),
     ),
-    PaperEndToEndStage(
+    EndToEndStage(
         number=2,
-        name="seed_7",
-        changed_parameter="seed",
-        seed=7,
-    ),
-    PaperEndToEndStage(
-        number=3,
-        name="seed_123",
-        changed_parameter="seed",
-        seed=123,
-    ),
-    PaperEndToEndStage(
-        number=4,
         name="dropout_0",
-        changed_parameter="dropout",
+        changed_parameters=("dropout",),
         dropout=0.0,
     ),
-    PaperEndToEndStage(
-        number=5,
-        name="dropout_02",
-        changed_parameter="dropout",
-        dropout=0.2,
-    ),
-    PaperEndToEndStage(
-        number=6,
-        name="pre_norm",
-        changed_parameter="norm_first",
-        norm_first=True,
-    ),
-    PaperEndToEndStage(
-        number=7,
-        name="weight_decay_1e4",
-        changed_parameter="weight_decay",
+    EndToEndStage(
+        number=3,
+        name="dropout_0_weight_decay_1e4",
+        changed_parameters=("dropout", "weight_decay"),
+        dropout=0.0,
         weight_decay=1e-4,
     ),
-    PaperEndToEndStage(
-        number=8,
-        name="grad_clip_1",
-        changed_parameter="max_grad_norm",
-        max_grad_norm=1.0,
-    ),
-    PaperEndToEndStage(
-        number=9,
+    EndToEndStage(
+        number=4,
         name="focal_alpha_05",
-        changed_parameter="focal_alpha",
+        changed_parameters=("focal_alpha",),
+        focal_alpha=0.5,
+    ),
+    EndToEndStage(
+        number=5,
+        name="weight_decay_1e4_focal_alpha_05",
+        changed_parameters=("weight_decay", "focal_alpha"),
+        weight_decay=1e-4,
         focal_alpha=0.5,
     ),
 )
-STAGE_NUMBERS = tuple(stage.number for stage in PAPER_END_TO_END_STAGES)
+STAGE_NUMBERS = tuple(stage.number for stage in END_TO_END_STAGES)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run independent end-to-end CP experiments that preserve every "
-            "training parameter reported by the OutfitTransformer paper"
+            "Run five independent nondisjoint end-to-end CP experiments "
+            "around the OutfitTransformer paper setup"
         ),
     )
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path("checkpoints/cp_paper_end_to_end_series"),
-    )
-    parser.add_argument(
-        "--variant",
-        choices=("nondisjoint", "disjoint"),
-        default="disjoint",
+        default=Path("checkpoints/nondisjoint"),
     )
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=50)
@@ -141,19 +119,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     _validate_args(args)
-    _validate_stage_definitions(PAPER_END_TO_END_STAGES)
+    _validate_stage_definitions(END_TO_END_STAGES)
     output_root = _resolve_output_root(args.output_root)
     stages = _select_stages(args.stages)
     if not args.dry_run:
         _validate_output_directories(stages, output_root)
 
-    print("series=paper_end_to_end_ablation")
+    print("series=nondisjoint_end_to_end")
     print(f"independent_stages={len(stages)} output_root={output_root}")
     for stage in stages:
         command = _build_stage_command(stage, args, output_root)
         print(
             f"stage={stage.number} name={stage.name} "
-            f"changed_parameter={stage.changed_parameter}"
+            f"changed_parameters={stage.change_summary}"
         )
         print(f"command={subprocess.list2cmdline(command)}")
         if not args.dry_run:
@@ -161,7 +139,7 @@ def main() -> None:
 
 
 def _build_stage_command(
-    stage: PaperEndToEndStage,
+    stage: EndToEndStage,
     args: argparse.Namespace,
     output_root: Path,
 ) -> tuple[str, ...]:
@@ -174,7 +152,7 @@ def _build_stage_command(
         "-m",
         "training.cp.train_cp",
         "--variant",
-        args.variant,
+        DATASET_VARIANT,
         "--epochs",
         str(args.epochs),
         "--batch-size",
@@ -230,12 +208,12 @@ def _build_stage_command(
 
 def _select_stages(
     requested_numbers: Sequence[int] | None,
-) -> tuple[PaperEndToEndStage, ...]:
+) -> tuple[EndToEndStage, ...]:
     if requested_numbers is None:
-        return PAPER_END_TO_END_STAGES
+        return END_TO_END_STAGES
     requested = set(requested_numbers)
     selected = tuple(
-        stage for stage in PAPER_END_TO_END_STAGES if stage.number in requested
+        stage for stage in END_TO_END_STAGES if stage.number in requested
     )
     if len(selected) != len(requested):
         unknown = sorted(requested.difference(STAGE_NUMBERS))
@@ -262,19 +240,17 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--log-interval must be non-negative")
 
 
-def _validate_stage_definitions(
-    stages: Sequence[PaperEndToEndStage],
-) -> None:
+def _validate_stage_definitions(stages: Sequence[EndToEndStage]) -> None:
     if not stages:
-        raise ValueError("paper end-to-end series requires at least one stage")
+        raise ValueError("end-to-end series requires at least one stage")
     numbers = [stage.number for stage in stages]
     names = [stage.name for stage in stages]
     if len(set(numbers)) != len(numbers):
-        raise ValueError("paper end-to-end stage numbers must be unique")
+        raise ValueError("end-to-end stage numbers must be unique")
     if len(set(names)) != len(names):
-        raise ValueError("paper end-to-end stage names must be unique")
+        raise ValueError("end-to-end stage names must be unique")
     if numbers != list(range(1, len(stages) + 1)):
-        raise ValueError("paper end-to-end stage numbers must be contiguous")
+        raise ValueError("end-to-end stage numbers must be contiguous")
     for stage in stages:
         if stage.seed < 0:
             raise ValueError(f"invalid seed in stage {stage.number}")
@@ -288,10 +264,12 @@ def _validate_stage_definitions(
             raise ValueError(f"invalid focal alpha in stage {stage.number}")
 
     baseline = stages[0]
+    if baseline.changed_parameters:
+        raise ValueError("end-to-end baseline cannot declare changed parameters")
     experimental_fields = tuple(
         field.name
-        for field in fields(PaperEndToEndStage)
-        if field.name not in {"number", "name", "changed_parameter"}
+        for field in fields(EndToEndStage)
+        if field.name not in {"number", "name", "changed_parameters"}
     )
     for stage in stages[1:]:
         changed = tuple(
@@ -299,15 +277,15 @@ def _validate_stage_definitions(
             for name in experimental_fields
             if getattr(stage, name) != getattr(baseline, name)
         )
-        if changed != (stage.changed_parameter,):
+        if changed != stage.changed_parameters:
             raise ValueError(
-                f"stage {stage.number} must change only "
-                f"{stage.changed_parameter}; changed={changed}"
+                f"stage {stage.number} declares {stage.changed_parameters}; "
+                f"changed={changed}"
             )
 
 
 def _validate_output_directories(
-    stages: Sequence[PaperEndToEndStage],
+    stages: Sequence[EndToEndStage],
     output_root: Path,
 ) -> None:
     for stage in stages:
