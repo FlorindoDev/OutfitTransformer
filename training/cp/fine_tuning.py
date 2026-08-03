@@ -124,6 +124,7 @@ class CPFineTuneOptimizerConfig:
     learning_rate: float = 1e-5
     transformer_learning_rate: float | None = None
     image_backbone_learning_rate: float | None = None
+    resnet_fc_learning_rate: float | None = None
     weight_decay: float = 1e-4
     beta1: float = 0.9
     beta2: float = 0.999
@@ -144,6 +145,11 @@ class CPFineTuneOptimizerConfig:
             and self.image_backbone_learning_rate <= 0.0
         ):
             raise ValueError("image_backbone_learning_rate must be positive")
+        if (
+            self.resnet_fc_learning_rate is not None
+            and self.resnet_fc_learning_rate <= 0.0
+        ):
+            raise ValueError("resnet_fc_learning_rate must be positive")
         if self.weight_decay < 0.0:
             raise ValueError("weight_decay must be non-negative")
         if not 0.0 <= self.beta1 < 1.0 or not 0.0 <= self.beta2 < 1.0:
@@ -167,6 +173,14 @@ class CPFineTuneOptimizerConfig:
             else self.transformer_learning_rate
         )
 
+    @property
+    def resolved_resnet_fc_learning_rate(self) -> float:
+        return (
+            self.learning_rate
+            if self.resnet_fc_learning_rate is None
+            else self.resnet_fc_learning_rate
+        )
+
 
 def build_cp_fine_tune_optimizer(
     model: CompatibilityPredictor,
@@ -174,8 +188,9 @@ def build_cp_fine_tune_optimizer(
     *,
     separate_transformer: bool | None = None,
     separate_image_backbone: bool = True,
+    separate_resnet_fc: bool | None = None,
 ) -> Optimizer:
-    """Build optimizer groups for task, Transformer and ResNet parameters."""
+    """Build independent task, Transformer, ResNet feature and FC groups."""
     config.validate()
     backbone = model.encoder.image_encoder.backbone
     image_feature_parameters = tuple(
@@ -186,6 +201,17 @@ def build_cp_fine_tune_optimizer(
         and parameter.requires_grad
     )
     image_feature_ids = {id(parameter) for parameter in image_feature_parameters}
+    should_separate_resnet_fc = (
+        config.resnet_fc_learning_rate is not None
+        if separate_resnet_fc is None
+        else separate_resnet_fc
+    )
+    resnet_fc_parameters = tuple(
+        parameter
+        for parameter in backbone.fc.parameters()
+        if should_separate_resnet_fc and parameter.requires_grad
+    )
+    resnet_fc_ids = {id(parameter) for parameter in resnet_fc_parameters}
     should_separate_transformer = (
         config.transformer_learning_rate is not None
         if separate_transformer is None
@@ -203,6 +229,7 @@ def build_cp_fine_tune_optimizer(
         if parameter.requires_grad
         and id(parameter) not in image_feature_ids
         and id(parameter) not in transformer_ids
+        and id(parameter) not in resnet_fc_ids
     )
     if not task_parameters:
         raise ValueError("fine-tuning requires trainable non-backbone parameters")
@@ -228,6 +255,14 @@ def build_cp_fine_tune_optimizer(
                 "params": image_feature_parameters,
                 "lr": config.resolved_image_backbone_learning_rate,
                 "group_name": "image_backbone",
+            }
+        )
+    if resnet_fc_parameters:
+        parameter_groups.append(
+            {
+                "params": resnet_fc_parameters,
+                "lr": config.resolved_resnet_fc_learning_rate,
+                "group_name": "resnet_fc",
             }
         )
 

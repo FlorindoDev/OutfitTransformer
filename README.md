@@ -314,6 +314,22 @@ Serie progressiva paper → FC-only → layer4 → full completata; runner rimos
 Configurazione reale archiviata in
 [`checkpoints/run_training_series/README.md`](checkpoints/run_training_series/README.md).
 
+La nuova `training_series` esegue warm-up e tre fasi dipendenti con gradual
+unfreezing: warm-up a LR basso, `fc_only`, `fc_and_layer4`, poi backbone
+completo. Ogni fase carica il `best.pt` della precedente; FC ResNet, blocchi
+visuali e resto del modello possono avere learning rate e scheduler distinti.
+
+```powershell
+# Mostra i comandi e le dipendenze
+python -m training.run_trianing_series.run_training_series --dry-run
+
+# Avvia tutte le fasi
+python -m training.run_trianing_series.run_training_series
+```
+
+Fasi, warm-up strutturale e tabella completa degli iperparametri sono nella
+[sezione `training_series`](training/run_trianing_series/README.md#serie-progressiva-training_series).
+
 Una seconda serie esegue dieci stage end-to-end sullo split `nondisjoint` e
 confronta dropout, weight decay, Focal alpha e frequenza StepLR:
 
@@ -414,6 +430,7 @@ training/
   run_trianing_series/
     README.md           guida alla serie dei training CP
     run_end_to_end_series.py dieci run nondisjoint end-to-end indipendenti
+    run_training_series.py warm-up + fasi FC, layer4, backbone
   cir/
     README.md           training CIR previsto, non ancora implementato
 requirements.txt

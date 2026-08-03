@@ -3,7 +3,8 @@
 Il package separa il training per task:
 
 - [Compatibility Prediction](cp/README.md): implementato;
-- [Serie di training CP](run_trianing_series/README.md): runner dei quattro esperimenti;
+- [`training_series`](run_trianing_series/README.md#serie-progressiva-training_series): warm-up e tre fasi CP dipendenti;
+- [Serie end-to-end CP](run_trianing_series/README.md): esperimenti indipendenti;
 - [Complementary Item Retrieval](cir/README.md): non ancora implementato.
 
 ## Indice
@@ -63,13 +64,15 @@ Il package separa il training per task:
 | Primo momento di Adam (β₁) | `0.9` | Controlla la media mobile del gradiente. |
 | Secondo momento di Adam (β₂) | `0.999` | Controlla la media mobile del gradiente al quadrato. |
 | Stabilità numerica di Adam (ε) | `1e-8` | Evita divisioni numericamente instabili durante l'aggiornamento dei pesi. |
-| Learning rate base | `1e-5` | Regola l'ampiezza degli aggiornamenti di FC visuale, proiezione testuale, task token e testa CP. |
+| Learning rate base | `1e-5` | Regola gli aggiornamenti del gruppo task; include la FC visuale finché non viene separata. |
 | Learning rate del Transformer | Learning rate base | Permette al Transformer di usare un'ampiezza di aggiornamento distinta. |
 | Learning rate di ResNet | Learning rate base | Permette ai blocchi allenabili di ResNet di usare un'ampiezza di aggiornamento distinta. |
+| Learning rate della FC ResNet | Learning rate base | Crea un gruppo optimizer indipendente per la FC visuale e ne controlla gli aggiornamenti. |
 | Weight decay | `0.0` | Applica la regolarizzazione dei pesi nell'ottimizzatore. |
 | Scheduler del learning rate base | StepLR | Modifica il learning rate base durante il training; può essere disabilitato o sostituito da CosineAnnealingLR. |
 | Scheduler del Transformer | Scheduler base | Consente di variare separatamente il learning rate del Transformer. |
 | Scheduler di ResNet | Scheduler base | Consente di variare separatamente il learning rate dei blocchi ResNet. |
+| Scheduler della FC ResNet | Scheduler base | Applica `none`, StepLR o cosine al gruppo FC visuale separato. |
 | Periodo di StepLR | `10` epoche | Indica ogni quante epoche ridurre il learning rate. |
 | Fattore di riduzione di StepLR | `0.5` | Moltiplica il learning rate per questo valore a ogni riduzione. |
 | Learning rate minimo del cosine scheduler | `0.0` | Imposta il limite inferiore raggiungibile da CosineAnnealingLR. |
@@ -105,6 +108,7 @@ Il package separa il training per task:
 | Learning rate base | `1e-5` | Regola l'ampiezza degli aggiornamenti dei parametri non appartenenti al Transformer o al backbone ResNet. |
 | Learning rate del Transformer | Learning rate base | Permette al Transformer di usare un'ampiezza di aggiornamento distinta. |
 | Learning rate di ResNet | Learning rate base | Permette ai blocchi allenabili di ResNet di usare un'ampiezza di aggiornamento distinta. |
+| Learning rate della FC ResNet | Learning rate base | Crea un gruppo optimizer indipendente per la FC visuale. |
 | Weight decay | `1e-4` | Regolarizza i pesi del nuovo ottimizzatore per limitare l'overfitting. |
 | Primo momento dell'ottimizzatore (β₁) | `0.9` | Controlla la media mobile del gradiente in Adam o AdamW. |
 | Secondo momento dell'ottimizzatore (β₂) | `0.999` | Controlla la media mobile del gradiente al quadrato. |
@@ -112,6 +116,7 @@ Il package separa il training per task:
 | Scheduler del learning rate base | StepLR | Modifica il learning rate base durante il fine-tuning; può essere disabilitato o sostituito da CosineAnnealingLR. |
 | Scheduler del Transformer | Scheduler base | Consente di variare separatamente il learning rate del Transformer. |
 | Scheduler di ResNet | Scheduler base | Consente di variare separatamente il learning rate dei blocchi ResNet. |
+| Scheduler della FC ResNet | Scheduler base | Applica uno scheduler indipendente alla FC visuale. |
 | Periodo di StepLR | `10` epoche | Indica ogni quante epoche ridurre il learning rate. |
 | Fattore di riduzione di StepLR | `0.5` | Moltiplica il learning rate per questo valore a ogni riduzione. |
 | Learning rate minimo del cosine scheduler | `0.0` | Imposta il limite inferiore raggiungibile da CosineAnnealingLR. |
@@ -430,5 +435,6 @@ esempio `--max-grad-norm 1.0`.
 ```powershell
 python -m training.cp.train_cp --help
 python -m training.cp.fine_tune_cp --help
+python -m training.run_trianing_series.run_training_series --help
 python -m training.run_trianing_series.run_end_to_end_series --help
 ```

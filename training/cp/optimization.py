@@ -14,6 +14,7 @@ SCHEDULER_NAMES: tuple[SchedulerName, ...] = ("none", "step", "cosine")
 
 _TRANSFORMER_GROUP = "transformer"
 _RESNET_GROUPS = frozenset(("image_backbone", "resnet"))
+_RESNET_FC_GROUP = "resnet_fc"
 
 
 @dataclass(frozen=True)
@@ -228,8 +229,10 @@ def create_cp_scheduler(
     parameters: CPSchedulerParameters,
     transformer_scheduler: SchedulerName | None = None,
     resnet_scheduler: SchedulerName | None = None,
+    resnet_fc_scheduler: SchedulerName | None = None,
     transformer_parameters: CPSchedulerParameters | None = None,
     resnet_parameters: CPSchedulerParameters | None = None,
+    resnet_fc_parameters: CPSchedulerParameters | None = None,
 ) -> Any | None:
     """Create legacy common scheduler or independent group schedulers."""
     _validate_scheduler_options(
@@ -240,8 +243,10 @@ def create_cp_scheduler(
     if (
         transformer_scheduler is None
         and resnet_scheduler is None
+        and resnet_fc_scheduler is None
         and transformer_parameters is None
         and resnet_parameters is None
+        and resnet_fc_parameters is None
     ):
         return _create_common_scheduler(
             optimizer,
@@ -264,6 +269,10 @@ def create_cp_scheduler(
         resnet_scheduler is not None or resnet_parameters is not None
     ) and not _RESNET_GROUPS.intersection(group_names):
         raise ValueError("ResNet scheduler requires a ResNet optimizer group")
+    if (
+        resnet_fc_scheduler is not None or resnet_fc_parameters is not None
+    ) and _RESNET_FC_GROUP not in group_names:
+        raise ValueError("ResNet FC scheduler requires a ResNet FC optimizer group")
 
     scheduler_names: dict[str, SchedulerName] = {
         group_name: _group_scheduler_name(
@@ -271,6 +280,7 @@ def create_cp_scheduler(
             default=scheduler,
             transformer=transformer_scheduler,
             resnet=resnet_scheduler,
+            resnet_fc=resnet_fc_scheduler,
         )
         for group_name in group_names
     }
@@ -280,6 +290,7 @@ def create_cp_scheduler(
             default=parameters,
             transformer=transformer_parameters,
             resnet=resnet_parameters,
+            resnet_fc=resnet_fc_parameters,
         )
         for group_name in group_names
     }
@@ -322,11 +333,14 @@ def _group_scheduler_name(
     default: SchedulerName,
     transformer: SchedulerName | None,
     resnet: SchedulerName | None,
+    resnet_fc: SchedulerName | None,
 ) -> SchedulerName:
     if group_name == _TRANSFORMER_GROUP and transformer is not None:
         return transformer
     if group_name in _RESNET_GROUPS and resnet is not None:
         return resnet
+    if group_name == _RESNET_FC_GROUP and resnet_fc is not None:
+        return resnet_fc
     return default
 
 
@@ -336,11 +350,14 @@ def _group_scheduler_parameters(
     default: CPSchedulerParameters,
     transformer: CPSchedulerParameters | None,
     resnet: CPSchedulerParameters | None,
+    resnet_fc: CPSchedulerParameters | None,
 ) -> CPSchedulerParameters:
     if group_name == _TRANSFORMER_GROUP and transformer is not None:
         return transformer
     if group_name in _RESNET_GROUPS and resnet is not None:
         return resnet
+    if group_name == _RESNET_FC_GROUP and resnet_fc is not None:
+        return resnet_fc
     return default
 
 

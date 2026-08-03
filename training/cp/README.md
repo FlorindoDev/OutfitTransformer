@@ -366,9 +366,10 @@ python -m training.cp.fine_tune_cp --help
 | `--output-dir` | `checkpoints/cp_fine_tune` nuova fase; directory originale nel resume | directory per `best.pt`, checkpoint epoca e grafici |
 | `--variant` | checkpoint, altrimenti `disjoint` | variante Polyvore: `disjoint` o `nondisjoint` |
 | `--batch-size` | `50` | outfit per batch |
-| `--learning-rate` | `1e-5` | LR base per FC visuale, proiezione testo, token e classificatore |
+| `--learning-rate` | `1e-5` | LR del gruppo base; include la FC visuale finché non viene separata |
 | `--transformer-learning-rate` | valore di `--learning-rate` | LR separato per il Transformer |
 | `--resnet-learning-rate` | valore di `--learning-rate` | LR separato per i blocchi ResNet allenabili; alias legacy `--image-backbone-learning-rate` |
+| `--resnet-fc-learning-rate` | gruppo base | LR separato per la FC finale della ResNet |
 | `--optimizer` | `adam` | optimizer: `adam` o `adamw` |
 | `--weight-decay` | `1e-4` | weight decay del nuovo optimizer |
 | `--adam-beta1` | `0.9` | primo coefficiente beta di Adam/AdamW |
@@ -377,6 +378,7 @@ python -m training.cp.fine_tune_cp --help
 | `--scheduler` | `step` | scheduler: `none`, `step` o `cosine` |
 | `--transformer-scheduler` | valore di `--scheduler` | scheduler separato del Transformer: `none`, `step` o `cosine` |
 | `--resnet-scheduler` | valore di `--scheduler` | scheduler separato dei blocchi ResNet allenabili: `none`, `step` o `cosine` |
+| `--resnet-fc-scheduler` | valore di `--scheduler` | scheduler separato della FC finale ResNet: `none`, `step` o `cosine` |
 | `--lr-step-size` | `10` | epoche tra riduzioni LR con scheduler `step` |
 | `--lr-gamma` | `0.5` | fattore di riduzione LR con scheduler `step` |
 | `--min-learning-rate` | `0.0` | LR minimo `eta_min` con scheduler `cosine` |
@@ -424,10 +426,12 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--learning-rate` | `1e-5` | learning rate Adam del gruppo base |
 | `--transformer-learning-rate` | valore di `--learning-rate` | learning rate separato del Transformer |
 | `--resnet-learning-rate` | valore di `--learning-rate` | learning rate separato dei blocchi ResNet allenabili |
+| `--resnet-fc-learning-rate` | gruppo base | learning rate separato della FC finale ResNet |
 | `--weight-decay` | `0.0` | weight decay Adam |
 | `--scheduler` | `step` | scheduler base: `none`, `step` o `cosine` |
 | `--transformer-scheduler` | valore di `--scheduler` | scheduler separato del Transformer |
 | `--resnet-scheduler` | valore di `--scheduler` | scheduler separato dei blocchi ResNet allenabili |
+| `--resnet-fc-scheduler` | valore di `--scheduler` | scheduler separato della FC finale ResNet |
 | `--lr-step-size` | `10` | periodo StepLR |
 | `--lr-gamma` | `0.5` | fattore StepLR |
 | `--min-learning-rate` | `0.0` | LR minimo per scheduler cosine |
@@ -511,7 +515,7 @@ fine-tuning.
 1. l'entry point legge e valida i flag;
 2. costruisce DataLoader, modello e loss;
 3. crea gruppi optimizer e scheduler, eventualmente distinti per base,
-   Transformer e ResNet;
+   Transformer, feature ResNet e FC ResNet;
 4. in caso di resume ripristina pesi, optimizer, scheduler, history e RNG;
 5. passa tutte le dipendenze a `train_cp()` e quindi a `CPTrainer`.
 
@@ -547,7 +551,7 @@ fine-tuning.
 | File | Responsabilità | Modificalo quando... |
 |---|---|---|
 | `fine_tuning.py` | Lettura del checkpoint sorgente e gruppi optimizer del fine-tuning | cambi caricamento dei pesi o gruppi e learning rate |
-| `optimization.py` | Scheduler base, Transformer e ResNet, incluso il loro stato | aggiungi una policy LR o cambi la gestione per gruppo |
+| `optimization.py` | Scheduler base, Transformer, feature ResNet e FC ResNet, incluso il loro stato | aggiungi una policy LR o cambi la gestione per gruppo |
 | `selection.py` | Valore e direzione della metrica usata per scegliere il best | aggiungi una metrica di selezione |
 | `early_stopping.py` | Patience, `min_delta` e decisione di stop | cambi la politica di interruzione |
 | `checkpointing.py` | Salvataggio atomico e resume di modello, optimizer, scheduler, history e RNG | cambi schema o politica dei checkpoint |

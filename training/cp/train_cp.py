@@ -71,6 +71,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="trainable ResNet feature-block LR; default uses --learning-rate",
     )
+    parser.add_argument(
+        "--resnet-fc-learning-rate",
+        type=float,
+        default=None,
+        help="ResNet final FC LR; default keeps it in the base parameter group",
+    )
     parser.add_argument("--weight-decay", type=float, default=0.0)
     parser.add_argument(
         "--scheduler",
@@ -88,6 +94,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         choices=SCHEDULER_NAMES,
         default=None,
         help="ResNet feature-block scheduler; default uses --scheduler",
+    )
+    parser.add_argument(
+        "--resnet-fc-scheduler",
+        choices=SCHEDULER_NAMES,
+        default=None,
+        help="ResNet final FC scheduler; default uses --scheduler",
     )
     parser.add_argument("--lr-step-size", type=int, default=10)
     parser.add_argument("--lr-gamma", type=float, default=0.5)
@@ -272,6 +284,7 @@ def main() -> None:
         scheduler=args.scheduler,
         transformer_scheduler=args.transformer_scheduler,
         resnet_scheduler=args.resnet_scheduler,
+        resnet_fc_scheduler=args.resnet_fc_scheduler,
         total_epochs=args.epochs,
         parameters=parameters,
         transformer_parameters=transformer_parameters,
@@ -361,10 +374,12 @@ def _apply_resume_optimization_configuration(args: argparse.Namespace) -> None:
             "resnet_learning_rate",
             training.get("image_backbone_learning_rate"),
         ),
+        "resnet_fc_learning_rate": training.get("resnet_fc_learning_rate"),
         "weight_decay": training.get("weight_decay"),
         "scheduler": training.get("scheduler"),
         "transformer_scheduler": training.get("transformer_scheduler"),
         "resnet_scheduler": training.get("resnet_scheduler"),
+        "resnet_fc_scheduler": training.get("resnet_fc_scheduler"),
         "lr_step_size": training.get("lr_step_size"),
         "lr_gamma": training.get("lr_gamma"),
         "min_learning_rate": training.get("min_learning_rate"),
@@ -385,8 +400,10 @@ def _apply_resume_optimization_configuration(args: argparse.Namespace) -> None:
         if value is not None or name in {
             "transformer_learning_rate",
             "resnet_learning_rate",
+            "resnet_fc_learning_rate",
             "transformer_scheduler",
             "resnet_scheduler",
+            "resnet_fc_scheduler",
             "transformer_lr_step_size",
             "transformer_lr_gamma",
             "transformer_min_learning_rate",
@@ -409,7 +426,11 @@ def _create_optimizer(
         args.resnet_learning_rate is not None
         or _has_resnet_scheduler_override(args)
     )
-    if not separate_transformer and not separate_resnet:
+    separate_resnet_fc = (
+        args.resnet_fc_learning_rate is not None
+        or args.resnet_fc_scheduler is not None
+    )
+    if not separate_transformer and not separate_resnet and not separate_resnet_fc:
         return Adam(
             model.parameters(),
             lr=args.learning_rate,
@@ -429,6 +450,11 @@ def _create_optimizer(
             if args.resnet_learning_rate is not None
             else args.learning_rate
         ),
+        resnet_fc_learning_rate=(
+            args.resnet_fc_learning_rate
+            if args.resnet_fc_learning_rate is not None
+            else args.learning_rate
+        ),
         weight_decay=args.weight_decay,
     )
     return build_cp_fine_tune_optimizer(
@@ -436,6 +462,7 @@ def _create_optimizer(
         config,
         separate_transformer=separate_transformer,
         separate_image_backbone=separate_resnet,
+        separate_resnet_fc=separate_resnet_fc,
     )
 
 
@@ -514,6 +541,11 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--transformer-learning-rate must be positive")
     if args.resnet_learning_rate is not None and args.resnet_learning_rate <= 0.0:
         raise ValueError("--resnet-learning-rate must be positive")
+    if (
+        args.resnet_fc_learning_rate is not None
+        and args.resnet_fc_learning_rate <= 0.0
+    ):
+        raise ValueError("--resnet-fc-learning-rate must be positive")
     if args.weight_decay < 0.0:
         raise ValueError("--weight-decay must be non-negative")
     _validate_scheduler_configuration(args)
@@ -596,7 +628,8 @@ def _print_startup(args: argparse.Namespace) -> None:
     print(
         f"scheduler={args.scheduler} "
         f"transformer_scheduler={args.transformer_scheduler or args.scheduler} "
-        f"resnet_scheduler={args.resnet_scheduler or args.scheduler}"
+        f"resnet_scheduler={args.resnet_scheduler or args.scheduler} "
+        f"resnet_fc_scheduler={args.resnet_fc_scheduler or args.scheduler}"
     )
     print(f"checkpoint_best={args.checkpoint.resolve()}")
     print(f"checkpoint_best_metric={args.best_metric}")
@@ -858,10 +891,12 @@ def _checkpoint_metadata(
             "learning_rate": args.learning_rate,
             "transformer_learning_rate": args.transformer_learning_rate,
             "resnet_learning_rate": args.resnet_learning_rate,
+            "resnet_fc_learning_rate": args.resnet_fc_learning_rate,
             "weight_decay": args.weight_decay,
             "scheduler": args.scheduler,
             "transformer_scheduler": args.transformer_scheduler,
             "resnet_scheduler": args.resnet_scheduler,
+            "resnet_fc_scheduler": args.resnet_fc_scheduler,
             "lr_step_size": args.lr_step_size,
             "lr_gamma": args.lr_gamma,
             "min_learning_rate": args.min_learning_rate,
@@ -972,6 +1007,12 @@ def _validate_scheduler_configuration(args: argparse.Namespace) -> None:
             args.resnet_scheduler or args.scheduler,
             resnet_parameters,
             args.resnet_learning_rate or args.learning_rate,
+        ),
+        (
+            "ResNet FC",
+            args.resnet_fc_scheduler or args.scheduler,
+            parameters,
+            args.resnet_fc_learning_rate or args.learning_rate,
         ),
     )
     for group_name, scheduler_name, group_parameters, learning_rate in configurations:
