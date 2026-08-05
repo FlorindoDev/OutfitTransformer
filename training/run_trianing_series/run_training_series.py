@@ -1,4 +1,4 @@
-"""Run warm-up and three dependent ResNet fine-tuning phases."""
+"""Run warm-up and four dependent ResNet fine-tuning phases."""
 
 from __future__ import annotations
 
@@ -100,13 +100,29 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         optimizer="adamw",
         early_stopping_patience=3,
     ),
+    TrainingPhase(
+        number=5,
+        name="full_refine",
+        image_fine_tune_mode="full",
+        epochs=6,
+        learning_rate=2e-6,
+        resnet_fc_learning_rate=5e-6,
+        resnet_learning_rate=5e-7,
+        scheduler="cosine",
+        resnet_fc_scheduler="cosine",
+        min_learning_rate=5e-7,
+        transformer_min_learning_rate=2e-7,
+        resnet_min_learning_rate=5e-8,
+        optimizer="adamw",
+        early_stopping_patience=3,
+    ),
 )
 PHASE_NUMBERS = tuple(phase.number for phase in TRAINING_PHASES)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run warm-up and three dependent CP training phases",
+        description="Run warm-up and four dependent CP training phases",
     )
     parser.add_argument(
         "--output-root",
