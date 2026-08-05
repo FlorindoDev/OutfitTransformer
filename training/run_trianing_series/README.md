@@ -13,6 +13,7 @@ indipendenti sullo split `nondisjoint`.
   - [Fasi progressive](#fasi-progressive)
   - [Iperparametri completi](#iperparametri-completi)
   - [Uso della serie progressiva](#uso-della-serie-progressiva)
+  - [Rifinitura dal best della fase 4](#rifinitura-dal-best-della-fase-4)
 - [Serie end-to-end nondisjoint](#serie-end-to-end-nondisjoint)
   - [Stage della nuova serie](#stage-della-nuova-serie)
   - [Iperparametri completi stage 1-5](#iperparametri-completi-stage-1-5)
@@ -36,18 +37,24 @@ il `best.pt` della precedente e sblocca gradualmente la ResNet-18:
 ```
 
 Warm-up usa solo strumenti esistenti: 2 epoche `fc_only` con LR dieci volte più
-basso, poi nuova fase `fc_only` con LR nominale. Non è rampa step-by-step: è un
-warm-up a fase, con optimizer nuovo al passaggio. Blocchi convoluzionali restano
-congelati; Transformer contestuale, FC visuale e testa CP restano allenabili.
+basso, poi una nuova fase `fc_only` con LR nominale. Non è una rampa
+step-by-step: è un warm-up a fase, con optimizer nuovo al passaggio. I blocchi
+convoluzionali restano congelati; Transformer contestuale, FC visuale e testa CP
+restano allenabili.
+
+Le fasi successive usano cosine decay più lunghi e minimi proporzionali al LR
+iniziale. In questo modo i gruppi appena sbloccati non raggiungono un LR quasi
+nullo dopo poche epoche. La fase full usa un unico LR medio `5e-7` per tutti i
+blocchi del backbone.
 
 ### Fasi progressive
 
 | Fase | Sorgente | Parte ResNet allenabile | Obiettivo |
 |---|---|---|---|
 | `01_warmup` | pesi preaddestrati | FC finale | stabilizzare Transformer, testa CP e proiezione visuale con LR basso |
-| `02_fc_only` | `01_warmup/best.pt` | FC finale | adattare proiezione visuale con LR nominale |
-| `03_fc_and_layer4` | `02_fc_only/best.pt` | FC + `layer4` | specializzare feature visuali di alto livello |
-| `04_full_backbone` | `03_fc_and_layer4/best.pt` | intera ResNet | rifinitura globale con LR molto basso |
+| `02_fc_only` | `01_warmup/best.pt` | FC finale | adattare la proiezione visuale senza esaurire prematuramente il LR della FC |
+| `03_fc_and_layer4` | `02_fc_only/best.pt` | FC + `layer4` | specializzare le feature visuali di alto livello con un cosine più lungo |
+| `04_full_backbone` | `03_fc_and_layer4/best.pt` | intera ResNet | rifinitura globale con LR medio uniforme e tempo per stabilizzare le BatchNorm |
 
 ### Iperparametri completi
 
@@ -57,7 +64,7 @@ congelati; Transformer contestuale, FC visuale e testa CP restano allenabili.
 | Sorgente pesi | ResNet-18 ImageNet + SentenceBERT | `01_warmup/best.pt` | `02_fc_only/best.pt` | `03_fc_and_layer4/best.pt` |
 | Dataset | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` | `mvasil/polyvore-outfits` |
 | Variante predefinita | `nondisjoint` | `nondisjoint` | `nondisjoint` | `nondisjoint` |
-| Epoche massime | 2 | 5 aggiuntive | 6 aggiuntive | 4 aggiuntive |
+| Epoche massime | 2 | 8 aggiuntive | 8 aggiuntive | 8 aggiuntive |
 | Batch size | 50 | 50 | 50 | 50 |
 | Modalità ResNet | `fc_only` | `fc_only` | `fc_and_layer4` | `full` |
 | Blocchi ResNet allenabili | FC | FC | FC + `layer4` | intera ResNet |
@@ -69,26 +76,29 @@ congelati; Transformer contestuale, FC visuale e testa CP restano allenabili.
 | Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss | Binary Focal Loss |
 | Focal alpha / gamma | `0.5` / `2.0` | `0.5` / `2.0` | `0.5` / `2.0` | `0.5` / `2.0` |
 | Optimizer | Adam | AdamW | AdamW | AdamW |
-| LR task/base | `1e-6` | `1e-5` | `1e-5` | `3e-6` |
-| LR Transformer | `1e-6`, gruppo base | `1e-5` | `1e-5` | `3e-6` |
-| LR FC ResNet | `3e-6` | `3e-5` | `2e-5` | `1e-5` |
-| LR feature ResNet | non applicabile | non applicabile | `1e-6` | `2e-7` |
+| LR task/base | `1e-6` | `1e-5` | `5e-6` | `2e-6` |
+| LR Transformer | `1e-6`, gruppo base | `1e-5` | `5e-6` | `2e-6` |
+| LR FC ResNet | `3e-6` | `3e-5` | `1e-5` | `5e-6` |
+| LR feature ResNet | non applicabile | non applicabile | `1e-6` | `5e-7`, uniforme su tutto il backbone |
 | Weight decay | `1e-4` | `1e-4` | `1e-4` | `1e-4` |
 | Scheduler task/base | nessuno | nessuno | cosine | cosine |
 | Scheduler Transformer | nessuno, gruppo base | nessuno | cosine | cosine |
 | Scheduler FC ResNet | nessuno | cosine | cosine | cosine |
 | Scheduler feature ResNet | non applicabile | non applicabile | cosine | cosine |
-| LR minimo task/Transformer | non applicabile | non applicabile | `1e-7` | `1e-7` |
-| LR minimo FC ResNet | non applicabile | `1e-7` | `1e-7` | `1e-7` |
-| LR minimo feature ResNet | non applicabile | non applicabile | `1e-8` | `1e-8` |
+| LR minimo task/base | non applicabile | non applicabile | `1e-6` | `5e-7` |
+| LR minimo Transformer | non applicabile | non applicabile | `5e-7` | `2e-7` |
+| LR minimo FC ResNet | non applicabile | `3e-6` | `1e-6` | `5e-7` |
+| LR minimo feature ResNet | non applicabile | non applicabile | `1e-7` | `5e-8` |
 | Gradient clipping | disabilitato | disabilitato | disabilitato | disabilitato |
 | Metrica best checkpoint | validation ROC AUC | validation ROC AUC | validation ROC AUC | validation ROC AUC |
-| Early stopping | patience 2, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 2, delta `1e-4` |
+| Early stopping | patience 2, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` | patience 3, delta `1e-4` |
 | Seed | 42 | 42 | 42 | 42 |
 | Checkpoint | best + uno per epoca | best + uno per epoca | best + uno per epoca | best + uno per epoca |
 
 Le epoche sono budget massimi. Fase seguente usa sempre miglior validation AUC,
 non ultima epoca. Se fase 4 peggiora, mantenere `03_fc_and_layer4/best.pt`.
+`--min-learning-rate` è condiviso dai gruppi task/base e FC ResNet; nella fase 2
+agisce solo sulla FC perché task e Transformer non usano scheduler.
 
 ### Uso della serie progressiva
 
@@ -105,6 +115,46 @@ python -m training.run_trianing_series.run_training_series --phases 2 3 4
 
 Output predefinito: `checkpoints/training_series`. Runner rifiuta directory di
 fase contenenti checkpoint, evitando sovrascritture accidentali.
+
+### Rifinitura dal best della fase 4
+
+Per verificare il nuovo assetto senza rieseguire tutta la serie, avviare una
+nuova fase dal best esistente. Usare `--source-checkpoint`, non `--resume`:
+questo crea optimizer e cosine nuovi invece di ripristinare lo scheduler ormai
+vicino al minimo. Il backbone usa un solo LR uniforme `5e-7`.
+
+```powershell
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\training_series\04_full_backbone\best.pt `
+  --output-dir checkpoints\training_series\05_full_refine `
+  --variant nondisjoint `
+  --additional-epochs 6 `
+  --batch-size 50 `
+  --optimizer adamw `
+  --learning-rate 2e-6 `
+  --transformer-learning-rate 2e-6 `
+  --resnet-fc-learning-rate 5e-6 `
+  --resnet-learning-rate 5e-7 `
+  --weight-decay 0.0001 `
+  --scheduler cosine `
+  --transformer-scheduler cosine `
+  --resnet-fc-scheduler cosine `
+  --resnet-scheduler cosine `
+  --min-learning-rate 5e-7 `
+  --transformer-min-learning-rate 2e-7 `
+  --resnet-min-learning-rate 5e-8 `
+  --focal-alpha 0.5 `
+  --focal-gamma 2.0 `
+  --dropout 0.0 `
+  --best-metric val_auc `
+  --early-stopping-patience 3 `
+  --early-stopping-min-delta 0.0001 `
+  --image-fine-tune-mode full `
+  --seed 42
+```
+
+La directory `05_full_refine` deve essere nuova o non contenere checkpoint.
+Partendo dal best all'epoca 16, le sei epoche aggiuntive saranno numerate 17–22.
 
 ## Serie end-to-end nondisjoint
 

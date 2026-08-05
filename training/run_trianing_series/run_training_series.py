@@ -24,6 +24,9 @@ class TrainingPhase:
     resnet_learning_rate: float | None
     scheduler: str
     resnet_fc_scheduler: str
+    min_learning_rate: float
+    transformer_min_learning_rate: float | None
+    resnet_min_learning_rate: float | None
     optimizer: str
     early_stopping_patience: int
 
@@ -43,6 +46,9 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         resnet_learning_rate=None,
         scheduler="none",
         resnet_fc_scheduler="none",
+        min_learning_rate=0.0,
+        transformer_min_learning_rate=None,
+        resnet_min_learning_rate=None,
         optimizer="adam",
         early_stopping_patience=2,
     ),
@@ -50,12 +56,15 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         number=2,
         name="fc_only",
         image_fine_tune_mode="fc_only",
-        epochs=5,
+        epochs=8,
         learning_rate=1e-5,
         resnet_fc_learning_rate=3e-5,
         resnet_learning_rate=None,
         scheduler="none",
         resnet_fc_scheduler="cosine",
+        min_learning_rate=3e-6,
+        transformer_min_learning_rate=None,
+        resnet_min_learning_rate=None,
         optimizer="adamw",
         early_stopping_patience=3,
     ),
@@ -63,12 +72,15 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         number=3,
         name="fc_and_layer4",
         image_fine_tune_mode="fc_and_layer4",
-        epochs=6,
-        learning_rate=1e-5,
-        resnet_fc_learning_rate=2e-5,
+        epochs=8,
+        learning_rate=5e-6,
+        resnet_fc_learning_rate=1e-5,
         resnet_learning_rate=1e-6,
         scheduler="cosine",
         resnet_fc_scheduler="cosine",
+        min_learning_rate=1e-6,
+        transformer_min_learning_rate=5e-7,
+        resnet_min_learning_rate=1e-7,
         optimizer="adamw",
         early_stopping_patience=3,
     ),
@@ -76,14 +88,17 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         number=4,
         name="full_backbone",
         image_fine_tune_mode="full",
-        epochs=4,
-        learning_rate=3e-6,
-        resnet_fc_learning_rate=1e-5,
-        resnet_learning_rate=2e-7,
+        epochs=8,
+        learning_rate=2e-6,
+        resnet_fc_learning_rate=5e-6,
+        resnet_learning_rate=5e-7,
         scheduler="cosine",
         resnet_fc_scheduler="cosine",
+        min_learning_rate=5e-7,
+        transformer_min_learning_rate=2e-7,
+        resnet_min_learning_rate=5e-8,
         optimizer="adamw",
-        early_stopping_patience=2,
+        early_stopping_patience=3,
     ),
 )
 PHASE_NUMBERS = tuple(phase.number for phase in TRAINING_PHASES)
@@ -239,7 +254,7 @@ def _common_training_arguments(
         "--scheduler",
         phase.scheduler,
         "--min-learning-rate",
-        "1e-7",
+        str(phase.min_learning_rate),
         "--resnet-fc-scheduler",
         phase.resnet_fc_scheduler,
         "--focal-alpha",
@@ -265,6 +280,13 @@ def _common_training_arguments(
         "--log-interval",
         str(args.log_interval),
     ]
+    if phase.transformer_min_learning_rate is not None:
+        arguments.extend(
+            (
+                "--transformer-min-learning-rate",
+                str(phase.transformer_min_learning_rate),
+            )
+        )
     if phase.resnet_learning_rate is not None:
         arguments.extend(
             (
@@ -273,7 +295,7 @@ def _common_training_arguments(
                 "--resnet-scheduler",
                 "cosine",
                 "--resnet-min-learning-rate",
-                "1e-8",
+                str(phase.resnet_min_learning_rate),
             )
         )
     return arguments
@@ -335,6 +357,31 @@ def _validate_phase_definitions(phases: Sequence[TrainingPhase]) -> None:
             raise ValueError(f"invalid epochs in phase {phase.number}")
         if min(phase.learning_rate, phase.resnet_fc_learning_rate) <= 0.0:
             raise ValueError(f"invalid learning rate in phase {phase.number}")
+        if (
+            phase.resnet_learning_rate is not None
+            and phase.resnet_learning_rate <= 0.0
+        ):
+            raise ValueError(
+                f"invalid ResNet learning rate in phase {phase.number}"
+            )
+        if phase.min_learning_rate < 0.0:
+            raise ValueError(
+                f"invalid minimum learning rate in phase {phase.number}"
+            )
+        if (
+            phase.transformer_min_learning_rate is not None
+            and phase.transformer_min_learning_rate < 0.0
+        ):
+            raise ValueError(
+                f"invalid Transformer minimum LR in phase {phase.number}"
+            )
+        if (
+            phase.resnet_min_learning_rate is not None
+            and phase.resnet_min_learning_rate < 0.0
+        ):
+            raise ValueError(
+                f"invalid ResNet minimum LR in phase {phase.number}"
+            )
         feature_blocks_trainable = phase.image_fine_tune_mode != "fc_only"
         if feature_blocks_trainable and phase.resnet_learning_rate is None:
             raise ValueError(
@@ -344,6 +391,69 @@ def _validate_phase_definitions(phases: Sequence[TrainingPhase]) -> None:
             raise ValueError(
                 f"phase {phase.number} cannot use a ResNet feature-block LR"
             )
+        if (
+            not feature_blocks_trainable
+            and phase.resnet_min_learning_rate is not None
+        ):
+            raise ValueError(
+                f"phase {phase.number} cannot use a ResNet minimum LR"
+            )
+        if feature_blocks_trainable and phase.resnet_min_learning_rate is None:
+            raise ValueError(
+                f"phase {phase.number} requires a ResNet minimum LR"
+            )
+        _validate_cosine_minimum(
+            phase=phase,
+            group_name="task/base",
+            scheduler=phase.scheduler,
+            learning_rate=phase.learning_rate,
+            min_learning_rate=phase.min_learning_rate,
+        )
+        _validate_cosine_minimum(
+            phase=phase,
+            group_name="Transformer",
+            scheduler=phase.scheduler,
+            learning_rate=phase.learning_rate,
+            min_learning_rate=(
+                phase.transformer_min_learning_rate
+                if phase.transformer_min_learning_rate is not None
+                else phase.min_learning_rate
+            ),
+        )
+        _validate_cosine_minimum(
+            phase=phase,
+            group_name="ResNet FC",
+            scheduler=phase.resnet_fc_scheduler,
+            learning_rate=phase.resnet_fc_learning_rate,
+            min_learning_rate=phase.min_learning_rate,
+        )
+        if phase.resnet_learning_rate is not None:
+            _validate_cosine_minimum(
+                phase=phase,
+                group_name="ResNet feature blocks",
+                scheduler="cosine",
+                learning_rate=phase.resnet_learning_rate,
+                min_learning_rate=phase.resnet_min_learning_rate,
+            )
+
+
+def _validate_cosine_minimum(
+    *,
+    phase: TrainingPhase,
+    group_name: str,
+    scheduler: str,
+    learning_rate: float,
+    min_learning_rate: float | None,
+) -> None:
+    if (
+        scheduler == "cosine"
+        and min_learning_rate is not None
+        and min_learning_rate > learning_rate
+    ):
+        raise ValueError(
+            f"phase {phase.number} {group_name} minimum LR cannot exceed "
+            "its initial LR"
+        )
 
 
 def _validate_outputs_and_dependencies(
