@@ -106,6 +106,29 @@ class CPGroupLRScheduler:
     def get_last_lr(self) -> list[float]:
         return list(self._last_lr)
 
+    def extend_total_epochs(self, total_epochs: int) -> None:
+        """Stretch cosine groups over a larger epoch budget."""
+        if total_epochs <= self.last_epoch:
+            raise ValueError("extended total_epochs must exceed completed epochs")
+        if total_epochs <= self.total_epochs:
+            return
+        self.total_epochs = total_epochs
+        learning_rates = [
+            self._learning_rate(group_name, base_lr)
+            for group_name, base_lr in zip(
+                self.group_names,
+                self.base_lrs,
+                strict=True,
+            )
+        ]
+        for group, learning_rate in zip(
+            self.optimizer.param_groups,
+            learning_rates,
+            strict=True,
+        ):
+            group["lr"] = learning_rate
+        self._last_lr = learning_rates
+
     def state_dict(self) -> dict[str, Any]:
         return {
             "scheduler_type": "cp_group",
@@ -305,6 +328,39 @@ def create_cp_scheduler(
     )
 
 
+def extend_cp_scheduler(scheduler: Any | None, total_epochs: int) -> bool:
+    """Extend a cosine schedule when resume increases its original budget."""
+    if scheduler is None:
+        return False
+    if isinstance(scheduler, CPGroupLRScheduler):
+        if total_epochs <= scheduler.total_epochs:
+            return False
+        scheduler.extend_total_epochs(total_epochs)
+        return True
+    if isinstance(scheduler, CosineAnnealingLR):
+        if total_epochs <= scheduler.T_max:
+            return False
+        if total_epochs <= scheduler.last_epoch:
+            raise ValueError("extended total_epochs must exceed completed epochs")
+        scheduler.T_max = total_epochs
+        learning_rates = [
+            scheduler.eta_min
+            + (base_lr - scheduler.eta_min)
+            * (1.0 + math.cos(math.pi * scheduler.last_epoch / total_epochs))
+            / 2.0
+            for base_lr in scheduler.base_lrs
+        ]
+        for group, learning_rate in zip(
+            scheduler.optimizer.param_groups,
+            learning_rates,
+            strict=True,
+        ):
+            group["lr"] = learning_rate
+        scheduler._last_lr = learning_rates
+        return True
+    return False
+
+
 def _create_common_scheduler(
     optimizer: Optimizer,
     *,
@@ -415,4 +471,5 @@ __all__ = [
     "SCHEDULER_NAMES",
     "SchedulerName",
     "create_cp_scheduler",
+    "extend_cp_scheduler",
 ]

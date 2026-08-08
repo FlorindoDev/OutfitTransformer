@@ -230,11 +230,13 @@ nel checkpoint prevalgono sugli stessi flag CLI. Cambiare
 `--image-fine-tune-mode` è invece consentito e permette un fine-tuning a fasi.
 
 `fine_tune_cp --resume` effettua lo stesso ripristino completo per una fase di
-fine-tuning interrotta. In questo caso la configurazione salvata, inclusi
-optimizer, scheduler, loss, seed, dataset, modalità ResNet e numero finale di
-epoche, è autorevole. `fine_tune_cp --source-checkpoint` carica invece soltanto
-i pesi e avvia una nuova fase con stato pulito; è la modalità da usare per
-cambiare gli iperparametri o la politica ResNet.
+fine-tuning interrotta. La configurazione salvata resta autorevole; passare
+`--additional-epochs N` aggiunge però `N` epoche dopo il checkpoint scelto.
+`fine_tune_cp --source-checkpoint` apre una nuova fase. Per conservare i momenti
+Adam/AdamW compatibili senza ereditare gli iperparametri, usare anche
+`--optimizer-state-checkpoint PATH`; i parametri appena sbloccati partono con
+stato optimizer vuoto. Il trasferimento richiede un checkpoint nuovo con
+`optimizer_parameter_names`; i checkpoint precedenti vengono rifiutati.
 
 I checkpoint legacy restano caricabili, ma non possono fornire history, RNG e
 migliore metrica precedenti completi. Per questo non supportano il resume esatto

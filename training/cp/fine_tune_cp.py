@@ -38,8 +38,14 @@ from .optimization import (
     CPSchedulerParameters,
     SCHEDULER_NAMES,
     create_cp_scheduler,
+    extend_cp_scheduler,
+)
+from .optimizer_state import (
+    CPOptimizerStateTransfer,
+    transfer_adam_state_from_checkpoint,
 )
 from .plotting import CPHistoryPlotter
+from .resume import CPResumeExtension
 from .selection import CP_BEST_METRICS
 from .trainer import train_cp
 from .types import (
@@ -77,8 +83,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help=(
-            "epochs in a new phase; default 10. On resume the value saved in "
-            "the checkpoint is authoritative"
+            "epochs after the selected checkpoint; default 10 for a new phase. "
+            "Omit on resume to keep the original final epoch"
+        ),
+    )
+    parser.add_argument(
+        "--optimizer-state-checkpoint",
+        type=Path,
+        default=None,
+        help=(
+            "new-format checkpoint with optimizer_parameter_names providing "
+            "Adam/AdamW moments for a new fine-tuning phase"
         ),
     )
     parser.add_argument(
@@ -255,11 +270,20 @@ def main() -> None:
     args = parse_args()
     checkpoint_path = _selected_checkpoint_path(args)
     source = CPFineTuneCheckpoint.load(checkpoint_path, device="cpu")
+    requested_resume_epochs = (
+        args.additional_epochs if args.resume is not None else None
+    )
+    resume_extension = None
     if args.resume is None:
         if args.additional_epochs is None:
             args.additional_epochs = 10
     else:
         _apply_resume_configuration(args, source)
+        resume_extension = _configure_fine_tune_resume_extension(
+            args,
+            source,
+            requested_resume_epochs,
+        )
     args.output_dir = _resolve_output_directory(args, checkpoint_path)
     _validate_args(args)
     _validate_output_directory(args.output_dir, is_resume=args.resume is not None)
@@ -290,9 +314,23 @@ def main() -> None:
         eps=args.adam_eps,
     )
     optimizer = build_cp_fine_tune_optimizer(model, optimizer_config)
+    optimizer_transfer = _transfer_optimizer_state_if_requested(
+        args,
+        model,
+        optimizer,
+    )
     scheduler = _create_scheduler(args, optimizer)
 
     resume_state = _load_resume_state(args, model, optimizer, scheduler)
+    scheduler_extended = (
+        resume_state is not None
+        and extend_cp_scheduler(scheduler, args.additional_epochs)
+    )
+    if scheduler_extended:
+        print(
+            "scheduler_extended_total_phase_epochs="
+            f"{args.additional_epochs}"
+        )
     start_epoch = source.epoch + 1
     final_epoch = _resolve_final_epoch(args, source)
     best_path = args.output_dir / "best.pt"
@@ -306,6 +344,8 @@ def main() -> None:
         final_epoch=final_epoch,
         optimizer=optimizer,
         resume_state=resume_state,
+        resume_extension=resume_extension,
+        optimizer_transfer=optimizer_transfer,
     )
     _print_data_summary(train_loader, validation_loader)
     _print_parameter_summary(model)
@@ -348,6 +388,8 @@ def main() -> None:
             model_config=model_config,
             optimizer_config=optimizer_config,
             resume_state=resume_state,
+            resume_extension=resume_extension,
+            optimizer_transfer=optimizer_transfer,
         ),
         progress_interval=progress_interval,
         early_stopping=early_stopping,
@@ -368,6 +410,43 @@ def _optional_float(value: str) -> float | None:
         return float(value)
     except ValueError as error:
         raise argparse.ArgumentTypeError("expected a number or 'none'") from error
+
+
+def _configure_fine_tune_resume_extension(
+    args: argparse.Namespace,
+    checkpoint: CPFineTuneCheckpoint,
+    requested_additional_epochs: int | None,
+) -> CPResumeExtension | None:
+    if requested_additional_epochs is None:
+        return None
+    run_config = checkpoint.run_config
+    if run_config is None:
+        raise ValueError("fine-tuning resume checkpoint lacks run_config")
+    fine_tuning = _require_resume_section(run_config, "fine_tuning")
+    source_epoch = fine_tuning.get("source_epoch")
+    if not isinstance(source_epoch, int) or isinstance(source_epoch, bool):
+        raise ValueError("fine-tuning resume checkpoint lacks source_epoch")
+    extension = CPResumeExtension(
+        checkpoint_epoch=checkpoint.epoch,
+        additional_epochs=requested_additional_epochs,
+        phase_source_epoch=source_epoch,
+    )
+    args.additional_epochs = extension.total_phase_epochs
+    return extension
+
+
+def _transfer_optimizer_state_if_requested(
+    args: argparse.Namespace,
+    model: CompatibilityPredictor,
+    optimizer: Optimizer,
+) -> CPOptimizerStateTransfer | None:
+    if args.optimizer_state_checkpoint is None:
+        return None
+    return transfer_adam_state_from_checkpoint(
+        args.optimizer_state_checkpoint,
+        model,
+        optimizer,
+    )
 
 
 def _selected_checkpoint_path(args: argparse.Namespace) -> Path:
@@ -610,6 +689,10 @@ def _resolve_output_directory(
 def _validate_args(args: argparse.Namespace) -> None:
     if args.additional_epochs is None or args.additional_epochs <= 0:
         raise ValueError("--additional-epochs must be positive")
+    if args.resume is not None and args.optimizer_state_checkpoint is not None:
+        raise ValueError(
+            "--optimizer-state-checkpoint cannot be combined with --resume"
+        )
     if args.batch_size <= 0:
         raise ValueError("--batch-size must be positive")
     optimizer_config = CPFineTuneOptimizerConfig(
@@ -784,6 +867,8 @@ def _checkpoint_metadata(
     model_config: OutfitEncoderConfig,
     optimizer_config: CPFineTuneOptimizerConfig,
     resume_state: CPResumeState | None,
+    resume_extension: CPResumeExtension | None,
+    optimizer_transfer: CPOptimizerStateTransfer | None,
 ) -> dict[str, Any]:
     if resume_state is not None:
         run_config = resume_state.run_config
@@ -793,6 +878,10 @@ def _checkpoint_metadata(
         fine_tuning = metadata.get("fine_tuning")
         if not isinstance(fine_tuning, dict):
             raise ValueError("fine-tuning resume metadata is invalid")
+        training = metadata.get("training")
+        if not isinstance(training, dict):
+            raise ValueError("fine-tuning resume training metadata is invalid")
+        training["additional_epochs"] = args.additional_epochs
         fine_tuning.update(
             {
                 "resume_checkpoint": str(args.resume.resolve()),
@@ -801,6 +890,12 @@ def _checkpoint_metadata(
                 "scheduler_state_reused": True,
                 "history_reused": True,
                 "rng_state_reused": True,
+                "resume_additional_epochs": (
+                    None
+                    if resume_extension is None
+                    else resume_extension.additional_epochs
+                ),
+                "resume_epoch_budget_overridden": resume_extension is not None,
             }
         )
         return metadata
@@ -864,7 +959,17 @@ def _checkpoint_metadata(
             "source_checkpoint": str(source.path.resolve()),
             "source_epoch": source.epoch,
             "source_schema_version": source.schema_version,
-            "optimizer_state_reused": False,
+            "optimizer_state_checkpoint": (
+                None
+                if optimizer_transfer is None
+                else str(optimizer_transfer.source_path)
+            ),
+            "optimizer_state_reused": optimizer_transfer is not None,
+            "optimizer_states_restored": (
+                0
+                if optimizer_transfer is None
+                else optimizer_transfer.restored_parameters
+            ),
             "scheduler_state_reused": False,
             "history_reused": False,
             "rng_state_reused": False,
@@ -889,6 +994,8 @@ def _print_startup(
     final_epoch: int,
     optimizer: Optimizer,
     resume_state: CPResumeState | None,
+    resume_extension: CPResumeExtension | None,
+    optimizer_transfer: CPOptimizerStateTransfer | None,
 ) -> None:
     print("training=compatibility_prediction_fine_tune")
     if resume_state is None:
@@ -902,6 +1009,11 @@ def _print_startup(
             f"resume_epoch={resume_state.epoch}"
         )
     print(f"epochs={start_epoch}-{final_epoch} dataset_variant={variant}")
+    if resume_extension is not None:
+        print(
+            f"resume_additional_epochs={resume_extension.additional_epochs} "
+            f"final_epoch={resume_extension.final_epoch}"
+        )
     print(f"device={args.device} seed={args.seed} batch_size={args.batch_size}")
     print(
         f"resnet_fine_tune_mode={args.image_fine_tune_mode} "
@@ -927,8 +1039,16 @@ def _print_startup(
             f"patience={args.early_stopping_patience} "
             f"min_delta={args.early_stopping_min_delta}"
         )
-    if resume_state is None:
+    if optimizer_transfer is not None:
+        print(
+            f"optimizer_state_checkpoint={optimizer_transfer.source_path} "
+            f"restored_parameters={optimizer_transfer.restored_parameters} "
+            f"new_parameters={optimizer_transfer.new_target_parameters}"
+        )
+    if resume_state is None and optimizer_transfer is None:
         print("source_optimizer_scheduler_history_rng=discarded")
+    elif resume_state is None:
+        print("source_scheduler_history_rng=discarded optimizer_moments=restored")
     else:
         print("resume_optimizer_scheduler_history_rng=restored")
 

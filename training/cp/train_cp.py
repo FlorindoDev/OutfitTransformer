@@ -35,8 +35,10 @@ from .optimization import (
     CPSchedulerParameters,
     SCHEDULER_NAMES,
     create_cp_scheduler,
+    extend_cp_scheduler,
 )
 from .plotting import CPHistoryPlotter
+from .resume import CPResumeExtension
 from .selection import CP_BEST_METRICS, CPSelectionCriterion
 from .trainer import train_cp
 from .types import (
@@ -56,7 +58,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         choices=("nondisjoint", "disjoint"),
         default="disjoint",
     )
-    parser.add_argument("--epochs", type=int, default=30)
+    epoch_group = parser.add_mutually_exclusive_group()
+    epoch_group.add_argument("--epochs", type=int, default=30)
+    epoch_group.add_argument(
+        "--additional-epochs",
+        type=int,
+        default=None,
+        help="epochs to run after --resume checkpoint",
+    )
     parser.add_argument("--batch-size", type=int, default=50)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument(
@@ -253,6 +262,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    resume_extension = _configure_training_resume_extension(args)
     _apply_resume_optimization_configuration(args)
     _validate_args(args)
     _seed_everything(args.seed)
@@ -297,6 +307,12 @@ def main() -> None:
         optimizer,
         scheduler,
     )
+    scheduler_extended = (
+        resume_state is not None
+        and extend_cp_scheduler(scheduler, args.epochs)
+    )
+    if scheduler_extended:
+        print(f"scheduler_extended_total_epochs={args.epochs}")
     start_epoch = 1 if resume_state is None else resume_state.epoch + 1
     selection_criterion = CPSelectionCriterion(args.best_metric)
     initial_best_value = _initial_best_value(
@@ -334,6 +350,7 @@ def main() -> None:
             args,
             model_config,
             resume_state,
+            resume_extension,
         ),
         progress_interval=progress_interval,
         early_stopping=early_stopping,
@@ -352,6 +369,25 @@ def _optional_float(value: str) -> float | None:
         return float(value)
     except ValueError as error:
         raise argparse.ArgumentTypeError("expected a number or 'none'") from error
+
+
+def _configure_training_resume_extension(
+    args: argparse.Namespace,
+) -> CPResumeExtension | None:
+    if args.additional_epochs is None:
+        return None
+    if args.resume is None:
+        raise ValueError("--additional-epochs requires --resume")
+    checkpoint = read_cp_checkpoint(args.resume, device="cpu")
+    checkpoint_epoch = checkpoint.get("epoch")
+    if not isinstance(checkpoint_epoch, int) or isinstance(checkpoint_epoch, bool):
+        raise ValueError("resume checkpoint missing integer epoch")
+    extension = CPResumeExtension(
+        checkpoint_epoch=checkpoint_epoch,
+        additional_epochs=args.additional_epochs,
+    )
+    args.epochs = extension.final_epoch
+    return extension
 
 
 def _apply_resume_optimization_configuration(args: argparse.Namespace) -> None:
@@ -530,6 +566,8 @@ def _plot_and_report(
 def _validate_args(args: argparse.Namespace) -> None:
     if args.epochs <= 0:
         raise ValueError("--epochs must be positive")
+    if args.additional_epochs is not None and args.additional_epochs <= 0:
+        raise ValueError("--additional-epochs must be positive")
     if args.batch_size <= 0:
         raise ValueError("--batch-size must be positive")
     if args.learning_rate <= 0.0:
@@ -640,6 +678,11 @@ def _print_startup(args: argparse.Namespace) -> None:
         print(f"plot_directory={args.plot_dir.resolve()}")
     if args.resume is not None:
         print(f"resume_checkpoint={args.resume.resolve()}")
+    if args.additional_epochs is not None:
+        print(
+            f"resume_additional_epochs={args.additional_epochs} "
+            f"final_epoch={args.epochs}"
+        )
     if args.log_interval == 0:
         print("batch_logs=disabled")
     else:
@@ -874,6 +917,7 @@ def _checkpoint_metadata(
     args: argparse.Namespace,
     model_config: OutfitEncoderConfig,
     resume_state: CPResumeState | None,
+    resume_extension: CPResumeExtension | None,
 ) -> dict[str, Any]:
     effective_model_config = _effective_model_config(
         model_config,
@@ -887,6 +931,12 @@ def _checkpoint_metadata(
         },
         "model": effective_model_config,
         "training": {
+            "epochs": args.epochs,
+            "resume_additional_epochs": (
+                None
+                if resume_extension is None
+                else resume_extension.additional_epochs
+            ),
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
             "transformer_learning_rate": args.transformer_learning_rate,

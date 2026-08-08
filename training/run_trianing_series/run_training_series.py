@@ -28,6 +28,7 @@ class TrainingPhase:
     transformer_min_learning_rate: float | None
     resnet_min_learning_rate: float | None
     optimizer: str
+    reuse_optimizer_state: bool
     early_stopping_patience: int
 
     @property
@@ -40,8 +41,8 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         number=1,
         name="warmup",
         image_fine_tune_mode="fc_only",
-        epochs=2,
-        learning_rate=1e-6,
+        epochs=3,
+        learning_rate=3e-6,
         resnet_fc_learning_rate=3e-6,
         resnet_learning_rate=None,
         scheduler="none",
@@ -50,29 +51,31 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         transformer_min_learning_rate=None,
         resnet_min_learning_rate=None,
         optimizer="adam",
-        early_stopping_patience=2,
+        reuse_optimizer_state=False,
+        early_stopping_patience=4,
     ),
     TrainingPhase(
         number=2,
         name="fc_only",
         image_fine_tune_mode="fc_only",
-        epochs=8,
+        epochs=12,
         learning_rate=1e-5,
         resnet_fc_learning_rate=3e-5,
         resnet_learning_rate=None,
-        scheduler="none",
+        scheduler="cosine",
         resnet_fc_scheduler="cosine",
         min_learning_rate=3e-6,
-        transformer_min_learning_rate=None,
+        transformer_min_learning_rate=1e-6,
         resnet_min_learning_rate=None,
         optimizer="adamw",
-        early_stopping_patience=3,
+        reuse_optimizer_state=False,
+        early_stopping_patience=4,
     ),
     TrainingPhase(
         number=3,
         name="fc_and_layer4",
         image_fine_tune_mode="fc_and_layer4",
-        epochs=8,
+        epochs=10,
         learning_rate=5e-6,
         resnet_fc_learning_rate=1e-5,
         resnet_learning_rate=1e-6,
@@ -82,13 +85,14 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         transformer_min_learning_rate=5e-7,
         resnet_min_learning_rate=1e-7,
         optimizer="adamw",
-        early_stopping_patience=3,
+        reuse_optimizer_state=True,
+        early_stopping_patience=4,
     ),
     TrainingPhase(
         number=4,
         name="full_backbone",
         image_fine_tune_mode="full",
-        epochs=8,
+        epochs=12,
         learning_rate=2e-6,
         resnet_fc_learning_rate=5e-6,
         resnet_learning_rate=5e-7,
@@ -98,7 +102,8 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         transformer_min_learning_rate=2e-7,
         resnet_min_learning_rate=5e-8,
         optimizer="adamw",
-        early_stopping_patience=3,
+        reuse_optimizer_state=True,
+        early_stopping_patience=4,
     ),
     TrainingPhase(
         number=5,
@@ -114,7 +119,8 @@ TRAINING_PHASES: tuple[TrainingPhase, ...] = (
         transformer_min_learning_rate=2e-7,
         resnet_min_learning_rate=5e-8,
         optimizer="adamw",
-        early_stopping_patience=3,
+        reuse_optimizer_state=False,
+        early_stopping_patience=4,
     ),
 )
 PHASE_NUMBERS = tuple(phase.number for phase in TRAINING_PHASES)
@@ -232,7 +238,7 @@ def _fine_tuning_command(
     source_checkpoint = _source_checkpoint(phase, output_root)
     if source_checkpoint is None:
         raise ValueError("fine-tuning phase requires a source checkpoint")
-    return [
+    command = [
         sys.executable,
         "-m",
         "training.cp.fine_tune_cp",
@@ -252,6 +258,9 @@ def _fine_tuning_command(
         phase.scheduler,
         *_common_training_arguments(phase, args),
     ]
+    if phase.reuse_optimizer_state:
+        command.extend(("--optimizer-state-checkpoint", str(source_checkpoint)))
+    return command
 
 
 def _common_training_arguments(
@@ -266,7 +275,7 @@ def _common_training_arguments(
         "--resnet-fc-learning-rate",
         str(phase.resnet_fc_learning_rate),
         "--weight-decay",
-        "0.0001",
+        "0.0",
         "--scheduler",
         phase.scheduler,
         "--min-learning-rate",
@@ -274,7 +283,7 @@ def _common_training_arguments(
         "--resnet-fc-scheduler",
         phase.resnet_fc_scheduler,
         "--focal-alpha",
-        "0.5",
+        "0.25",
         "--focal-gamma",
         "2.0",
         "--dropout",

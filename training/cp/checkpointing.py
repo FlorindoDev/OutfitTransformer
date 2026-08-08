@@ -12,6 +12,7 @@ import torch
 from torch import nn
 from torch.optim import Optimizer
 
+from .optimizer_state import optimizer_parameter_names
 from .selection import CPBestMetric, CPSelectionCriterion
 from .types import (
     CPCheckpointInfo,
@@ -245,6 +246,7 @@ def _build_checkpoint(
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
+        "optimizer_parameter_names": optimizer_parameter_names(model, optimizer),
         "selection": {
             "metric": selection_criterion.metric,
             "source": selection_source,

@@ -203,6 +203,7 @@ Ogni nuovo checkpoint contiene:
 | `epoch` | ultima epoca completata |
 | `model_state_dict` | stato del modello |
 | `optimizer_state_dict` | stato dell'optimizer |
+| `optimizer_parameter_names` | nomi dei parametri allineati ai gruppi optimizer, usati per trasferire i momenti tra fasi |
 | `scheduler_state_dict` | stato dello scheduler, quando presente |
 | `train_metrics` | metriche train correnti |
 | `validation_metrics` | loss, accuracy e AUC validation correnti |
@@ -232,7 +233,8 @@ segnalata.
 
 Nel resume di `fine_tune_cp`, l'intera configurazione salvata è autorevole:
 dataset, batch size, modello, optimizer, learning rate dei gruppi, scheduler,
-loss, clipping, seed, best metric, early stopping e numero finale di epoche.
+loss, clipping, seed, best metric ed early stopping. Passare esplicitamente
+`--additional-epochs N` estende però la run di `N` epoche dal checkpoint scelto.
 Restano configurabili soltanto opzioni operative come device, worker, cache,
 log, grafici e directory di output.
 
@@ -327,10 +329,30 @@ python -m training.cp.fine_tune_cp `
 
 Il resume ripristina modello, optimizer, scheduler, history, migliore metrica,
 patience e RNG. Senza `--output-dir`, riconosce la directory della run dalla
-cartella `epochs` e continua a scrivere lì. Mantiene anche l'epoca finale
-originariamente pianificata: `--additional-epochs` non apre un nuovo ciclo e
-non estende una run già completata. Per estenderla o cambiare iperparametri,
-avviare una nuova fase con `--source-checkpoint`.
+cartella `epochs` e continua a scrivere lì. Senza `--additional-epochs` mantiene
+l'epoca finale originaria. Con `--additional-epochs N` esegue invece `N` epoche
+dopo il checkpoint selezionato. Se il nuovo budget supera quello originario,
+il cosine viene esteso sul nuovo orizzonte e il LR viene ricalcolato.
+
+Una nuova fase può conservare i momenti Adam/AdamW compatibili della fase
+precedente senza ereditarne LR, beta o weight decay:
+
+```powershell
+python -m training.cp.fine_tune_cp `
+  --source-checkpoint checkpoints\stage1\best.pt `
+  --optimizer-state-checkpoint checkpoints\stage1\best.pt `
+  --output-dir checkpoints\stage2 `
+  --additional-epochs 10 `
+  --optimizer adamw `
+  --image-fine-tune-mode fc_and_layer4
+```
+
+Il trasferimento avviene per nome e shape. Parametri già attivi recuperano
+`step`, `exp_avg` ed `exp_avg_sq`; blocchi appena sbloccati partono senza stato.
+Il flag richiede un checkpoint creato da questa versione e contenente
+`optimizer_parameter_names`: i checkpoint precedenti vengono rifiutati senza
+tentare inferenze sull'ordine dei parametri.
+Gli iperparametri restano quelli dichiarati per la nuova fase.
 
 Il resume esatto richiede un checkpoint moderno con `run_config`, history e
 RNG completi. Un checkpoint legacy può ancora iniziare una nuova fase.
@@ -362,7 +384,8 @@ python -m training.cp.fine_tune_cp --help
 | `-h`, `--help` | — | mostra help completo |
 | `--source-checkpoint` | alternativo a `--resume` | checkpoint CP da cui iniziare una nuova fase |
 | `--resume` | alternativo a `--source-checkpoint` | checkpoint di fine-tuning da riprendere con stato completo |
-| `--additional-epochs` | `10` nuova fase; checkpoint nel resume | numero di epoche della fase; non estende un resume |
+| `--additional-epochs` | `10` nuova fase; omesso nel resume | epoche dopo il checkpoint; nel resume omesso mantiene il finale originario |
+| `--optimizer-state-checkpoint` | disabilitato | checkpoint da cui trasferire momenti Adam/AdamW compatibili in una nuova fase |
 | `--output-dir` | `checkpoints/cp_fine_tune` nuova fase; directory originale nel resume | directory per `best.pt`, checkpoint epoca e grafici |
 | `--variant` | checkpoint, altrimenti `disjoint` | variante Polyvore: `disjoint` o `nondisjoint` |
 | `--batch-size` | `50` | outfit per batch |
@@ -458,6 +481,7 @@ Il comando per visualizzare l'help completo è riportato nella sezione
 | `--early-stopping-min-delta` | `0.0` | miglioramento minimo; richiede patience |
 | `--checkpoint-dir` | `checkpoints/cp_epochs` | checkpoint per epoca |
 | `--resume` | disabilitato | checkpoint da riprendere |
+| `--additional-epochs` | disabilitato | con `--resume`, epoche da eseguire dopo il checkpoint; alternativo a `--epochs` |
 | `--plot-dir` | `checkpoints/cp_plots` | grafici cumulativi |
 | `--no-plots` | falso | disabilita grafici |
 | `--text-model` | `all-MiniLM-L6-v2` | SentenceBERT Hub o locale |
@@ -696,6 +720,11 @@ python -m training.cp.train_cp `
   --resume checkpoints\cp_epochs\cp_epoch_020.pt `
   --image-fine-tune-mode fc_and_layer4
 
+# Aggiunge 10 epoche oltre il checkpoint, anche se il budget originale è finito
+python -m training.cp.train_cp `
+  --resume checkpoints\cp_epochs\cp_epoch_030.pt `
+  --additional-epochs 10
+
 # Riprende salvando i nuovi artefatti in cartelle separate
 python -m training.cp.train_cp `
   --epochs 40 `
@@ -750,6 +779,11 @@ python -m training.cp.fine_tune_cp `
 # Riprende esattamente una fase di fine-tuning interrotta
 python -m training.cp.fine_tune_cp `
   --resume checkpoints\experiment_01_stage2\epochs\cp_epoch_012.pt
+
+# Estende di 5 epoche una fase già arrivata al finale originario
+python -m training.cp.fine_tune_cp `
+  --resume checkpoints\experiment_01_stage2\epochs\cp_epoch_016.pt `
+  --additional-epochs 5
 ```
 
 ### Help CLI
