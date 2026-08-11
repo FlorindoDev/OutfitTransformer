@@ -1,5 +1,10 @@
 # Training
 
+Documentazione collegata: [panoramica del modello](../model/README.md),
+[Transformer common](../model/common/README.md),
+[modello Compatibility Prediction](../model/cp/README.md) e
+[guida del training CP](CP/README.md).
+
 ## Indice
 
 - [File](#file)
@@ -16,7 +21,6 @@
 
 | Area | File | Responsabilità concettuale |
 |---|---|---|
-| Common | [`common/__init__.py`](common/__init__.py) | Espone servizi condivisi ai task. |
 | Common | [`common/runtime.py`](common/runtime.py) | Gestisce seed riproducibile e scelta automatica del device. |
 | Common | [`common/metrics.py`](common/metrics.py) | Accumula loss, accuracy e ROC AUC sull’intera epoca. |
 | Common | [`common/checkpointing.py`](common/checkpointing.py) | Salva checkpoint e configurazione in modo atomico; carica solo pesi per resume. |

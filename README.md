@@ -26,10 +26,11 @@ il task CIR è previsto ma non ancora implementato.
 |---|---|---|
 | `preprocessing` | Isola il capo, pulisce lo sfondo e prepara immagini utente. | [README](preprocessing/README.md) |
 | `data` | Definisce tipi, transform, collate e DataLoader. | [README](data/README.md) |
-| `data.polyvore` | Scarica e interpreta immagini, metadata e annotazioni Polyvore. | [README](data/polyvore/README.md) |
+| `data/polyvore` | Scarica e interpreta immagini, metadata e annotazioni Polyvore. | [README](data/polyvore/README.md) |
 | `model` | Espone architettura comune e moduli specifici dei task. | [README](model/README.md) |
-| `model.common` | Crea embedding multimodali e li contestualizza con il Transformer. | [README](model/common/README.md) |
-| `model.cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
+| `model/common` | Crea embedding multimodali e li contestualizza con il Transformer. | [README](model/common/README.md) |
+| `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
+| `training` | Allena CP in modalità classic, new classic o CLIP e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
 | `metrics` | Calcola metriche riutilizzabili per training e valutazione. | [README](metrics/README.md) |
 
 ## Architettura generale
