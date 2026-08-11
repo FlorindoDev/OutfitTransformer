@@ -44,7 +44,7 @@ class CompatibilityTransformer(nn.Module):
             dropout=self.config.dropout,
             activation=nn.Mish(),
             batch_first=True,
-            norm_first=True,
+            norm_first=self.config.norm_first,
         )
         self.encoder = nn.TransformerEncoder(
             encoder_layer=layer,

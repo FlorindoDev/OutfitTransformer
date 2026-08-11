@@ -113,6 +113,7 @@ class FashionCLIPTextEncoder(TextEncoder):
             raise ValueError(
                 "FashionCLIP text config must define a positive projection_dim"
             )
+        self._max_length = _max_position_embeddings(self.backbone)
         self._output_dim = projection_dim
         self._trainable = trainable
 
@@ -137,6 +138,7 @@ class FashionCLIPTextEncoder(TextEncoder):
             list(descriptions),
             padding=True,
             truncation=True,
+            max_length=self._max_length,
             return_tensors="pt",
         ).to(device)
         return self.backbone(**tokens).text_embeds
@@ -147,3 +149,18 @@ def _validate_descriptions(descriptions: Sequence[str]) -> None:
         raise ValueError("descriptions cannot be empty")
     if any(not isinstance(text, str) or not text.strip() for text in descriptions):
         raise ValueError("descriptions must contain non-empty strings")
+
+
+def _max_position_embeddings(backbone: nn.Module) -> int:
+    config = getattr(backbone, "config", None)
+    max_length = getattr(config, "max_position_embeddings", None)
+    if (
+        not isinstance(max_length, int)
+        or isinstance(max_length, bool)
+        or max_length <= 0
+    ):
+        raise ValueError(
+            "FashionCLIP text config must define positive "
+            "max_position_embeddings"
+        )
+    return max_length

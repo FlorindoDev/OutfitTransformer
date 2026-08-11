@@ -335,7 +335,7 @@ richiesti esistano, che i token siano risolvibili e che gli articoli appartengan
 allo split selezionato. Label, domande FITB e posizione del positivo vengono
 validate prima del training, così gli errori di struttura emergono subito.
 
-Il catalogo descrive i dati grezzi e trasformati, ma non salva embedding. Le
-cache di rappresentazioni, il campionamento di nuovi negativi e le politiche di
-bilanciamento appartengono rispettivamente alla precomputazione e ai training
-loop dei task.
+Il catalogo descrive i dati grezzi e trasformati, ma non salva embedding. Il job
+`scripts/precompute_embeddings.py` crea la cache FashionCLIP fuori dal dataset.
+Campionamento di nuovi negativi e politiche di bilanciamento restano nei
+training loop dei task.

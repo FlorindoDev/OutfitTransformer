@@ -21,6 +21,7 @@ class TransformerConfig:
     attention_heads: int = 16
     feedforward_dim: int = 2024
     dropout: float = 0.3
+    norm_first: bool = True
     max_items: int = 16
     normalization_epsilon: float = 1e-12
 
@@ -41,6 +42,8 @@ class TransformerConfig:
             raise ValueError("feedforward_dim must be positive")
         if not 0.0 <= self.dropout < 1.0:
             raise ValueError("dropout must be in [0, 1)")
+        if not isinstance(self.norm_first, bool):
+            raise TypeError("norm_first must be boolean")
         if self.max_items <= 0:
             raise ValueError("max_items must be positive")
         if self.normalization_epsilon <= 0.0:
@@ -104,7 +107,7 @@ class OutfitContextTransformer(nn.Module):
             dropout=config.dropout,
             activation=nn.Mish(),
             batch_first=True,
-            norm_first=True,
+            norm_first=config.norm_first,
         )
         self.encoder = nn.TransformerEncoder(
             encoder_layer=layer,
