@@ -3,6 +3,7 @@
 ## Indice
 
 - [File](#file)
+- [Dettaglio dei file: responsabilità, input e output](#dettaglio-dei-file-responsabilità-input-e-output)
 - [Origine e accesso](#origine-e-accesso)
 - [Varianti e split](#varianti-e-split)
 - [Risorse del dataset](#risorse-del-dataset)
@@ -17,11 +18,168 @@
 
 | File | Responsabilità |
 |---|---|
+| `__init__.py` | Espone l’API pubblica del sottopackage Polyvore. |
 | `download.py` | Scarica e verifica le sole risorse richieste dal task. |
 | `catalog.py` | Collega ogni `item_id` a immagine, descrizione e categoria. |
 | `item_dataset.py` | Restituisce singoli articoli. |
 | `compatibility_dataset.py` | Interpreta outfit con label binaria. |
 | `retrieval_dataset.py` | Interpreta domande FITB con positivo e distrattori. |
+
+## Dettaglio dei file: responsabilità, input e output
+
+Gli esempi seguenti usano valori ridotti, ma rispettano il formato delle
+risorse reali.
+
+
+#### Esempio di input e output
+
+| Input | Output |
+|---|---|
+| Importazione di `PolyvoreCatalog` da `data.polyvore`. | La classe pubblica definita in `catalog.py`. |
+| Importazione di varianti, split o dataset. | I relativi tipi senza dover conoscere il file interno. |
+
+### `download.py`
+
+Conosce la sorgente Hugging Face e decide quali risorse servono in base a task,
+variante e split. Scarica soltanto il necessario, riusa la cache e verifica che
+le righe degli item contengano almeno `item_id` e immagine e che i file richiesti
+esistano.
+
+Non interpreta label o outfit, non applica transform e non costruisce dataset o
+batch. Il suo risultato è un contenitore di risorse già localizzate e
+verificate, che verrà passato agli altri componenti.
+
+#### Esempio di input e output
+
+```text
+Input
+  task:       compatibility
+  variant:    disjoint
+  split:      train
+  token:      token Hugging Face configurato
+
+Output
+  PolyvoreResources
+  item_rows:          righe con item_id e immagine
+  metadata_path:      polyvore_item_metadata.json
+  outfits_path:       disjoint/train.json
+  compatibility_path: disjoint/compatibility_train.txt
+  retrieval_path:     assente, perché non serve al task scelto
+```
+
+Il risultato contiene dati e percorsi verificati, non un `Dataset` o un batch.
+
+### `catalog.py`
+
+È il punto di collegamento tra le diverse sorgenti che descrivono un articolo.
+Indicizza le righe immagine tramite `item_id`, legge i metadata e applica la
+transform scelta. Produce così un `FashionItem` uniforme, indipendentemente da
+come l’immagine era rappresentata nella sorgente.
+
+Costruisce inoltre la mappa tra token `set_id_index` e `item_id` usando i file
+degli outfit. Conserva soltanto descrizione e categoria degli item presenti
+nello split, evitando di mantenere in memoria tutto il metadata globale.
+
+Non conosce label compatibility o domande retrieval: queste vengono
+interpretate dai rispettivi dataset.
+
+#### Esempio di input e output
+
+```text
+Input
+  item_id: "132621870"
+  riga immagine: image associata a "132621870"
+  metadata: title="white shirt", semantic_category="tops"
+  transform: immagine PIL → Tensor [3, 224, 224]
+
+Output
+  FashionItem
+  item_id:      "132621870"
+  image:        Tensor float32 [3, 224, 224]
+  description:  "white shirt"
+  category:     "tops"
+```
+
+Lo stesso file traduce anche un token come `199244701_1` nell’`item_id`
+corrispondente usando il file degli outfit.
+
+### `item_dataset.py`
+
+Espone il catalogo come sequenza di singoli articoli. Riceve un indice e
+restituisce il `FashionItem` corrispondente; opzionalmente può limitare la vista
+a una lista specifica di `item_id`.
+
+Serve per elaborare ogni prodotto indipendentemente dagli outfit, per esempio
+durante analisi del catalogo o precomputazione degli embedding. Non usa file di
+compatibility o retrieval e non crea batch.
+
+#### Esempio di input e output
+
+```text
+Input
+  catalogo con item [i1, i2, i3]
+  indice richiesto: 1
+
+Output
+  FashionItem relativo a i2
+```
+
+Una sequenza opzionale di ID può limitare o riordinare gli articoli esposti dal
+dataset.
+
+### `compatibility_dataset.py`
+
+Interpreta le annotazioni `compatibility_*.txt`. Per ogni riga legge la label,
+risolve i token degli articoli attraverso la mappa degli outfit e chiede al
+catalogo i relativi `FashionItem`.
+
+Valida label, token e appartenenza degli item allo split prima del training.
+Restituisce un solo `CompatibilityExample` alla volta; raggruppamento, label
+floating point e batch sono responsabilità di `collate.py`.
+
+#### Esempio di input e output
+
+```text
+Input
+  annotazione: 1 199244701_1 199244701_2 199244701_3
+  mappa token: 199244701_1→i1, 199244701_2→i2, 199244701_3→i3
+
+Output
+  CompatibilityExample
+  example_id: "compatibility:<numero-riga>"
+  outfit:     [FashionItem(i1), FashionItem(i2), FashionItem(i3)]
+  label:      1
+```
+
+### `retrieval_dataset.py`
+
+Interpreta le annotazioni Fill In The Blank. Legge l’outfit parziale, la
+posizione rimossa e i candidati; individua il positivo tramite `set_id` e
+`blank_position`, quindi risolve tutti i token attraverso catalogo e mappa degli
+outfit.
+
+Restituisce un `RetrievalExample` con query, positivo e negativi distinti. Non
+esegue padding, non genera nuovi negativi e non elimina duplicati o falsi
+negativi presenti nel benchmark ufficiale: queste decisioni appartengono al
+futuro training CIR.
+
+#### Esempio di input e output
+
+```text
+Input
+  question:       [199244701_2, 199244701_3]
+  blank_position: 1
+  answers:        [207312192_1, 199244701_1, 224593384_1]
+
+Output
+  RetrievalExample
+  partial_outfit: item delle posizioni 2 e 3
+  positive_item:  item indicato da 199244701_1
+  negative_items: item indicati dagli altri due token
+```
+
+Il positivo viene riconosciuto tramite `set_id` e `blank_position`, non tramite
+la posizione occupata nell’elenco `answers`.
 
 ## Origine e accesso
 

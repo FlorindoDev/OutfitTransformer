@@ -17,6 +17,7 @@
 
 | File | Responsabilità |
 |---|---|
+| `__init__.py` | Espone l’API pubblica del package `data`. |
 | `types.py` | Definisce item, esempi dei task e batch condivisi. |
 | `transforms.py` | Prepara le immagini per ResNet-18 o FashionCLIP. |
 | `collate.py` | Unisce gli esempi e li converte nell’input pubblico del modello. |
@@ -85,6 +86,29 @@ stessi tipi senza richiedere modifiche al modello.
 | `CompatibilityBatch` | Outfit pronti per CP, ID originali e label `[batch, 1]`. |
 | `RetrievalBatch` | Query, positivi, negativi, categorie e relativi ID. |
 
+### Esempio di input e output
+
+Valori illustrativi passati a `FashionItem`:
+
+```text
+Input
+  item_id:      "132621870"
+  image:        Tensor float32 [3, 224, 224]
+  description:  "white cotton shirt"
+  category:     "tops"
+
+Output
+  FashionItem che rappresenta un articolo valido e completo
+```
+
+Tre `FashionItem`, una label `1` e un identificatore dell’esempio producono
+invece un `CompatibilityExample` contenente un solo outfit positivo. Un outfit
+parziale, un item corretto e alcuni negativi producono un `RetrievalExample`.
+
+Se l’immagine avesse forma `[224, 224]`, la descrizione fosse vuota o la label
+fosse `2`, non verrebbe prodotto alcun oggetto valido: il tipo segnalerebbe
+l’errore.
+
 ### Idea generale
 
 `types.py` non legge file e non conosce la struttura di Polyvore. Definisce
@@ -140,6 +164,23 @@ La transform è scelta esplicitamente perché dipende dall’encoder visuale:
 | FashionCLIP | Usa l’image processor associato al checkpoint scelto. |
 | Encoder personalizzato | Può ricevere una transform compatibile fornita dall’esterno. |
 
+### Esempio di input e output
+
+```text
+Input
+  Immagine PIL RGB, dimensione 640 × 480
+
+Transform ResNet-18 senza augmentation
+  resize proporzionale → center crop → tensore → normalizzazione ImageNet
+
+Output
+  Tensor float32 [3, 224, 224]
+```
+
+Con augmentation attiva l’output mantiene forma e normalizzazione, ma crop e
+ribaltamento possono cambiare a ogni lettura. Con FashionCLIP la dimensione e la
+normalizzazione sono quelle richieste dall’image processor del checkpoint.
+
 Il catalogo converte sempre l’immagine in RGB prima di applicare la transform.
 La stessa pipeline può quindi includere anche operazioni di preprocessing del
 package `preprocessing`, purché alla fine restituisca un tensore `[3, H, W]`.
@@ -157,6 +198,27 @@ Ogni flusso ha una collate dedicata:
 | Item | Un gruppo di articoli e una vista come outfit composti da un solo item. |
 | Compatibility | Outfit completi e tensore delle label `[batch, 1]`. |
 | Retrieval | Outfit parziali, positivi e gruppi di negativi di lunghezza variabile. |
+
+### Esempio di input e output
+
+```text
+Input della collate compatibility
+  Example A: outfit [i1, i2, i3], label 1
+  Example B: outfit [i4, i5],     label 0
+
+Output
+  CompatibilityBatch
+  outfit_item_ids: [[i1, i2, i3], [i4, i5]]
+  outfits:         lunghezze [3, 2]
+  labels:          Tensor [[1.0], [0.0]], forma [2, 1]
+```
+
+Il secondo outfit non riceve un item fittizio. Le due lunghezze restano `3` e
+`2`; sarà il modello a creare padding e mask durante il forward.
+
+Per il flusso item, una lista di `FashionItem` produce un `ItemBatch`. Per
+retrieval, query parziali, positivi e negativi producono un `RetrievalBatch` che
+mantiene separati tutti questi ruoli.
 
 La collate impila soltanto dati uniformi, come le label. Non combina le immagini
 in un unico tensore rettangolare e non crea padding: outfit e negativi rimangono
@@ -181,6 +243,19 @@ persistenti, eliminazione dell’ultimo batch incompleto e seed. Richiede valori
 coerenti, per esempio worker persistenti solo quando è presente almeno un
 worker.
 
+### Componenti passati al DataLoader
+
+`loaders.py` non svolge da solo tutte le operazioni. Quando crea un
+`DataLoader`, gli passa oggetti e funzioni definiti negli altri file:
+
+| Parametro del DataLoader | Provenienza | Ruolo |
+|---|---|---|
+| `dataset` | `item_dataset.py`, `compatibility_dataset.py`, `retrieval_dataset.py` oppure chiamante esterno | Restituisce un singolo Example quando riceve un indice. |
+| `collate_fn` | `collate.py` | Converte una lista di Example nel Batch specifico del task. |
+| `batch_size`, worker, shuffle e altre opzioni | `LoaderConfig` e argomenti della factory | Controllano come gli esempi vengono letti e raggruppati. |
+
+
+
 Per compatibility e retrieval lo shuffle viene attivato automaticamente sullo
 split di training, salvo scelta esplicita diversa. Il loader item resta invece
 ordinato per impostazione predefinita, utile quando gli embedding devono essere
@@ -188,6 +263,27 @@ associati in modo riproducibile agli `item_id`.
 
 `loaders.py` costruisce la pipeline ma non esegue il training: non crea modelli,
 optimizer, loss o checkpoint.
+
+### Esempio di input e output
+
+```text
+Input
+  CompatibilityDataset con 1.000 esempi
+  LoaderConfig(batch_size=32, num_workers=4, pin_memory=True)
+  shuffle=True
+
+Output della factory
+  DataLoader configurato con la collate compatibility
+
+Output di una sua iterazione
+  CompatibilityBatch con al massimo 32 outfit
+  labels con forma [32, 1]
+```
+
+La factory restituisce il `DataLoader`, non tutti i dati caricati in memoria.
+Gli esempi vengono richiesti al dataset batch dopo batch. Una factory Polyvore
+riceve inoltre variante, split, transform, token e cache; il suo output resta un
+`DataLoader` dello stesso tipo.
 
 ## Dataset disponibili
 
