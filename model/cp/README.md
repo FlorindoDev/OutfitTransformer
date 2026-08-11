@@ -13,6 +13,7 @@
 - [Padding e ordine degli item](#padding-e-ordine-degli-item)
 - [Parametri allenabili e condivisione](#parametri-allenabili-e-condivisione)
 - [Vincoli](#vincoli)
+- [Binary Focal Loss](#binary-focal-loss)
 
 ## File
 
@@ -168,3 +169,187 @@ Il modulo rifiuta input incompatibili prima della classificazione:
 
 Configurazioni diverse dai valori predefiniti restano possibili, purché la
 dimensione prodotta da common coincida con quella attesa dal CP.
+
+## Binary Focal Loss
+
+La Binary Focal Loss è una funzione di errore per classificazione binaria che
+riduce il contributo degli esempi già classificati facilmente e concentra
+l'addestramento su quelli incerti o sbagliati.
+
+### Dal logit alla probabilità
+
+Il modello produce un logit $z$, che la sigmoid trasforma nella probabilità
+di compatibilità:
+
+$$
+p=\sigma(z)=\frac{1}{1+e^{-z}}
+$$
+
+Per esempio, $p=0.9$ significa che il modello considera l'outfit compatibile
+con probabilità 90%.
+
+### Probabilità della classe corretta
+
+Durante il training è disponibile l'etichetta reale $y$. Si definisce:
+
+$$
+p_t=
+\begin{cases}
+p & \text{se } y=1\\
+1-p & \text{se } y=0
+\end{cases}
+$$
+
+$p_t$ è quindi la probabilità assegnata alla classe corretta:
+
+| Etichetta $y$ | Predizione $p$ | $p_t$ | Interpretazione |
+|---:|---:|---:|---|
+| 1 | 0.95 | 0.95 | Corretta e facile |
+| 1 | 0.20 | 0.20 | Sbagliata e difficile |
+| 0 | 0.05 | 0.95 | Corretta e facile |
+| 0 | 0.80 | 0.20 | Sbagliata e difficile |
+
+Non serve assegnare manualmente una difficoltà:
+
+- $p_t$ alto indica un esempio facile;
+- $p_t$ vicino a 0.5 indica un esempio incerto;
+- $p_t$ basso indica un esempio difficile o classificato erroneamente.
+
+La difficoltà non è permanente. Uno stesso outfit può essere difficile
+all'inizio del training e diventare facile quando il modello impara a
+riconoscerlo.
+
+### Binary cross-entropy e $-\log(p_t)$
+
+La Binary Cross-Entropy per un singolo esempio può essere scritta come:
+
+$$
+\mathrm{BCE}=-\log(p_t)
+$$
+
+Il logaritmo trasforma la probabilità assegnata alla classe corretta in una
+penalità:
+
+| $p_t$ | $-\log(p_t)$ | Interpretazione |
+|---:|---:|---|
+| 0.99 | 0.010 | Penalità quasi nulla |
+| 0.90 | 0.105 | Penalità piccola |
+| 0.50 | 0.693 | Modello incerto |
+| 0.10 | 2.303 | Penalità grande |
+| 0.01 | 4.605 | Penalità molto grande |
+
+Quando $p_t$ tende a 1, $-\log(p_t)$ tende a 0. Quando $p_t$ tende a 0,
+$-\log(p_t)$ cresce rapidamente: una risposta sbagliata data con grande
+sicurezza riceve una penalità molto alta.
+
+Il segno meno è necessario perché $\log(p_t)$ è negativo per $0<p_t<1$,
+mentre la loss deve essere positiva. Rispetto alla semplice quantità $1-p_t$,
+il logaritmo penalizza più severamente gli errori commessi con grande
+sicurezza.
+
+### Il peso focale e $\gamma$
+
+Molti esempi facili possono dominare l'addestramento quando le loro loss
+vengono sommate. La Focal Loss riduce il loro contributo moltiplicando la BCE
+per:
+
+$$
+(1-p_t)^\gamma
+$$
+
+Senza bilanciamento delle classi:
+
+$$
+\mathrm{FL}(p_t)=-(1-p_t)^\gamma\log(p_t)
+$$
+
+$\gamma$ controlla quanto aggressivamente vengono ridimensionati gli esempi
+facili. Con $\gamma=2$:
+
+| $p_t$ | Peso $(1-p_t)^2$ |
+|---:|---:|
+| 0.95 | 0.0025 |
+| 0.50 | 0.25 |
+| 0.10 | 0.81 |
+
+Un esempio facile riceve un peso molto piccolo, mentre un esempio difficile
+conserva gran parte della propria penalità. Con $\gamma=0$, il peso è sempre 1
+e la Focal Loss coincide con la normale BCE.
+
+### Come collaborano BCE e peso focale
+
+Con $\gamma=2$ e senza considerare per il momento $\alpha$:
+
+$$
+\mathrm{FL}=(1-p_t)^2[-\log(p_t)]
+$$
+
+| $p_t$ | BCE $-\log(p_t)$ | Peso focale | Focal Loss |
+|---:|---:|---:|---:|
+| 0.95 | 0.051 | 0.0025 | 0.00013 |
+| 0.50 | 0.693 | 0.25 | 0.173 |
+| 0.10 | 2.303 | 0.81 | 1.865 |
+
+I fattori hanno ruoli differenti:
+
+$$
+\underbrace{-\log(p_t)}_{\text{penalità della predizione}}
+\qquad
+\underbrace{(1-p_t)^\gamma}_{\text{attenzione data all'esempio}}
+$$
+
+La Focal Loss non penalizza maggiormente gli esempi facili: riduce quasi a
+zero il loro contributo e concentra gli aggiornamenti sugli errori.
+
+### Il bilanciamento delle classi con $\alpha$
+
+La forma completa è:
+
+$$
+\mathrm{FL}(p_t)=-\alpha_t(1-p_t)^\gamma\log(p_t)
+$$
+
+In forma espansa:
+
+$$
+\mathrm{FL}(p,y)=
+-\alpha y(1-p)^\gamma\log(p)
+-(1-\alpha)(1-y)p^\gamma\log(1-p)
+$$
+
+I due iperparametri hanno scopi distinti:
+
+- $\gamma$ bilancia esempi facili e difficili;
+- $\alpha$ bilancia classe positiva e negativa.
+
+Se gli outfit compatibili sono rari, il valore di $\alpha$ può essere scelto
+per dare più importanza alla classe positiva.
+
+`BinaryFocalLoss` usa:
+
+```text
+alpha:     0.25
+gamma:     2.0
+reduction: mean
+```
+
+Impostando `alpha=None` si disabilita il bilanciamento delle classi.
+Impostando `gamma=0` e `alpha=None` si ottiene la normale BCE.
+
+In sintesi:
+
+$$
+\boxed{
+\text{Focal Loss}
+=
+\underbrace{-\log(p_t)}_{\text{errore di classificazione}}
+\cdot
+\underbrace{(1-p_t)^\gamma}_{\text{difficoltà dell'esempio}}
+\cdot
+\underbrace{\alpha_t}_{\text{peso della classe}}
+}
+$$
+
+L'implementazione riceve direttamente i logits e usa
+`binary_cross_entropy_with_logits`, evitando instabilità numeriche dovute al
+calcolo separato di sigmoid e logaritmo.
