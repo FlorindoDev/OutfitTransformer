@@ -1,5 +1,6 @@
 """Shared multimodal components for CP and CIR tasks."""
 
+from .task_embedding import TaskEmbedding
 from .text_encoder import (
     FashionCLIPTextEncoder,
     SentenceTransformerTextEncoder,
@@ -25,6 +26,7 @@ __all__ = [
     "OutfitTransformerOutput",
     "ResNet18VisualEncoder",
     "SentenceTransformerTextEncoder",
+    "TaskEmbedding",
     "TextEncoder",
     "TransformerConfig",
     "VisualEncoder",

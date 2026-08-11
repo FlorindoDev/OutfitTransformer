@@ -21,6 +21,7 @@
 | `visual_encoder.py` | Definisce gli encoder visuali e include ResNet-18 e FashionCLIP ViT. |
 | `text_encoder.py` | Definisce gli encoder testuali e include SentenceTransformer e FashionCLIP. |
 | `transformer.py` | Gestisce API Pydantic, fusione, padding, Transformer e output. |
+| `task_embedding.py` | Definisce l'embedding allenabile condiviso dai moduli specifici CP e CIR. |
 | `__init__.py` | Espone i componenti pubblici di `model.common`. |
 | `README.md` | Documenta concetti, comportamento e limiti del modulo. |
 
