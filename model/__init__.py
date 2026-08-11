@@ -1,29 +1,27 @@
-from .cir import ComplementaryItemRetriever, RetrievalOutput, SetWiseRankingLoss
+"""OutfitTransformer models."""
+
 from .common import (
-    IMAGE_FINE_TUNE_MODES,
-    ImageFineTuneMode,
-    OutfitEncoder,
-    OutfitEncoderConfig,
-    OutfitEncoderOutput,
-)
-from .cp import (
-    BinaryFocalLoss,
-    CompatibilityOutput,
-    CompatibilityPredictor,
-    load_cp_checkpoint,
+    FashionCLIPTextEncoder,
+    FashionCLIPVisualEncoder,
+    OutfitItem,
+    OutfitTransformer,
+    OutfitTransformerOutput,
+    ResNet18VisualEncoder,
+    SentenceTransformerTextEncoder,
+    TextEncoder,
+    TransformerConfig,
+    VisualEncoder,
 )
 
 __all__ = [
-    "BinaryFocalLoss",
-    "CompatibilityOutput",
-    "CompatibilityPredictor",
-    "ComplementaryItemRetriever",
-    "IMAGE_FINE_TUNE_MODES",
-    "ImageFineTuneMode",
-    "OutfitEncoder",
-    "OutfitEncoderConfig",
-    "OutfitEncoderOutput",
-    "RetrievalOutput",
-    "SetWiseRankingLoss",
-    "load_cp_checkpoint",
+    "FashionCLIPTextEncoder",
+    "FashionCLIPVisualEncoder",
+    "OutfitItem",
+    "OutfitTransformer",
+    "OutfitTransformerOutput",
+    "ResNet18VisualEncoder",
+    "SentenceTransformerTextEncoder",
+    "TextEncoder",
+    "TransformerConfig",
+    "VisualEncoder",
 ]

@@ -1,14 +1,31 @@
-from .config import (
-    IMAGE_FINE_TUNE_MODES,
-    ImageFineTuneMode,
-    OutfitEncoderConfig,
+"""Shared multimodal components for CP and CIR tasks."""
+
+from .text_encoder import (
+    FashionCLIPTextEncoder,
+    SentenceTransformerTextEncoder,
+    TextEncoder,
 )
-from .outfit_encoder import OutfitEncoder, OutfitEncoderOutput
+from .transformer import (
+    OutfitItem,
+    OutfitTransformer,
+    OutfitTransformerOutput,
+    TransformerConfig,
+)
+from .visual_encoder import (
+    FashionCLIPVisualEncoder,
+    ResNet18VisualEncoder,
+    VisualEncoder,
+)
 
 __all__ = [
-    "OutfitEncoder",
-    "OutfitEncoderConfig",
-    "OutfitEncoderOutput",
-    "IMAGE_FINE_TUNE_MODES",
-    "ImageFineTuneMode",
+    "FashionCLIPTextEncoder",
+    "FashionCLIPVisualEncoder",
+    "OutfitItem",
+    "OutfitTransformer",
+    "OutfitTransformerOutput",
+    "ResNet18VisualEncoder",
+    "SentenceTransformerTextEncoder",
+    "TextEncoder",
+    "TransformerConfig",
+    "VisualEncoder",
 ]

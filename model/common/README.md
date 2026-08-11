@@ -1,257 +1,216 @@
-# Architettura comune
-
-I componenti in `model/common` sono condivisi da:
-
-- [Compatibility Prediction](../cp/README.md);
-- [Complementary Item Retrieval](../cir/README.md).
-
-Torna al [README principale](../../README.md).
+# Common: rappresentazione multimodale degli outfit
 
 ## Indice
 
-- [Flusso](#flusso)
-- [Item embedding](#item-embedding)
-- [Transformer encoder-only](#transformer-encoder-only)
-- [Padding mask](#padding-mask)
-- [Configurazione](#configurazione)
-- [Output dell'encoder](#output-dellencoder)
-- [Uso dell'output in CP e CIR](#uso-delloutput-in-cp-e-cir)
 - [File](#file)
-
-## Flusso
-
-```mermaid
-flowchart TD
-    A["OutfitBatch<br/>immagini, descrizioni, padding mask"]
-
-    A --> B["ResNet-18 + FC"]
-    A --> C["SentenceBERT <br/>+ FC"]
-
-    B --> D["Image embedding<br/>64 feature"]
-    C --> E["Text embedding<br/>64 feature"]
-
-    D --> F["Concatenazione"]
-    E --> F
-    F --> G["Item embeddings<br/>B × L × 128"]
-
-    G --> H["Task token + Transformer encoder-only"]
-    H --> I["Compatibility Prediction"]
-    H --> J["Complementary Item Retrieval"]
-```
-
-Nel diagramma:
-
-- `B` è il numero di outfit nel batch;
-- `L` è il massimo numero di capi per outfit dopo il padding;
-- ogni capo è rappresentato da 128 feature.
-
-## Item embedding
-
-Per ogni capo vengono unite informazioni visive e testuali:
-
-```text
-immagine ──> ResNet-18 + FC ────> 64 feature ──┐
-                                               ├──> item embedding: 128 feature
-testo ─────> SentenceBERT + FC ─> 64 feature ──┘
-```
-
-```python
-item_embedding = torch.cat(
-    (image_embedding, text_embedding),
-    dim=-1,
-)
-```
-
-Prima del Transformer encoder-only, le prime 64 feature sono visive e le
-successive 64 sono testuali. Dopo il Transformer, attenzione e proiezioni
-lineari mescolano le due modalità.
-
-### Image encoder
-
-`ImageEncoder` non inizializza normalmente ResNet-18 da zero: carica i pesi
-pre-addestrati su ImageNet tramite `ResNet18_Weights.DEFAULT`. Al primo utilizzo
-Torchvision scarica il file dei pesi, non l'intero dataset ImageNet.
-
-`pretrained_image_encoder` controlla soltanto l'inizializzazione:
-
-- `True`: carica i pesi ImageNet;
-- `False`: parte da pesi casuali, come con il flag CLI
-  `--no-pretrained-image`.
-
-Quali pesi possono cambiare durante il training dipende invece da
-`image_fine_tune_mode`:
-
-| Modalità | Parametri aggiornati | Parametri congelati |
-|---|---|---|
-| `"fc_only"` (default) | solo FC `Linear(512, 64)` | stem, `layer1`, `layer2`, `layer3`, `layer4` |
-| `"fc_and_layer4"` | `layer4` e FC `Linear(512, 64)` | stem, `layer1`, `layer2`, `layer3` |
-
-I parametri congelati hanno `requires_grad=False`: la loss non produce un
-aggiornamento per loro e l'optimizer non li modifica. Anche i moduli BatchNorm
-dei blocchi congelati restano in modalità evaluation durante il training;
-Con `"fc_and_layer4"`, le BatchNorm interne a `layer4` restano invece allenabili e
-aggiornano le proprie statistiche.
-
-La modalità si imposta nella configurazione del modello:
-
-```python
-config = OutfitEncoderConfig(
-    image_fine_tune_mode="fc_and_layer4",
-)
-```
-
-`pretrained_image_encoder=False` non sblocca automaticamente il backbone. Per
-esempio, combinato con `"fc_only"` lascia congelate feature casuali; questa
-combinazione è normalmente sconsigliata.
-
-La testa di classificazione ImageNet originale viene sostituita con una nuova
-FC `Linear(512, 64)`, inizializzata casualmente. Il backbone estrae 512 feature
-visive; la FC le comprime e adatta in un image embedding da 64 valori destinato
-al Transformer:
-
-```text
-immagine → ResNet-18 → feature visive 512 → FC 512→64 → image embedding 64
-```
-
-Questa FC non predice una classe ImageNet: è una proiezione addestrabile che
-impara quali caratteristiche visive sono utili ai task CP e CIR. È sempre
-allenabile; i pesi del backbone cambiano solo secondo `image_fine_tune_mode`.
-
-### Text encoder
-
-`TextEncoder` usa SentenceBERT per estrarre le feature linguistiche e una
-FC `Linear(384, 64)` per trasformarle nel text embedding richiesto dal
-Transformer:
-
-```text
-descrizione → SentenceBERT → feature testuali 384 → FC 384→64 → text embedding 64
-```
-
-SentenceBERT è congelato e conserva le sue rappresentazioni linguistiche. La
-FC è invece addestrabile: riduce la dimensionalità e adatta le feature
-generiche di SentenceBERT alla compatibilità e al retrieval degli outfit.
-
-Le due FC producono embedding della stessa dimensione, che vengono
-concatenati:
-
-```text
-image embedding 64 + text embedding 64 = item embedding 128
-```
-
-## Transformer encoder-only
-
-L'architettura comune usa soltanto lo stack encoder del Transformer. Non è
-presente un decoder e non avviene generazione autoregressiva: ogni layer
-contestualizza gli item embedding e il task token tramite self-attention.
-
-La configurazione predefinita usa:
-
-```text
-dimensione embedding: 128
-layer:                 6
-teste di attenzione:   16
-positional encoding:   assente
-```
-
-L'outfit è trattato come un insieme non ordinato, quindi non viene aggiunto
-positional encoding. Il Transformer riceve gli item embedding, un task token
-e una padding mask:
-
-- CP antepone il token `OUTFIT`;
-- CIR antepone il token `TARGET`.
-
-Le posizioni padded non partecipano all'attenzione e vengono azzerate
-nell'output.
-
-## Padding mask
-
-La padding mask ha forma `[B,L]`:
-
-```python
-padding_mask = [
-    [False, False, False],
-    [False, False, True],
-]
-```
-
-- `False` indica un capo reale;
-- `True` indica una posizione `PAD`.
-
-`OutfitEncoder.encode_items()` codifica soltanto i capi reali. Gli embedding
-vengono poi reinseriti nella forma rettangolare `[B,L,128]`, lasciando zeri
-nelle posizioni padded.
-
-Quando viene anteposto un task token, viene aggiunto un valore `False` alla
-maschera perché il token è sempre valido:
-
-```text
-mask originale:       [False, False, True]
-con task token:       [False, False, False, True]
-                       ↑
-                    task token
-```
-
-Per i dettagli sulla costruzione dei batch consulta il
-[README del modulo data](../../data/README.md).
-
-## Configurazione
-
-```python
-from model import OutfitEncoder, OutfitEncoderConfig
-
-config = OutfitEncoderConfig(
-    image_embedding_dim=64,
-    text_embedding_dim=64,
-    transformer_layers=6,
-    attention_heads=16,
-    text_model_name="sentence-transformers/all-MiniLM-L6-v2",
-)
-model = OutfitEncoder(config)
-```
-
-## Output dell'encoder
-
-```python
-output = model(
-    images=batch.images,
-    descriptions=batch.descriptions,
-    padding_mask=batch.padding_mask,
-)
-```
-
-`OutfitEncoderOutput` contiene:
-
-| Campo | Forma | Significato |
-|---|---|---|
-| `item_embeddings` | `[B,L,128]` | Feature multimodali prima del Transformer encoder-only |
-| `contextual_embeddings` | `[B,L,128]` | Output contestualizzati del Transformer encoder-only |
-| `outfit_embedding` | `[B,128]` | Output del token in posizione zero |
-| `padding_mask` | `[B,L]` | Maschera degli item restituita dall'encoder |
-
-## Uso dell'output in CP e CIR
-
-L'output contestualizzato del Transformer encoder-only è condiviso dai due
-task, che ne utilizzano la posizione zero in modo diverso:
-
-- **CP:** antepone il token `OUTFIT`, usa il relativo output contestualizzato
-  come `outfit_embedding` e lo passa a `TaskMLP` per ottenere logit e score di
-  compatibilità;
-- **CIR:** antepone il token `TARGET`, usa il relativo output contestualizzato
-  e lo passa alla proiezione del task per ottenere il `target_embedding`, poi
-  impiegato dalla ranking loss o per cercare gli item complementari.
-
-Gli output degli altri token rappresentano invece i capi contestualizzati
-rispetto all'intero outfit.
+- [Architettura](#architettura)
+- [Scopo](#scopo)
+- [API del modello](#api-del-modello)
+- [Encoder visuale e testuale](#encoder-visuale-e-testuale)
+- [Fusione multimodale](#fusione-multimodale)
+- [Transformer](#transformer)
+- [Padding e troncamento](#padding-e-troncamento)
+- [Output](#output)
+- [Modularità e limiti](#modularità-e-limiti)
+- [Esempi concettuali](#esempi-concettuali)
 
 ## File
 
-```text
-model/common/
-  config.py               configurazione del modello
-  image_encoder.py        ResNet-18
-  text_encoder.py         SentenceBERT + FC
-  transformer_encoder.py  Transformer encoder-only con self-attention
-  outfit_encoder.py       item embedding, outfit token e contesto
-  heads.py                TaskMLP condiviso
-  loss_reduction.py       riduzione comune delle loss
+| File | Cosa fa |
+|---|---|
+| `visual_encoder.py` | Definisce gli encoder visuali e include ResNet-18 e FashionCLIP ViT. |
+| `text_encoder.py` | Definisce gli encoder testuali e include SentenceTransformer e FashionCLIP. |
+| `transformer.py` | Gestisce API Pydantic, fusione, padding, Transformer e output. |
+| `__init__.py` | Espone i componenti pubblici di `model.common`. |
+| `README.md` | Documenta concetti, comportamento e limiti del modulo. |
+
+## Architettura
+
+```mermaid
+flowchart TD
+    API["API Pydantic<br/>batch di outfit"] --> TYPE{"Tipo di input dell'item"}
+
+    TYPE -->|"immagine"| IMAGE["Immagine preprocessata"]
+    TYPE -->|"testo"| TEXT["Descrizione"]
+    TYPE -->|"embedding"| PRE["Embedding precomputato<br/>1024 feature"]
+
+    IMAGE --> VE["Encoder visuale<br/>ResNet-18 / FashionCLIP ViT"]
+    TEXT --> TE["Encoder testuale<br/>SentenceTransformer / FashionCLIP"]
+    VE --> VP["Proiezione a 512 + L2"]
+    TE --> TP["Proiezione a 512 + L2"]
+    VP --> CAT["Concatenazione<br/>512 + 512"]
+    TP --> CAT
+
+    CAT --> ITEM["Item embedding<br/>1024 feature"]
+    PRE --> PN["Separazione modalità + L2"]
+    PN --> ITEM
+
+    ITEM --> PAD["Padding appreso / troncamento<br/>massimo 16 item"]
+    PAD --> L2["L2 prima del Transformer"]
+    L2 --> TR["Transformer encoder<br/>senza positional embedding"]
+    TR --> OUT["Embedding contestualizzati<br/>mask, lunghezze, troncamenti"]
 ```
+
+## Scopo
+
+`model.common` crea la rappresentazione condivisa per i futuri task
+Compatibility Prediction (CP) e Complementary Item Retrieval (CIR). Ogni capo
+diventa un vettore che combina aspetto visuale e descrizione testuale; il
+Transformer lo aggiorna considerando tutti gli altri capi dell'outfit.
+
+Il modulo produce rappresentazioni comuni. Teste, loss e logica specifica di CP
+e CIR non sono ancora incluse.
+
+## API del modello
+
+Qui **API** vuol dire semplicemente: come passiamo i dati al modello e cosa il
+modello ci restituisce.
+
+L'input è una lista di outfit. Ogni outfit è una lista di capi rappresentati da
+`OutfitItem`. Un capo può contenere:
+
+- immagine e testo, sempre insieme;
+- oppure un embedding di 1024 valori già calcolato.
+
+Pydantic controlla solo gli `OutfitItem` in input. Per esempio, segnala un
+errore se manca il testo, se manca l'immagine o se vengono forniti sia dati
+grezzi sia embedding. Non controlla l'output.
+
+Esempio con un batch formato da un outfit e un capo:
+
+```python
+item = OutfitItem(image=image_tensor, text="camicia bianca")
+output = model([[item]])
+```
+
+La lista interna `[item]` è l'outfit. La lista esterna `[[item]]` è il batch.
+Il risultato è un normale `OutfitTransformerOutput`, non un oggetto Pydantic.
+
+Se viene usato un embedding già calcolato, i primi 512 valori sono visuali e i
+successivi 512 testuali. Le immagini devono essere già preparate per l'encoder
+visuale scelto e avere forme compatibili nello stesso batch.
+
+## Encoder visuale e testuale
+
+Ogni encoder dichiara la dimensione del proprio output. Se non è 512, una
+proiezione allenabile la adatta automaticamente.
+
+Encoder visuali disponibili:
+
+- **ResNet-18**: pesi ImageNet predefiniti, classificatore rimosso, backbone
+  allenabile per impostazione predefinita;
+- **FashionCLIP ViT**: visual tower di FashionCLIP, backbone allenabile per
+  impostazione predefinita.
+
+Encoder testuali disponibili:
+
+- **SentenceTransformer**: backbone preaddestrato e congelato per impostazione
+  predefinita; proiezione dimensionale allenabile;
+- **FashionCLIP text tower**: tokenizzazione inclusa e backbone allenabile per
+  impostazione predefinita.
+
+I pesi preaddestrati possono essere scaricati al primo utilizzo.
+
+## Fusione multimodale
+
+Feature visuali e testuali vengono normalizzate L2 separatamente, così nessuna
+modalità domina solo per una norma maggiore. I due vettori da 512 feature sono
+concatenati in un item embedding da 1024 feature. Prima del Transformer,
+l'intero vettore viene normalizzato L2 di nuovo.
+
+Embedding con valori non finiti o norma nulla vengono rifiutati.
+
+## Transformer
+
+Il Transformer contestualizza ogni item rispetto all'intero outfit.
+
+| Parametro | Valore |
+|---|---:|
+| Input/output | 1024 feature |
+| Layer | 6 |
+| Teste | 16 |
+| Feed-forward network | 1024 → 2024 → 1024 |
+| Attivazione | Mish |
+| LayerNorm | Pre-norm |
+| Dropout | 0.3 |
+| Positional embedding | Assente |
+
+Senza positional embedding, l'outfit è trattato come insieme. Cambiare ordine
+agli item cambia nello stesso modo l'ordine degli output, senza alterare le
+relazioni apprese.
+
+## Padding e troncamento
+
+Ogni outfit viene portato a 16 posizioni tramite un padding vector appreso. Una
+padding mask impedisce alle posizioni vuote di influenzare i capi reali.
+
+Outfit oltre 16 item vengono troncati ai primi 16. Il modello conserva lunghezza
+effettiva e indicatore di troncamento per ogni outfit.
+
+## Output
+
+Il modello restituisce un `OutfitTransformerOutput`, cioè un contenitore con
+cinque tensori:
+
+| Campo | Forma predefinita | Significato |
+|---|---|---|
+| `item_embeddings` | `[B, 16, 1024]` | Item embedding normalizzati usati come input del Transformer. |
+| `contextual_embeddings` | `[B, 16, 1024]` | Item embedding aggiornati usando il contesto dell'intero outfit. |
+| `padding_mask` | `[B, 16]` booleana | `False` per item reali, `True` per padding. |
+| `lengths` | `[B]` intera | Numero di item realmente elaborati, massimo 16. |
+| `truncated` | `[B]` booleana | `True` quando l'outfit originale superava 16 item. |
+
+`B` indica il numero di outfit nel batch. `16` e `1024` dipendono dalla
+configurazione e rappresentano rispettivamente massimo numero di item e
+dimensione multimodale.
+
+Le posizioni di padding contengono il padding vector appreso e normalizzato.
+Chi usa gli output deve consultare `padding_mask` per distinguere queste
+posizioni dai capi reali.
+
+Il modulo non restituisce ancora score CP, risultato CIR o singolo embedding
+globale dell'outfit: produce le rappresentazioni comuni che tali task useranno.
+
+
+## Esempi concettuali
+
+### Padding apprendibile
+
+Il padding rende rettangolare un batch con outfit di lunghezze diverse. Con un
+massimo ipotetico di quattro posizioni:
+
+```text
+Outfit A: maglia, pantaloni, scarpe, PAD
+Outfit B: vestito, PAD, PAD, PAD
+Mask A:   False, False, False, True
+Mask B:   False, True,  True,  True
+```
+
+`PAD` è lo stesso vettore allenabile in tutte le posizioni vuote. La mask indica
+al Transformer quali posizioni non rappresentano capi reali. Nel comportamento
+attuale, questa mask impedisce al padding di influenzare gli item reali: il
+parametro è allenabile, ma riceve gradiente utile solo se una loss utilizza
+anche gli output padded.
+
+### Normalizzazione L2
+
+La normalizzazione L2 porta la lunghezza di un vettore a `1`, mantenendone la
+direzione:
+
+```text
+[3, 4] / sqrt(3² + 4²) = [0.6, 0.8]
+```
+
+Il modello normalizza prima visuale e testo separatamente, così nessuna modalità
+domina solo per la propria scala. Dopo la concatenazione normalizza nuovamente
+l'intero item embedding:
+
+```text
+Visuale: [3, 4] -> [0.6, 0.8]
+Testo:   [0, 2] -> [0, 1]
+Fusione: [0.6, 0.8, 0, 1]
+L2 finale: [0.424, 0.566, 0, 0.707]
+```
+
+Vettori nulli vengono rifiutati perché non possiedono una direzione
+normalizzabile.
