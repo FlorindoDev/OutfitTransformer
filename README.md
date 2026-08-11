@@ -41,17 +41,17 @@ flowchart TD
     A --> B["Encoder visuale<br/>ResNet-18 o FashionCLIP ViT"]
     A --> C["Encoder testuale<br/>SentenceTransformer o FashionCLIP"]
 
-    B --> D["Proiezione + L2<br/>512 feature visuali"]
-    C --> E["Proiezione + L2<br/>512 feature testuali"]
+    B --> D["Proiezione + L2<br/>64 o 512 feature visuali"]
+    C --> E["Proiezione + L2<br/>64 o 512 feature testuali"]
 
     D --> F["Concatenazione visuale + testo"]
     E --> F
 
-    F --> G["Item embeddings<br/>B × L × 1024"]
+    F --> G["Item embeddings<br/>B × L × 128 o 1024"]
     P["Embedding FashionCLIP precomputato<br/>512 + 512 feature"] --> G
     G --> H["L2 + padding appreso + padding mask<br/>massimo 16 item"]
     H --> I["Transformer common encoder-only<br/>6 layer · 16 teste · nessuna posizione"]
-    I --> J["Item embeddings contestualizzati<br/>B × 16 × 1024"]
+    I --> J["Item embeddings contestualizzati<br/>B × 16 × 128 o 1024"]
 
     K["CP token<br/>task_emb + predict_emb"] --> L["Transformer CP encoder-only<br/>6 layer · 16 teste"]
     J --> L

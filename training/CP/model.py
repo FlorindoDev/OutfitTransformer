@@ -19,7 +19,7 @@ from .config import FeatureMode, default_transformer_config
 
 
 class CPTrainingModel(nn.Module):
-    """Compose CP with classic encoders or precomputed CLIP embeddings."""
+    """Compose CP with runtime encoders or precomputed CLIP embeddings."""
 
     def __init__(
         self,
@@ -35,7 +35,7 @@ class CPTrainingModel(nn.Module):
         self.config = config or default_transformer_config(feature_mode)
         self.config.validate()
         self.feature_mode = feature_mode
-        if feature_mode is FeatureMode.CLASSIC:
+        if feature_mode.uses_raw_inputs:
             self.common: nn.Module = OutfitTransformer(
                 visual_encoder=visual_encoder,
                 text_encoder=text_encoder,

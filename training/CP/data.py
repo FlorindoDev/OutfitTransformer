@@ -93,8 +93,8 @@ def build_compatibility_loaders(
     *,
     token: bool | str | None = True,
 ) -> CompatibilityLoaders:
-    """Build loaders for classic raw inputs or precomputed CLIP features."""
-    if config.feature_mode is FeatureMode.CLASSIC:
+    """Build loaders for raw inputs or precomputed CLIP features."""
+    if config.feature_mode.uses_raw_inputs:
         return _build_classic_loaders(config, token=token)
     return _build_clip_loaders(config, token=token)
 

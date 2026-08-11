@@ -9,6 +9,9 @@ import matplotlib
 
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt  # noqa: E402
+from matplotlib.ticker import FormatStrFormatter  # noqa: E402
+
+SCORE_TICKS = tuple(index / 10 for index in range(1, 11))
 
 
 def save_cumulative_plots(
@@ -42,7 +45,7 @@ def save_cumulative_plots(
         title="CP accuracy",
         ylabel="Accuracy",
         path=selected_dir / f"cp_accuracy_epoch_{epoch:03d}.png",
-        limits=(0.0, 1.0),
+        normalized_score_axis=True,
     )
     _save_two_series(
         epochs,
@@ -53,7 +56,7 @@ def save_cumulative_plots(
         title="CP ROC AUC",
         ylabel="ROC AUC",
         path=selected_dir / f"cp_auc_epoch_{epoch:03d}.png",
-        limits=(0.0, 1.0),
+        normalized_score_axis=True,
     )
     _save_two_series(
         epochs,
@@ -67,7 +70,7 @@ def save_cumulative_plots(
             selected_dir
             / f"cp_validation_accuracy_auc_epoch_{epoch:03d}.png"
         ),
-        limits=(0.0, 1.0),
+        normalized_score_axis=True,
     )
 
 
@@ -81,7 +84,7 @@ def _save_two_series(
     title: str,
     ylabel: str,
     path: Path,
-    limits: tuple[float, float] | None = None,
+    normalized_score_axis: bool = False,
 ) -> None:
     figure, axes = plt.subplots(figsize=(10, 6))
     axes.plot(epochs, first_values, marker="o", label=first_label)
@@ -89,11 +92,12 @@ def _save_two_series(
     axes.set_title(title)
     axes.set_xlabel("Epoch")
     axes.set_ylabel(ylabel)
-    if limits is not None:
-        axes.set_ylim(*limits)
+    axes.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    if normalized_score_axis:
+        axes.set_ylim(0.0, 1.0)
+        axes.set_yticks(SCORE_TICKS)
     axes.grid(alpha=0.3)
     axes.legend()
     figure.tight_layout()
     figure.savefig(path)
     plt.close(figure)
-

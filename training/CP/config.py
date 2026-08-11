@@ -23,14 +23,20 @@ class FeatureMode(str, Enum):
     """Source used to create multimodal item representations."""
 
     CLASSIC = "classic"
+    NEW_CLASSIC = "new_classic"
     CLIP = "clip"
+
+    @property
+    def uses_raw_inputs(self) -> bool:
+        """Return whether images and descriptions are encoded during training."""
+        return self in {FeatureMode.CLASSIC, FeatureMode.NEW_CLASSIC}
 
 
 def default_transformer_config(mode: FeatureMode) -> TransformerConfig:
     """Return architecture dimensions matching the selected feature source."""
-    if mode is FeatureMode.CLASSIC:
+    if mode.uses_raw_inputs:
         return TransformerConfig(
-            modality_embedding_dim=512,
+            modality_embedding_dim=64 if mode is FeatureMode.CLASSIC else 512,
             layers=6,
             attention_heads=16,
             feedforward_dim=512,
@@ -167,15 +173,18 @@ class CPTrainingConfig:
 
 
 def _feature_config(mode: FeatureMode) -> dict[str, Any]:
-    if mode is FeatureMode.CLASSIC:
+    if mode.uses_raw_inputs:
+        modality_embedding_dim = default_transformer_config(mode).modality_embedding_dim
         return {
             "mode": mode.value,
             "visual_encoder": "ResNet18VisualEncoder",
             "visual_pretrained": "ImageNet",
             "visual_trainable": True,
+            "visual_embedding_dim": modality_embedding_dim,
             "text_encoder": "SentenceTransformerTextEncoder",
             "text_backbone_trainable": False,
             "text_projection_trainable": True,
+            "text_embedding_dim": modality_embedding_dim,
         }
     return {
         "mode": mode.value,

@@ -1,22 +1,24 @@
 # Training Compatibility Prediction
 
-Training CP supporta due sorgenti di feature selezionabili con flag mutuamente
-esclusivi. `--classic` usa encoder del paper durante il training; `--clip` usa
-embedding FashionCLIP precomputati. Transformer common, Transformer CP, token e
-testa di classificazione vengono allenati in entrambe le modalità.
+Training CP supporta tre profili selezionabili con flag mutuamente esclusivi.
+`--classic` mantiene le dimensioni storiche dei checkpoint, `--new-classic`
+usa gli stessi encoder con rappresentazioni più ampie e `--clip` usa embedding
+FashionCLIP precomputati. Transformer common, Transformer CP, token e testa di
+classificazione vengono allenati in tutte le modalità.
 
 ## Modalità
 
 | Flag | Feature degli item | Dimensione | Parti allenabili | Precomputazione |
 |---|---|---:|---|---|
-| `--classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
+| `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
+| `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
 | `--clip` | FashionCLIP visuale + testo | `512 + 512 = 1024` | Transformer e CP; tower FashionCLIP congelate | Richiesta per train e validation |
 
-Profilo `classic` segue encoder e Transformer 6 layer/16 teste del paper, ma
-proietta entrambe modalità a 512 feature: item embedding finale da 1024. Usa
-inoltre baseline storica del progetto: feed-forward 512, dropout `0.1` e
-post-norm. Profilo `clip` mantiene configurazione modello corrente: 6 layer,
-16 teste, feed-forward 2024, dropout `0.3` e pre-norm.
+`classic` e `new_classic` condividono encoder, 6 layer, 16 teste, feed-forward
+512, dropout `0.1` e post-norm. Cambia soltanto la dimensione di ogni modalità:
+`classic` usa 64 feature per mantenere la forma dei checkpoint storici;
+`new_classic` ne usa 512. `clip` mantiene 6 layer, 16 teste, feed-forward 2024,
+dropout `0.3` e pre-norm.
 
 ## Configurazione predefinita
 
@@ -40,10 +42,11 @@ post-norm. Profilo `clip` mantiene configurazione modello corrente: 6 layer,
 | Flag | Default | Cosa fa |
 |---|---|---|
 | `-h`, `--help` | — | Mostra guida dei comandi e termina. |
-| `--classic` | disabilitato | Usa immagini e testi originali con ResNet-18 ImageNet e SentenceBERT, proiettati a `512 + 512`. È mutuamente esclusivo con `--clip`. |
-| `--clip` | abilitato | Usa embedding FashionCLIP prodotti da `precompute_embeddings`. È mutuamente esclusivo con `--classic`. |
+| `--classic` | disabilitato | Usa immagini e testi originali con ResNet-18 ImageNet e SentenceBERT, proiettati a `64 + 64`. È mutuamente esclusivo con gli altri profili. |
+| `--new-classic` | disabilitato | Usa la pipeline classic con proiezioni ampliate a `512 + 512`. È mutuamente esclusivo con gli altri profili. |
+| `--clip` | abilitato | Usa embedding FashionCLIP prodotti da `precompute_embeddings`. È mutuamente esclusivo con gli altri profili. |
 | `--variant` | `nondisjoint` | Seleziona variante Polyvore. Valori ammessi: `disjoint`, `nondisjoint`. |
-| `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<variant>/<split>`. Ignorato da `classic`. |
+| `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<variant>/<split>`. Ignorato da `classic` e `new_classic`. |
 | `--checkpoint-dir` | `checkpoints/<variant>/cp_<mode>` | Indica directory di configurazione, checkpoint e grafici. Deve non contenere già un run. |
 | `--cache-dir` | `None` | Imposta directory cache usata da Hugging Face per dataset e annotazioni. |
 | `--epochs` | `200` | Imposta numero massimo di epoche. |
@@ -82,6 +85,12 @@ Versione classic del paper, senza precomputazione:
 python -m training.CP.train_cp --classic
 ```
 
+Versione classic ampliata a 512 feature per modalità:
+
+```powershell
+python -m training.CP.train_cp --new-classic
+```
+
 Versione FashionCLIP con embedding precomputati:
 
 ```powershell
@@ -112,25 +121,6 @@ la sessione creata da `hf auth login`, oppure passare `--token`.
 
 ## Artefatti
 
-Ogni run mantiene la struttura già usata sotto `checkpoints`:
-
-```text
-checkpoints/nondisjoint/esperimento_01/
-  config.json
-  best.pt
-  epochs/
-    cp_epoch_001.pt
-    cp_epoch_002.pt
-  plots/
-    cp_loss_epoch_001.png
-    cp_accuracy_epoch_001.png
-    cp_auc_epoch_001.png
-    cp_validation_accuracy_auc_epoch_001.png
-```
-
-Ogni checkpoint contiene pesi, configurazione, metriche, selezione best e
-history cumulativa, inclusa modalità feature. Non contiene stato di optimizer
-o scheduler, coerentemente con resume dei soli pesi. Resume richiede stessa
-modalità e stessa architettura del checkpoint. I grafici vengono rigenerati
-cumulativamente dopo ogni epoca. Una directory contenente già checkpoint non
-viene sovrascritta.
+Ogni profilo usa per default una directory distinta:
+`cp_classic`, `cp_new_classic` oppure `cp_clip`. Struttura e contenuto degli
+artefatti sono descritti nel [README generale del training](../README.md#checkpoint-e-monitoraggio).

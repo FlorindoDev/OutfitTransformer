@@ -57,6 +57,12 @@ def parse_args(
         dest="feature_mode",
     )
     feature_source.add_argument(
+        "--new-classic",
+        action="store_const",
+        const=FeatureMode.NEW_CLASSIC,
+        dest="feature_mode",
+    )
+    feature_source.add_argument(
         "--clip",
         action="store_const",
         const=FeatureMode.CLIP,
