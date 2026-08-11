@@ -30,7 +30,7 @@ def default_transformer_config(mode: FeatureMode) -> TransformerConfig:
     """Return architecture dimensions matching the selected feature source."""
     if mode is FeatureMode.CLASSIC:
         return TransformerConfig(
-            modality_embedding_dim=64,
+            modality_embedding_dim=512,
             layers=6,
             attention_heads=16,
             feedforward_dim=512,

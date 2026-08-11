@@ -9,13 +9,14 @@ testa di classificazione vengono allenati in entrambe le modalità.
 
 | Flag | Feature degli item | Dimensione | Parti allenabili | Precomputazione |
 |---|---|---:|---|---|
-| `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
+| `--classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
 | `--clip` | FashionCLIP visuale + testo | `512 + 512 = 1024` | Transformer e CP; tower FashionCLIP congelate | Richiesta per train e validation |
 
-Profilo `classic` segue encoder, dimensioni e Transformer 6 layer/16 teste del
-paper. Usa inoltre baseline storica del progetto: feed-forward 512, dropout
-`0.1` e post-norm. Profilo `clip` mantiene configurazione modello corrente: 6
-layer, 16 teste, feed-forward 2024, dropout `0.3` e pre-norm.
+Profilo `classic` segue encoder e Transformer 6 layer/16 teste del paper, ma
+proietta entrambe modalità a 512 feature: item embedding finale da 1024. Usa
+inoltre baseline storica del progetto: feed-forward 512, dropout `0.1` e
+post-norm. Profilo `clip` mantiene configurazione modello corrente: 6 layer,
+16 teste, feed-forward 2024, dropout `0.3` e pre-norm.
 
 ## Configurazione predefinita
 
@@ -39,7 +40,7 @@ layer, 16 teste, feed-forward 2024, dropout `0.3` e pre-norm.
 | Flag | Default | Cosa fa |
 |---|---|---|
 | `-h`, `--help` | — | Mostra guida dei comandi e termina. |
-| `--classic` | disabilitato | Usa immagini e testi originali con ResNet-18 ImageNet e SentenceBERT secondo profilo paper. È mutuamente esclusivo con `--clip`. |
+| `--classic` | disabilitato | Usa immagini e testi originali con ResNet-18 ImageNet e SentenceBERT, proiettati a `512 + 512`. È mutuamente esclusivo con `--clip`. |
 | `--clip` | abilitato | Usa embedding FashionCLIP prodotti da `precompute_embeddings`. È mutuamente esclusivo con `--classic`. |
 | `--variant` | `nondisjoint` | Seleziona variante Polyvore. Valori ammessi: `disjoint`, `nondisjoint`. |
 | `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<variant>/<split>`. Ignorato da `classic`. |
