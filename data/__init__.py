@@ -17,7 +17,6 @@ from .source import (
     IndexedDataset,
     available_dataset_names,
     get_dataset_source,
-    resolve_dataset_name,
 )
 from .transforms import (
     ImageTransform,
@@ -61,5 +60,4 @@ __all__ = [
     "create_retrieval_loader",
     "available_dataset_names",
     "get_dataset_source",
-    "resolve_dataset_name",
 ]

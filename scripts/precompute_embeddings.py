@@ -34,7 +34,7 @@ OutputDType = Literal["float32", "float16"]
 
 LOGGER = logging.getLogger("precompute_embeddings")
 DEFAULT_MODEL_NAME = "patrickjohncyh/fashion-clip"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -403,10 +403,8 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
     parser.add_argument(
         "--subset",
-        "--variant",
-        dest="subset",
         default=default_source.descriptor.subsets[0],
-        help="dataset subset; --variant remains as a compatibility alias",
+        help="dataset subset",
     )
     parser.add_argument(
         "--split",
@@ -545,7 +543,6 @@ def _build_manifest_metadata(
         "dataset_name": source.descriptor.name,
         "dataset_root": str(config.dataset_root),
         "subset": config.subset,
-        "variant": config.subset,
         "split": config.split.value,
         "limit": config.limit,
         "encoder": encoder_metadata,

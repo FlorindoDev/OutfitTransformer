@@ -120,7 +120,7 @@ def _load_manifest(path: Path) -> dict[str, Any]:
         raise ValueError(f"invalid embedding manifest: {path}") from error
     if not isinstance(payload, dict):
         raise TypeError("embedding manifest must contain an object")
-    if payload.get("schema_version") != 1:
+    if payload.get("schema_version") != 2:
         raise ValueError("unsupported embedding manifest schema_version")
     return payload
 
@@ -140,7 +140,7 @@ def _validate_manifest_identity(
             f"embedding dataset must be {expected_dataset_id!r}, "
             f"got {manifest.get('dataset')!r}"
         )
-    manifest_subset = manifest.get("subset", manifest.get("variant"))
+    manifest_subset = manifest.get("subset")
     if expected_subset is not None and manifest_subset != expected_subset:
         raise ValueError(
             f"embedding subset must be {expected_subset!r}, "

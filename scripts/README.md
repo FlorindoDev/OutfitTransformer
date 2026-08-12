@@ -49,7 +49,7 @@ training, evaluation e precomputazione trovano subito risorse locali.
 | --- | --- | --- |
 | `-h`, `--help` | — | Mostra la guida dei comandi e termina. |
 | `--dataset` | `polyvore` | Seleziona source registrata nell'API pubblica `data`. |
-| `--subset` | `disjoint` | Seleziona subset del dataset. `--variant` resta alias compatibile. |
+| `--subset` | `disjoint` | Seleziona il subset del dataset. |
 | `--split` | `train` | Seleziona lo split da elaborare: `train`, `validation` oppure `test`. |
 | `--model-name` | `patrickjohncyh/fashion-clip` | Sceglie il modello FashionCLIP usato per codificare immagini e testi. |
 | `--output-dir` | `precomputed_embeddings` | Imposta la cartella radice in cui salvare cache e manifest. |
@@ -111,7 +111,7 @@ Ogni `shard-*.pt` è un dizionario PyTorch con tre campi:
 
 | Campo | Tipo e forma | Significato |
 | --- | --- | --- |
-| `schema_version` | Intero, attualmente `1` | Versione del formato, usata per riconoscere cache compatibili. |
+| `schema_version` | Intero, attualmente `2` | Versione del formato, usata per riconoscere cache compatibili. |
 | `item_ids` | Tupla di `N` stringhe | Identificativi Polyvore degli articoli contenuti nello shard. |
 | `embeddings` | Tensore CPU `[N, 1024]` | Una riga per ogni `item_id`, nello stesso ordine, salvata in `float32` o `float16`. |
 

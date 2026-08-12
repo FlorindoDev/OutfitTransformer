@@ -127,7 +127,7 @@ python -m evaluation.CP.evaluate_cp `
 
 | Flag | Default | Funzione |
 |---|---|---|
-| `--checkpoint` | richiesto | Checkpoint schema v1 prodotto dal training CP. |
+| `--checkpoint` | richiesto | Checkpoint schema v2 prodotto dal training CP. |
 | `--split` | `test` | Split `test` o `validation`. |
 | `--embedding-root` | valore checkpoint | Sovrascrive root cache CLIP. |
 | `--dataset-root` | valore checkpoint o `datasets/polyvore-outfits` | Cerca qui annotazioni e dati prima del fallback Hugging Face. |

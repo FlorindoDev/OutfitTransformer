@@ -73,10 +73,8 @@ def parse_args(
     parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
     parser.add_argument(
         "--subset",
-        "--variant",
-        dest="subset",
         default=default_source.descriptor.default_subset,
-        help="dataset subset; --variant remains as a compatibility alias",
+        help="dataset subset",
     )
     parser.add_argument(
         "--embedding-root",

@@ -10,7 +10,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from data import get_dataset_source, resolve_dataset_name
+from data import get_dataset_source
 from model import TransformerConfig
 from training.CP import CPTrainingModel, FeatureMode
 
@@ -33,7 +33,7 @@ class CPCheckpoint:
 
 
 def load_cp_checkpoint(path: str | Path) -> CPCheckpoint:
-    """Load and validate one schema-v1 CP checkpoint on CPU."""
+    """Load and validate one schema-v2 CP checkpoint on CPU."""
     selected_path = Path(path)
     if not selected_path.is_file():
         raise FileNotFoundError(f"checkpoint does not exist: {selected_path}")
@@ -44,7 +44,7 @@ def load_cp_checkpoint(path: str | Path) -> CPCheckpoint:
     )
     if not isinstance(payload, Mapping):
         raise TypeError("checkpoint must contain a mapping")
-    if payload.get("checkpoint_schema_version") != 1:
+    if payload.get("checkpoint_schema_version") != 2:
         raise ValueError("unsupported CP checkpoint schema_version")
 
     run_config = _mapping_value(payload, "run_config")
@@ -55,12 +55,12 @@ def load_cp_checkpoint(path: str | Path) -> CPCheckpoint:
         raise TypeError("model_state_dict values must be tensors")
 
     dataset_id = _string_value(dataset, "id")
-    dataset_name = _checkpoint_dataset_name(dataset, dataset_id)
+    dataset_name = _string_value(dataset, "name")
     source = get_dataset_source(dataset_name)
     if source.descriptor.dataset_id != dataset_id:
         raise ValueError("checkpoint dataset name and id do not match")
     subset = source.descriptor.validate_subset(
-        _dataset_subset(dataset)
+        _string_value(dataset, "subset")
     )
     try:
         feature_mode = FeatureMode(_string_value(dataset, "feature_mode"))
@@ -127,22 +127,3 @@ def _optional_path(value: Any) -> Path | None:
     if not isinstance(value, str) or not value.strip():
         raise TypeError("checkpoint path values must be non-empty strings or null")
     return Path(value)
-
-
-def _checkpoint_dataset_name(
-    dataset: Mapping[str, Any],
-    dataset_id: str,
-) -> str:
-    name = dataset.get("name")
-    if name is None:
-        return resolve_dataset_name(dataset_id)
-    if not isinstance(name, str) or not name.strip():
-        raise TypeError("checkpoint dataset name must be a non-empty string")
-    return name
-
-
-def _dataset_subset(dataset: Mapping[str, Any]) -> str:
-    subset = dataset.get("subset", dataset.get("variant"))
-    if not isinstance(subset, str) or not subset.strip():
-        raise TypeError("checkpoint dataset subset must be a non-empty string")
-    return subset

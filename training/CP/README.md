@@ -46,7 +46,7 @@ dropout `0.3` e pre-norm.
 | `--new-classic` | disabilitato | Usa la pipeline classic con proiezioni ampliate a `512 + 512`. È mutuamente esclusivo con gli altri profili. |
 | `--clip` | abilitato | Usa embedding FashionCLIP prodotti da `precompute_embeddings`. È mutuamente esclusivo con gli altri profili. |
 | `--dataset` | `polyvore` | Seleziona source registrata nell'API pubblica `data`. |
-| `--subset` | `nondisjoint` | Seleziona subset della source. `--variant` resta alias compatibile. |
+| `--subset` | `nondisjoint` | Seleziona il subset della source. |
 | `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<subset>/<split>`. Ignorato da `classic` e `new_classic`. |
 | `--dataset-root` | `datasets/polyvore-outfits` | Cerca qui dataset e annotazioni prima di usare cache Hugging Face o download. |
 | `--checkpoint-dir` | `checkpoints/<subset>/cp_<mode>` | Indica directory di configurazione, checkpoint e grafici. Deve non contenere già un run. |

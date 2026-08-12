@@ -35,7 +35,7 @@ from .data import CompatibilityLoaders
 from .model import CPTrainingModel
 
 LOGGER = logging.getLogger("training.CP")
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)

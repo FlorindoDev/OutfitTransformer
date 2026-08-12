@@ -155,13 +155,3 @@ def get_dataset_source(name: str) -> DatasetSource:
         return PolyvoreSource()
     choices = ", ".join(available_dataset_names())
     raise ValueError(f"dataset must be one of: {choices}")
-
-
-def resolve_dataset_name(dataset_id: str) -> str:
-    """Map persistent dataset ID to registered source name."""
-    selected = dataset_id.strip()
-    for name in available_dataset_names():
-        source = get_dataset_source(name)
-        if source.descriptor.dataset_id == selected:
-            return name
-    raise ValueError(f"unsupported dataset_id: {dataset_id!r}")
