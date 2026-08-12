@@ -5,14 +5,15 @@ di valutazione. Possono quindi essere riutilizzate durante training,
 validation e test senza creare dipendenze tra questi moduli.
 
 - Torna al [README principale](../README.md).
-- Consulta la [guida alla valutazione](../evaluate/README.md).
-- Consulta il [training CP](../training/cp/README.md).
+- Consulta la [guida alla valutazione](../evaluation/README.md).
+- Consulta il [training CP](../training/CP/README.md).
 
 ## Indice
 
 - [Metriche di classificazione](#metriche-di-classificazione)
   - [`BinaryAccuracy`](#binaryaccuracy)
   - [`binary_roc_auc`](#binary_roc_auc)
+  - [`binary_classification_metrics`](#binary_classification_metrics)
 - [Accuracy, AUC e loss](#accuracy-auc-e-loss)
 - [Struttura](#struttura)
 
@@ -21,7 +22,11 @@ validation e test senza creare dipendenze tra questi moduli.
 Le metriche disponibili sono esportate da `metrics`:
 
 ```python
-from metrics import BinaryAccuracy, binary_roc_auc
+from metrics import (
+    BinaryAccuracy,
+    binary_classification_metrics,
+    binary_roc_auc,
+)
 ```
 
 ### `BinaryAccuracy`
@@ -97,6 +102,13 @@ print(auc)  # 1.0
 Nel CP l'AUC viene calcolata sull'intero test set. È una metrica di
 valutazione: non genera gradienti e non aggiorna i pesi.
 
+### `binary_classification_metrics`
+
+`binary_classification_metrics(probabilities, targets, threshold=0.5)` calcola
+accuracy, precision, recall, F1 e ROC AUC. Riceve probabilita in `[0, 1]` e
+target binari monodimensionali. Soglia riguarda solo metriche discrete; AUC
+usa probabilita originali. Risultato include anche numero totale di esempi.
+
 ## Accuracy, AUC e loss
 
 | Valore | Cosa misura | Dipende da una soglia | Usato dal backpropagation |
@@ -110,6 +122,6 @@ valutazione: non genera gradienti e non aggiorna i pesi.
 ```text
 metrics/
   __init__.py
-  classification.py   BinaryAccuracy e binary_roc_auc
+  classification.py   Metriche binarie per training ed evaluation CP
   README.md           descrizione e utilizzo delle metriche
 ```

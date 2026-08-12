@@ -1,7 +1,27 @@
 """Classification metrics shared by training and evaluation."""
 
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from typing import Any
+
 import torch
 from torch import Tensor
+
+
+@dataclass(frozen=True)
+class BinaryClassificationMetrics:
+    """Global metrics computed from binary probabilities and targets."""
+
+    accuracy: float
+    precision: float
+    recall: float
+    f1: float
+    auc: float
+    examples: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 class BinaryAccuracy:
@@ -67,3 +87,60 @@ def binary_roc_auc(scores: Tensor, targets: Tensor) -> float:
         positive_rank_sum.item() - minimum_positive_rank_sum
     ) / (positive_count * negative_count)
     return float(auc)
+
+
+def binary_classification_metrics(
+    probabilities: Tensor,
+    targets: Tensor,
+    *,
+    threshold: float = 0.5,
+) -> BinaryClassificationMetrics:
+    """Return CP-style accuracy, precision, recall, F1 and ROC AUC."""
+    if probabilities.ndim != 1 or targets.ndim != 1:
+        raise ValueError("probabilities and targets must be one-dimensional")
+    if probabilities.shape != targets.shape:
+        raise ValueError("probabilities and targets must have the same shape")
+    if probabilities.numel() == 0:
+        raise ValueError("probabilities and targets cannot be empty")
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be in [0, 1]")
+
+    probabilities = probabilities.detach().to(device="cpu", dtype=torch.float64)
+    targets = targets.detach().to(device="cpu")
+    if not bool(torch.isfinite(probabilities).all()):
+        raise ValueError("probabilities must contain only finite values")
+    if bool(((probabilities < 0.0) | (probabilities > 1.0)).any()):
+        raise ValueError("probabilities must be in [0, 1]")
+    if not bool(((targets == 0) | (targets == 1)).all()):
+        raise ValueError("targets must contain only 0 and 1")
+
+    predictions = probabilities >= threshold
+    positives = targets == 1
+    true_positives = int((predictions & positives).sum().item())
+    false_positives = int((predictions & ~positives).sum().item())
+    false_negatives = int((~predictions & positives).sum().item())
+    correct = int((predictions == positives).sum().item())
+
+    precision_denominator = true_positives + false_positives
+    recall_denominator = true_positives + false_negatives
+    precision = (
+        true_positives / precision_denominator
+        if precision_denominator
+        else 0.0
+    )
+    recall = (
+        true_positives / recall_denominator if recall_denominator else 0.0
+    )
+    f1 = (
+        2.0 * precision * recall / (precision + recall)
+        if precision + recall
+        else 0.0
+    )
+    return BinaryClassificationMetrics(
+        accuracy=correct / targets.numel(),
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=binary_roc_auc(probabilities, targets),
+        examples=targets.numel(),
+    )

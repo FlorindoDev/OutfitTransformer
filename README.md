@@ -12,6 +12,7 @@ preparare il futuro retrieval di articoli complementari.
   - [Windows PowerShell](#windows-powershell)
   - [Linux e macOS](#linux-e-macos)
 - [Precomputazione degli embedding](#precomputazione-degli-embedding)
+- [Valutazione CP](#valutazione-cp)
 
 ## Panoramica
 
@@ -27,6 +28,7 @@ il task CIR è previsto ma non ancora implementato.
 | `preprocessing` | Isola il capo, pulisce lo sfondo e prepara immagini utente. | [README](preprocessing/README.md) |
 | `data` | Definisce tipi, transform, collate e DataLoader. | [README](data/README.md) |
 | `data/polyvore` | Scarica e interpreta immagini, metadata e annotazioni Polyvore. | [README](data/polyvore/README.md) |
+| `evaluation` | Valuta checkpoint CP su test o validation e salva metriche globali. | [README](evaluation/README.md) |
 | `model` | Espone architettura comune e moduli specifici dei task. | [README](model/README.md) |
 | `model/common` | Crea embedding multimodali e li contestualizza con il Transformer. | [README](model/common/README.md) |
 | `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
@@ -104,26 +106,31 @@ FashionCLIP. I due output vengono normalizzati L2, concatenati e salvati in
 shard `.pt` associati agli `item_id`. Questo evita di rieseguire FashionCLIP a
 ogni epoca quando gli encoder restano congelati.
 
-Test rapido su 100 articoli:
-
 ```powershell
-python -m scripts.precompute_embeddings `
-  --variant disjoint `
-  --split train `
-  --limit 100 `
-  --device auto
+python -m scripts.precompute_embeddings --variant nondisjoint --split validation
 ```
-
-Precomputazione completa dello split di training:
-
 ```powershell
-python -m scripts.precompute_embeddings `
-  --variant disjoint `
-  --split train `
-  --batch-size 128 `
-  --device auto
+python -m scripts.precompute_embeddings --variant nondisjoint --split train
 ```
 
 Ripetere con `--split validation` e `--split test` per gli altri split. Gli
 output vengono creati sotto `precomputed_embeddings/`. Una cache esistente non
 viene sostituita senza l'opzione esplicita `--overwrite`.
+
+## Valutazione CP
+
+Preparare prima embedding dello split `test` quando checkpoint usa FashionCLIP,
+poi avviare evaluation:
+
+```powershell
+python -m scripts.precompute_embeddings `
+  --variant nondisjoint `
+  --split test
+
+python -m evaluation.CP.evaluate_cp `
+  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
+```
+
+Comando ricava variante, modalita feature e architettura dal checkpoint. Salva
+accuracy, precision, recall, F1 e ROC AUC sotto `results/cp/`. Flag completi e
+formato output: [guida evaluation CP](evaluation/CP/README.md).

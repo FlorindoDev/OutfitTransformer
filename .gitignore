@@ -5,6 +5,7 @@ __pycache__/
 .vscode/
 checkpoints
 precomputed_embeddings/
+results/
 outfit_preview.png
 show_dataset_outfit.py
 outfit_items

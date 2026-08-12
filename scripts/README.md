@@ -107,6 +107,7 @@ Precomputazione completa per il training predefinito `nondisjoint`:
 ```powershell
 python -m scripts.precompute_embeddings --variant nondisjoint --split train
 python -m scripts.precompute_embeddings --variant nondisjoint --split validation
+python -m scripts.precompute_embeddings --variant nondisjoint --split test
 ```
 
 Prova rapida su 100 articoli:

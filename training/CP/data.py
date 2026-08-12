@@ -18,9 +18,11 @@ from data import (
 from data.polyvore import (
     PolyvoreSplit,
     PolyvoreTask,
+    PolyvoreVariant,
     download_polyvore_resources,
     load_outfit_token_index,
 )
+from model import TransformerConfig
 from training.common import EmbeddingCache
 
 from .config import CPTrainingConfig, FeatureMode
@@ -55,6 +57,51 @@ class CompatibilityEmbeddingBatch:
 class CompatibilityLoaders:
     train: DataLoader[Any]
     validation: DataLoader[Any]
+
+
+@dataclass(frozen=True)
+class CompatibilityDataConfig:
+    """Data-only settings shared by CP training and evaluation."""
+
+    variant: PolyvoreVariant
+    feature_mode: FeatureMode
+    embedding_root: Path
+    cache_dir: Path | None
+    batch_size: int
+    num_workers: int
+    pin_memory: bool
+    seed: int
+    model_config: TransformerConfig
+
+    @classmethod
+    def from_training_config(
+        cls,
+        config: CPTrainingConfig,
+    ) -> "CompatibilityDataConfig":
+        return cls(
+            variant=config.variant,
+            feature_mode=config.feature_mode,
+            embedding_root=config.embedding_root,
+            cache_dir=config.cache_dir,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+            pin_memory=config.pin_memory,
+            seed=config.seed,
+            model_config=config.model_config,
+        )
+
+    def validate(self) -> None:
+        if not isinstance(self.variant, PolyvoreVariant):
+            raise TypeError("variant must be a PolyvoreVariant")
+        if not isinstance(self.feature_mode, FeatureMode):
+            raise TypeError("feature_mode must be a FeatureMode")
+        if self.batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if self.num_workers < 0:
+            raise ValueError("num_workers cannot be negative")
+        if self.seed < 0:
+            raise ValueError("seed cannot be negative")
+        self.model_config.validate()
 
 
 class PrecomputedCompatibilityDataset(
@@ -94,16 +141,82 @@ def build_compatibility_loaders(
     token: bool | str | None = True,
 ) -> CompatibilityLoaders:
     """Build loaders for raw inputs or precomputed CLIP features."""
-    if config.feature_mode.uses_raw_inputs:
-        return _build_classic_loaders(config, token=token)
-    return _build_clip_loaders(config, token=token)
+    data_config = CompatibilityDataConfig.from_training_config(config)
+    data_config.validate()
+    if data_config.feature_mode.uses_raw_inputs:
+        return CompatibilityLoaders(
+            train=_build_classic_loader(
+                data_config,
+                split=PolyvoreSplit.TRAIN,
+                shuffle=True,
+                token=token,
+            ),
+            validation=_build_classic_loader(
+                data_config,
+                split=PolyvoreSplit.VALIDATION,
+                shuffle=False,
+                token=token,
+            ),
+        )
+
+    train_loader, train_cache = _build_clip_loader(
+        data_config,
+        split=PolyvoreSplit.TRAIN,
+        shuffle=True,
+        token=token,
+    )
+    validation_loader, validation_cache = _build_clip_loader(
+        data_config,
+        split=PolyvoreSplit.VALIDATION,
+        shuffle=False,
+        token=token,
+    )
+    _require_matching_fingerprints(
+        {
+            PolyvoreSplit.TRAIN: train_cache,
+            PolyvoreSplit.VALIDATION: validation_cache,
+        }
+    )
+    return CompatibilityLoaders(
+        train=train_loader,
+        validation=validation_loader,
+    )
 
 
-def _build_classic_loaders(
-    config: CPTrainingConfig,
+def build_compatibility_loader(
+    config: CompatibilityDataConfig,
     *,
+    split: PolyvoreSplit,
+    token: bool | str | None = True,
+    shuffle: bool = False,
+) -> DataLoader[Any]:
+    """Build one CP loader for a requested dataset split."""
+    config.validate()
+    if not isinstance(split, PolyvoreSplit):
+        raise TypeError("split must be a PolyvoreSplit")
+    if config.feature_mode.uses_raw_inputs:
+        return _build_classic_loader(
+            config,
+            split=split,
+            shuffle=shuffle,
+            token=token,
+        )
+    loader, _ = _build_clip_loader(
+        config,
+        split=split,
+        shuffle=shuffle,
+        token=token,
+    )
+    return loader
+
+
+def _build_classic_loader(
+    config: CompatibilityDataConfig,
+    *,
+    split: PolyvoreSplit,
+    shuffle: bool,
     token: bool | str | None,
-) -> CompatibilityLoaders:
+) -> DataLoader[Any]:
     loader_config = LoaderConfig(
         batch_size=config.batch_size,
         num_workers=config.num_workers,
@@ -111,86 +224,63 @@ def _build_classic_loaders(
         persistent_workers=config.num_workers > 0,
         seed=config.seed,
     )
-    return CompatibilityLoaders(
-        train=build_polyvore_compatibility_loader(
-            image_transform=build_resnet18_transform(augment=True),
-            variant=config.variant,
-            split=PolyvoreSplit.TRAIN,
-            config=loader_config,
-            shuffle=True,
-            token=token,
-            cache_dir=config.cache_dir,
+    return build_polyvore_compatibility_loader(
+        image_transform=build_resnet18_transform(
+            augment=split is PolyvoreSplit.TRAIN
         ),
-        validation=build_polyvore_compatibility_loader(
-            image_transform=build_resnet18_transform(augment=False),
-            variant=config.variant,
-            split=PolyvoreSplit.VALIDATION,
-            config=loader_config,
-            shuffle=False,
-            token=token,
-            cache_dir=config.cache_dir,
-        ),
+        variant=config.variant,
+        split=split,
+        config=loader_config,
+        shuffle=shuffle,
+        token=token,
+        cache_dir=config.cache_dir,
     )
 
 
-def _build_clip_loaders(
-    config: CPTrainingConfig,
+def _build_clip_loader(
+    config: CompatibilityDataConfig,
     *,
+    split: PolyvoreSplit,
+    shuffle: bool,
     token: bool | str | None,
-) -> CompatibilityLoaders:
-    caches: dict[PolyvoreSplit, EmbeddingCache] = {}
-    datasets: dict[PolyvoreSplit, PrecomputedCompatibilityDataset] = {}
-    for split in (PolyvoreSplit.TRAIN, PolyvoreSplit.VALIDATION):
-        cache = EmbeddingCache(
-            config.embedding_root / config.variant.value / split.value,
-            expected_variant=config.variant.value,
-            expected_split=split.value,
-        )
-        if cache.embedding_dim != config.model_config.model_dim:
-            raise ValueError(
-                f"{split.value} embedding_dim must be "
-                f"{config.model_config.model_dim}, "
-                f"got {cache.embedding_dim}"
-            )
-        caches[split] = cache
-
-        resources = download_polyvore_resources(
-            task=PolyvoreTask.COMPATIBILITY,
-            variant=config.variant,
-            split=split,
-            token=token,
-            cache_dir=config.cache_dir,
-        )
-        if resources.compatibility_path is None or resources.outfits_path is None:
-            raise RuntimeError("downloaded CP resources are incomplete")
-        datasets[split] = PrecomputedCompatibilityDataset(
-            resources.compatibility_path,
-            resources.outfits_path,
-            cache,
-        )
-
-    _require_matching_fingerprints(caches)
-    generator = torch.Generator().manual_seed(config.seed)
-    common_loader_args = {
-        "batch_size": config.batch_size,
-        "num_workers": config.num_workers,
-        "collate_fn": collate_compatibility_embeddings,
-        "pin_memory": config.pin_memory,
-        "persistent_workers": config.num_workers > 0,
-    }
-    return CompatibilityLoaders(
-        train=DataLoader(
-            datasets[PolyvoreSplit.TRAIN],
-            shuffle=True,
-            generator=generator,
-            **common_loader_args,
-        ),
-        validation=DataLoader(
-            datasets[PolyvoreSplit.VALIDATION],
-            shuffle=False,
-            **common_loader_args,
-        ),
+) -> tuple[DataLoader[Any], EmbeddingCache]:
+    cache = EmbeddingCache(
+        config.embedding_root / config.variant.value / split.value,
+        expected_variant=config.variant.value,
+        expected_split=split.value,
     )
+    if cache.embedding_dim != config.model_config.model_dim:
+        raise ValueError(
+            f"{split.value} embedding_dim must be "
+            f"{config.model_config.model_dim}, got {cache.embedding_dim}"
+        )
+
+    resources = download_polyvore_resources(
+        task=PolyvoreTask.COMPATIBILITY,
+        variant=config.variant,
+        split=split,
+        token=token,
+        cache_dir=config.cache_dir,
+    )
+    if resources.compatibility_path is None or resources.outfits_path is None:
+        raise RuntimeError("downloaded CP resources are incomplete")
+    dataset = PrecomputedCompatibilityDataset(
+        resources.compatibility_path,
+        resources.outfits_path,
+        cache,
+    )
+
+    generator = torch.Generator().manual_seed(config.seed)
+    return DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=shuffle,
+        generator=generator if shuffle else None,
+        num_workers=config.num_workers,
+        collate_fn=collate_compatibility_embeddings,
+        pin_memory=config.pin_memory,
+        persistent_workers=config.num_workers > 0,
+    ), cache
 
 
 def collate_compatibility_embeddings(
