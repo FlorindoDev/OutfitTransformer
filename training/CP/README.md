@@ -47,6 +47,7 @@ dropout `0.3` e pre-norm.
 | `--clip` | abilitato | Usa embedding FashionCLIP prodotti da `precompute_embeddings`. È mutuamente esclusivo con gli altri profili. |
 | `--variant` | `nondisjoint` | Seleziona variante Polyvore. Valori ammessi: `disjoint`, `nondisjoint`. |
 | `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<variant>/<split>`. Ignorato da `classic` e `new_classic`. |
+| `--dataset-root` | `datasets/polyvore-outfits` | Cerca qui dataset e annotazioni prima di usare cache Hugging Face o download. |
 | `--checkpoint-dir` | `checkpoints/<variant>/cp_<mode>` | Indica directory di configurazione, checkpoint e grafici. Deve non contenere già un run. |
 | `--cache-dir` | `None` | Imposta directory cache usata da Hugging Face per dataset e annotazioni. |
 | `--epochs` | `200` | Imposta numero massimo di epoche. |
@@ -76,6 +77,10 @@ Solo `--clip` richiede cache separate per train e validation:
 python -m scripts.precompute_embeddings --variant nondisjoint --split train
 python -m scripts.precompute_embeddings --variant nondisjoint --split validation
 ```
+
+Per tutte le modalità, risorse Polyvore seguono ordine locale, cache Hugging
+Face, download. In `clip` vengono cercate soltanto annotazioni outfit/CP:
+immagini e metadata non vengono caricati durante training.
 
 ## Avvio
 

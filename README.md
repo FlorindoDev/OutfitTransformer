@@ -11,6 +11,7 @@ preparare il futuro retrieval di articoli complementari.
 - [Creazione dell'ambiente](#creazione-dellambiente)
   - [Windows PowerShell](#windows-powershell)
   - [Linux e macOS](#linux-e-macos)
+- [Dataset locale](#dataset-locale)
 - [Precomputazione degli embedding](#precomputazione-degli-embedding)
 - [Valutazione CP](#valutazione-cp)
 
@@ -98,6 +99,21 @@ l'accesso al dataset, salvare il token localmente:
 ```bash
 hf auth login
 ```
+
+## Dataset locale
+
+Scaricare intero dataset Polyvore nella cartella predefinita:
+
+```powershell
+python -m scripts.download_polyvore
+```
+
+Ogni comando cerca prima Polyvore in `datasets/polyvore-outfits/`, poi nella
+cache Hugging Face e scarica soltanto le risorse ancora mancanti. La cartella
+locale deve replicare la struttura del repository dataset:
+
+Per un percorso diverso, passare `--dataset-root`. I file locali possono
+essere parziali: fallback remoto riguarda solo quelli assenti.
 
 ## Precomputazione degli embedding
 

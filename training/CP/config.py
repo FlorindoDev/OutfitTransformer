@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from data.polyvore import PolyvoreVariant
+from data.polyvore import DEFAULT_DATASET_ROOT, PolyvoreVariant
 from model import TransformerConfig
 
 BestMetric = Literal["val_auc", "val_accuracy", "val_loss"]
@@ -55,6 +55,7 @@ class CPTrainingConfig:
     embedding_root: Path = Path(
         "precomputed_embeddings/patrickjohncyh-fashion-clip"
     )
+    dataset_root: Path = DEFAULT_DATASET_ROOT
     checkpoint_dir: Path = Path("checkpoints/nondisjoint/cp_clip")
     cache_dir: Path | None = None
     epochs: int = 200
@@ -129,6 +130,7 @@ class CPTrainingConfig:
                     if self.feature_mode is FeatureMode.CLIP
                     else None
                 ),
+                "dataset_root": str(self.dataset_root),
                 "cache_dir": str(self.cache_dir) if self.cache_dir else None,
             },
             "features": _feature_config(self.feature_mode),

@@ -7,7 +7,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from data.polyvore import PolyvoreSplit
+from data.polyvore import DEFAULT_DATASET_ROOT, PolyvoreSplit
 from training.CP.data import (
     CompatibilityDataConfig,
     build_compatibility_loader,
@@ -34,11 +34,17 @@ def run(
     embedding_root = config.embedding_root or checkpoint.embedding_root
     if embedding_root is None:
         embedding_root = Path("precomputed_embeddings")
+    dataset_root = (
+        config.dataset_root
+        or checkpoint.dataset_root
+        or DEFAULT_DATASET_ROOT
+    )
 
     data_config = CompatibilityDataConfig(
         variant=checkpoint.variant,
         feature_mode=checkpoint.feature_mode,
         embedding_root=embedding_root,
+        dataset_root=dataset_root,
         cache_dir=config.cache_dir or checkpoint.cache_dir,
         batch_size=config.batch_size,
         num_workers=config.num_workers,
@@ -91,6 +97,7 @@ def parse_args(
         default=PolyvoreSplit.TEST.value,
     )
     parser.add_argument("--embedding-root", type=Path)
+    parser.add_argument("--dataset-root", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--batch-size", type=int, default=512)
@@ -109,6 +116,7 @@ def parse_args(
         checkpoint=arguments.checkpoint,
         split=PolyvoreSplit(arguments.split),
         embedding_root=arguments.embedding_root,
+        dataset_root=arguments.dataset_root,
         output_path=arguments.output,
         cache_dir=arguments.cache_dir,
         batch_size=arguments.batch_size,

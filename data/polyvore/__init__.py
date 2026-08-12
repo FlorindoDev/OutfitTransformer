@@ -3,6 +3,8 @@
 from .catalog import PolyvoreCatalog, load_outfit_token_index
 from .compatibility_dataset import PolyvoreCompatibilityDataset
 from .download import (
+    DEFAULT_DATASET_ROOT,
+    POLYVORE_DATASET_ID,
     PolyvoreResources,
     PolyvoreSplit,
     PolyvoreTask,
@@ -13,6 +15,8 @@ from .item_dataset import PolyvoreItemDataset
 from .retrieval_dataset import PolyvoreRetrievalDataset
 
 __all__ = [
+    "DEFAULT_DATASET_ROOT",
+    "POLYVORE_DATASET_ID",
     "PolyvoreCatalog",
     "PolyvoreCompatibilityDataset",
     "PolyvoreItemDataset",

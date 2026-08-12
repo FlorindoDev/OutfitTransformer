@@ -79,6 +79,11 @@ def parse_args(
         type=Path,
         default=Path("precomputed_embeddings/patrickjohncyh-fashion-clip"),
     )
+    parser.add_argument(
+        "--dataset-root",
+        type=Path,
+        default=Path("datasets/polyvore-outfits"),
+    )
     parser.add_argument("--checkpoint-dir", type=Path)
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--epochs", type=int, default=200)
@@ -116,6 +121,7 @@ def parse_args(
         variant=variant,
         feature_mode=arguments.feature_mode,
         embedding_root=arguments.embedding_root,
+        dataset_root=arguments.dataset_root,
         checkpoint_dir=checkpoint_dir,
         cache_dir=arguments.cache_dir,
         epochs=arguments.epochs,

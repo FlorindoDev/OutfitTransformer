@@ -5,6 +5,7 @@
 - [File](#file)
 - [Dettaglio dei file: responsabilità, input e output](#dettaglio-dei-file-responsabilità-input-e-output)
 - [Origine e accesso](#origine-e-accesso)
+  - [Priorità delle sorgenti](#priorità-delle-sorgenti)
 - [Varianti e split](#varianti-e-split)
 - [Risorse del dataset](#risorse-del-dataset)
 - [Identificatori e collegamenti](#identificatori-e-collegamenti)
@@ -19,7 +20,8 @@
 | File | Responsabilità |
 |---|---|
 | `__init__.py` | Espone l’API pubblica del sottopackage Polyvore. |
-| `download.py` | Scarica e verifica le sole risorse richieste dal task. |
+| `download.py` | Cerca risorse locali/cache e scarica soltanto quelle mancanti. |
+| `rows.py` | Definisce il contratto strutturale minimo delle righe item. |
 | `catalog.py` | Collega ogni `item_id` a immagine, descrizione e categoria. |
 | `item_dataset.py` | Restituisce singoli articoli. |
 | `compatibility_dataset.py` | Interpreta outfit con label binaria. |
@@ -189,9 +191,25 @@ Le righe Hugging Face forniscono immagini e `item_id`; file separati forniscono
 struttura degli outfit, testo e annotazioni dei task.
 
 Il repository è gated: occorre accettare le condizioni indicate nella dataset
-card e configurare un token Hugging Face. I file vengono conservati nella cache
-Hugging Face, oppure nella directory di cache scelta dall’utente; non vengono
-copiati automaticamente nel repository del progetto.
+card e configurare un token Hugging Face.
+
+### Priorità delle sorgenti
+
+Ogni risorsa viene cercata in quest'ordine:
+
+1. cartella `datasets/polyvore-outfits/`, o percorso `--dataset-root`;
+2. cache Hugging Face locale, predefinita o scelta con `--cache-dir`;
+3. repository Hugging Face, soltanto quando la risorsa manca nelle prime due.
+
+La cartella locale può contenere anche solo parte del dataset. I parquet
+seguono `data/<variant>/<split>.parquet`; metadata e annotazioni mantengono i
+percorsi del repository `mvasil/polyvore-outfits`.
+
+Per scaricare entrambe le varianti e tutti gli split nella cartella locale:
+
+```powershell
+python -m scripts.download_polyvore
+```
 
 ## Varianti e split
 
@@ -324,8 +342,8 @@ training CIR, non applicata silenziosamente dal dataset.
 | Compatibility | Risorse item, struttura degli outfit e file compatibility. |
 | Retrieval | Risorse item, struttura degli outfit e file fill-in-the-blank. |
 
-Questa selezione evita di scaricare annotazioni non necessarie. Download e
-verifica avvengono prima della creazione del dataset; l’accesso a un singolo
+Questa selezione evita di caricare o scaricare annotazioni non necessarie.
+Risoluzione e verifica avvengono prima della creazione del dataset; l’accesso a un singolo
 esempio non effettua operazioni di rete.
 
 ## Validazione e limiti

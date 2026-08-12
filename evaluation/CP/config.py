@@ -15,6 +15,7 @@ class CPEvaluationConfig:
     checkpoint: Path
     split: PolyvoreSplit = PolyvoreSplit.TEST
     embedding_root: Path | None = None
+    dataset_root: Path | None = None
     output_path: Path | None = None
     cache_dir: Path | None = None
     batch_size: int = 512
@@ -44,4 +45,3 @@ class CPEvaluationConfig:
             raise ValueError("device cannot be empty")
         if self.log_every <= 0:
             raise ValueError("log_every must be positive")
-

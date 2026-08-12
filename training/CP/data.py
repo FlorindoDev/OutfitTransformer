@@ -66,6 +66,7 @@ class CompatibilityDataConfig:
     variant: PolyvoreVariant
     feature_mode: FeatureMode
     embedding_root: Path
+    dataset_root: Path
     cache_dir: Path | None
     batch_size: int
     num_workers: int
@@ -82,6 +83,7 @@ class CompatibilityDataConfig:
             variant=config.variant,
             feature_mode=config.feature_mode,
             embedding_root=config.embedding_root,
+            dataset_root=config.dataset_root,
             cache_dir=config.cache_dir,
             batch_size=config.batch_size,
             num_workers=config.num_workers,
@@ -234,6 +236,7 @@ def _build_classic_loader(
         shuffle=shuffle,
         token=token,
         cache_dir=config.cache_dir,
+        dataset_root=config.dataset_root,
     )
 
 
@@ -261,6 +264,8 @@ def _build_clip_loader(
         split=split,
         token=token,
         cache_dir=config.cache_dir,
+        dataset_root=config.dataset_root,
+        include_items=False,
     )
     if resources.compatibility_path is None or resources.outfits_path is None:
         raise RuntimeError("downloaded CP resources are incomplete")

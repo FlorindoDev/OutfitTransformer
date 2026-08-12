@@ -13,6 +13,7 @@ from data.collate import collate_compatibility, collate_items, collate_retrieval
 from data.polyvore.catalog import PolyvoreCatalog
 from data.polyvore.compatibility_dataset import PolyvoreCompatibilityDataset
 from data.polyvore.download import (
+    DEFAULT_DATASET_ROOT,
     PolyvoreResources,
     PolyvoreSplit,
     PolyvoreTask,
@@ -103,14 +104,16 @@ def build_polyvore_item_loader(
     shuffle: bool = False,
     token: bool | str | None = True,
     cache_dir: str | Path | None = None,
+    dataset_root: str | Path = DEFAULT_DATASET_ROOT,
 ) -> DataLoader[Any]:
-    """Download resources and build a Polyvore item loader."""
+    """Resolve resources and build a Polyvore item loader."""
     resources = download_polyvore_resources(
         task=PolyvoreTask.ITEMS,
         variant=variant,
         split=split,
         token=token,
         cache_dir=cache_dir,
+        dataset_root=dataset_root,
     )
     catalog = _build_catalog(resources, image_transform)
     return create_item_loader(
@@ -129,8 +132,9 @@ def build_polyvore_compatibility_loader(
     shuffle: bool | None = None,
     token: bool | str | None = True,
     cache_dir: str | Path | None = None,
+    dataset_root: str | Path = DEFAULT_DATASET_ROOT,
 ) -> DataLoader[Any]:
-    """Download resources and build the complete Polyvore CP pipeline."""
+    """Resolve resources and build the complete Polyvore CP pipeline."""
     selected_split = PolyvoreSplit(split)
     resources = download_polyvore_resources(
         task=PolyvoreTask.COMPATIBILITY,
@@ -138,6 +142,7 @@ def build_polyvore_compatibility_loader(
         split=selected_split,
         token=token,
         cache_dir=cache_dir,
+        dataset_root=dataset_root,
     )
     catalog = _build_catalog(resources, image_transform)
     dataset = PolyvoreCompatibilityDataset(
@@ -164,8 +169,9 @@ def build_polyvore_retrieval_loader(
     shuffle: bool | None = None,
     token: bool | str | None = True,
     cache_dir: str | Path | None = None,
+    dataset_root: str | Path = DEFAULT_DATASET_ROOT,
 ) -> DataLoader[Any]:
-    """Download resources and build the complete Polyvore FITB pipeline."""
+    """Resolve resources and build the complete Polyvore FITB pipeline."""
     selected_split = PolyvoreSplit(split)
     resources = download_polyvore_resources(
         task=PolyvoreTask.RETRIEVAL,
@@ -173,6 +179,7 @@ def build_polyvore_retrieval_loader(
         split=selected_split,
         token=token,
         cache_dir=cache_dir,
+        dataset_root=dataset_root,
     )
     catalog = _build_catalog(resources, image_transform)
     dataset = PolyvoreRetrievalDataset(
@@ -220,6 +227,8 @@ def _build_catalog(
     resources: PolyvoreResources,
     image_transform: ImageTransform,
 ) -> PolyvoreCatalog:
+    if resources.item_rows is None or resources.metadata_path is None:
+        raise RuntimeError("Polyvore catalog resources are incomplete")
     return PolyvoreCatalog(
         resources.item_rows,
         resources.metadata_path,

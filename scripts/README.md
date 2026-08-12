@@ -5,7 +5,8 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 ## Indice
 
 - [File](#file)
-- [Flag della CLI](#flag-della-cli)
+- [Download Polyvore](#download-polyvore)
+- [Flag precomputazione](#flag-precomputazione)
 - [Precomputazione FashionCLIP](#precomputazione-fashionclip)
 - [Controlli e sicurezza](#controlli-e-sicurezza)
 - [Artefatti prodotti](#artefatti-prodotti)
@@ -17,9 +18,32 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 
 | File | Funzione concettuale |
 | --- | --- |
+| `download_polyvore.py` | Scarica intero repository Polyvore nella cartella locale usata dal progetto. |
 | `precompute_embeddings.py` | Trasforma immagini e descrizioni Polyvore in embedding FashionCLIP già pronti per il training CP in modalità CLIP. |
 
-## Flag della CLI
+## Download Polyvore
+
+Scarica entrambe le varianti e tutti gli split nella destinazione predefinita:
+
+```powershell
+python -m scripts.download_polyvore
+```
+
+Destinazione predefinita: `datasets/polyvore-outfits`. File invariati già
+presenti vengono riusati. Struttura del repository resta invariata, quindi
+training, evaluation e precomputazione trovano subito risorse locali.
+
+| Flag | Default | Cosa fa |
+| --- | --- | --- |
+| `--output-dir` | `datasets/polyvore-outfits` | Imposta cartella locale del dataset. |
+| `--cache-dir` | non impostato | Indica cache Hugging Face personalizzata. |
+| `--revision` | revisione predefinita | Blocca download a branch, tag o commit. |
+| `--max-workers` | `8` | Imposta download paralleli. |
+| `--force-download` | disattivato | Riscarica anche file già presenti o in cache. |
+| `--token` | credenziali locali | Usa token Hugging Face esplicito. |
+| `--no-token` | disattivato | Forza accesso anonimo. |
+
+## Flag precomputazione
 
 | Flag | Default | Cosa fa |
 | --- | --- | --- |
@@ -28,6 +52,7 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 | `--split` | `train` | Seleziona lo split da elaborare: `train`, `validation` oppure `test`. |
 | `--model-name` | `patrickjohncyh/fashion-clip` | Sceglie il modello FashionCLIP usato per codificare immagini e testi. |
 | `--output-dir` | `precomputed_embeddings` | Imposta la cartella radice in cui salvare cache e manifest. |
+| `--dataset-root` | `datasets/polyvore-outfits` | Cerca qui dataset Polyvore prima di usare cache Hugging Face o download. |
 | `--cache-dir` | non impostato | Indica una cache personalizzata per i file scaricati da Hugging Face. |
 | `--batch-size` | `128` | Numero di articoli codificati insieme; influenza soprattutto memoria e velocità di inferenza. |
 | `--num-workers` | `0` | Numero di processi usati per caricare i dati. `0` mantiene il caricamento nel processo principale. |
@@ -50,6 +75,10 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 4. normalizza separatamente le due rappresentazioni;
 5. concatena `512` valori visivi e `512` testuali in un vettore finale da `1024` valori;
 6. salva progressivamente i risultati in shard, senza calcolare gradienti o aggiornare FashionCLIP.
+
+Risoluzione dati segue ordine: `--dataset-root`, cache Hugging Face, download.
+Se parquet e metadata sono già locali, precomputazione non contatta repository
+Polyvore.
 
 La precomputazione separa il costo di FashionCLIP dal training: il modulo CP legge vettori già pronti, riducendo tempo di calcolo e memoria richiesta durante le epoche.
 

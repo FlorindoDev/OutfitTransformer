@@ -102,6 +102,11 @@ python -m scripts.precompute_embeddings `
 Root cache salvata nel checkpoint viene riusata. Se cache spostata, passare
 `--embedding-root`.
 
+Annotazioni vengono cercate prima in `datasets/polyvore-outfits/`, poi nella
+cache Hugging Face; soltanto file mancanti vengono scaricati. Percorso locale
+diverso si imposta con `--dataset-root`. In modalità `clip`, evaluation non
+carica parquet immagini né metadata.
+
 ## Avvio
 
 ```powershell
@@ -125,6 +130,7 @@ python -m evaluation.CP.evaluate_cp `
 | `--checkpoint` | richiesto | Checkpoint schema v1 prodotto dal training CP. |
 | `--split` | `test` | Split `test` o `validation`. |
 | `--embedding-root` | valore checkpoint | Sovrascrive root cache CLIP. |
+| `--dataset-root` | valore checkpoint o `datasets/polyvore-outfits` | Cerca qui annotazioni e dati prima del fallback Hugging Face. |
 | `--output` | derivato dal checkpoint | Percorso JSON del report. |
 | `--batch-size` | `512` | Outfit per batch. |
 | `--threshold` | `0.5` | Soglia inclusiva per metriche discrete. |

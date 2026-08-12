@@ -24,6 +24,7 @@ class CPCheckpoint:
     variant: PolyvoreVariant
     feature_mode: FeatureMode
     embedding_root: Path | None
+    dataset_root: Path | None
     cache_dir: Path | None
     model_config: TransformerConfig
     state_dict: Mapping[str, Tensor]
@@ -78,6 +79,7 @@ def load_cp_checkpoint(path: str | Path) -> CPCheckpoint:
         variant=variant,
         feature_mode=feature_mode,
         embedding_root=embedding_root,
+        dataset_root=_optional_path(dataset.get("dataset_root")),
         cache_dir=_optional_path(dataset.get("cache_dir")),
         model_config=model_config,
         state_dict=state_dict,
@@ -117,4 +119,3 @@ def _optional_path(value: Any) -> Path | None:
     if not isinstance(value, str) or not value.strip():
         raise TypeError("checkpoint path values must be non-empty strings or null")
     return Path(value)
-

@@ -19,7 +19,11 @@ from torch.nn import functional as F
 
 from data import LoaderConfig, build_fashion_clip_transform
 from data.loaders import build_polyvore_item_loader
-from data.polyvore import PolyvoreSplit, PolyvoreVariant
+from data.polyvore import (
+    DEFAULT_DATASET_ROOT,
+    PolyvoreSplit,
+    PolyvoreVariant,
+)
 from data.types import ItemBatch
 from model import FashionCLIPTextEncoder, FashionCLIPVisualEncoder
 from model.common import TextEncoder, VisualEncoder
@@ -39,6 +43,7 @@ class PrecomputeConfig:
     split: PolyvoreSplit
     model_name: str
     output_dir: Path
+    dataset_root: Path
     cache_dir: Path | None
     batch_size: int
     num_workers: int
@@ -315,6 +320,7 @@ def run(config: PrecomputeConfig) -> Path:
         shuffle=False,
         token=config.token,
         cache_dir=config.cache_dir,
+        dataset_root=config.dataset_root,
     )
 
     visual_encoder = FashionCLIPVisualEncoder(
@@ -398,6 +404,11 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
         type=Path,
         default=Path("precomputed_embeddings"),
     )
+    parser.add_argument(
+        "--dataset-root",
+        type=Path,
+        default=DEFAULT_DATASET_ROOT,
+    )
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--num-workers", type=int, default=0)
@@ -422,6 +433,7 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
         split=PolyvoreSplit(arguments.split),
         model_name=arguments.model_name,
         output_dir=arguments.output_dir,
+        dataset_root=arguments.dataset_root,
         cache_dir=arguments.cache_dir,
         batch_size=arguments.batch_size,
         num_workers=arguments.num_workers,
@@ -512,6 +524,7 @@ def _build_manifest_metadata(
     ).encode("utf-8")
     return {
         "dataset": "mvasil/polyvore-outfits",
+        "dataset_root": str(config.dataset_root),
         "variant": config.variant.value,
         "split": config.split.value,
         "limit": config.limit,

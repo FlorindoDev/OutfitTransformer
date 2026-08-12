@@ -6,13 +6,15 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 from PIL import Image
 
 from data.transforms import ImageTransform
 from data.types import FashionItem
 from preprocessing import load_image_from_bytes, load_image_from_path, normalize_image
+
+from .rows import ItemRows
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,12 +26,20 @@ class _ItemMetadata:
 _DEFAULT_METADATA = _ItemMetadata(description="fashion item", category="unknown")
 
 
+class _ColumnarItemRows(Protocol):
+    """Optional fast column access exposed by Hugging Face datasets."""
+
+    column_names: Sequence[str]
+
+    def __getitem__(self, column_name: str, /) -> Sequence[Any]: ...
+
+
 class PolyvoreCatalog:
     """Resolve a Polyvore ``item_id`` to image, description and category."""
 
     def __init__(
         self,
-        item_rows: Sequence[Any],
+        item_rows: ItemRows,
         metadata_path: str | Path,
         image_transform: ImageTransform,
     ) -> None:
@@ -123,12 +133,13 @@ def load_outfit_token_index(path: str | Path) -> dict[str, str]:
     return token_index
 
 
-def _extract_item_ids(item_rows: Sequence[Any]) -> tuple[str, ...]:
+def _extract_item_ids(item_rows: ItemRows) -> tuple[str, ...]:
     columns = getattr(item_rows, "column_names", None)
     if columns is not None:
         if "item_id" not in columns:
             raise ValueError("item_rows misses the item_id column")
-        raw_ids = item_rows["item_id"]
+        columnar_rows = cast(_ColumnarItemRows, item_rows)
+        raw_ids = columnar_rows["item_id"]
     else:
         raw_ids = []
         for row_index, row in enumerate(item_rows):
