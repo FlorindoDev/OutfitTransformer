@@ -21,6 +21,7 @@
 |---|---|
 | `__init__.py` | Espone l’API pubblica del sottopackage Polyvore. |
 | `download.py` | Cerca risorse locali/cache e scarica soltanto quelle mancanti. |
+| `source.py` | Implementa `DatasetSource` e nasconde dettagli Polyvore ai workflow. |
 | `rows.py` | Definisce il contratto strutturale minimo delle righe item. |
 | `catalog.py` | Collega ogni `item_id` a immagine, descrizione e categoria. |
 | `item_dataset.py` | Restituisce singoli articoli. |

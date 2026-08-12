@@ -1,4 +1,4 @@
-"""Precompute normalized FashionCLIP image/text embeddings for Polyvore items."""
+"""Precompute normalized FashionCLIP image/text embeddings for fashion items."""
 
 from __future__ import annotations
 
@@ -17,14 +17,16 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-from data import LoaderConfig, build_fashion_clip_transform
-from data.loaders import build_polyvore_item_loader
-from data.polyvore import (
-    DEFAULT_DATASET_ROOT,
-    PolyvoreSplit,
-    PolyvoreVariant,
+from data import (
+    DEFAULT_DATASET_NAME,
+    DataSplit,
+    DatasetRequest,
+    ItemBatch,
+    LoaderConfig,
+    build_fashion_clip_transform,
+    create_item_loader,
+    get_dataset_source,
 )
-from data.types import ItemBatch
 from model import FashionCLIPTextEncoder, FashionCLIPVisualEncoder
 from model.common import TextEncoder, VisualEncoder
 
@@ -37,10 +39,11 @@ SCHEMA_VERSION = 1
 
 @dataclass(frozen=True)
 class PrecomputeConfig:
-    """Validated settings for one Polyvore embedding job."""
+    """Validated settings for one dataset embedding job."""
 
-    variant: PolyvoreVariant
-    split: PolyvoreSplit
+    dataset_name: str
+    subset: str
+    split: DataSplit
     model_name: str
     output_dir: Path
     dataset_root: Path
@@ -56,6 +59,8 @@ class PrecomputeConfig:
     log_every: int
 
     def validate(self) -> None:
+        source = get_dataset_source(self.dataset_name)
+        source.descriptor.validate_subset(self.subset)
         if not self.model_name.strip():
             raise ValueError("model_name cannot be empty")
         if self.batch_size <= 0:
@@ -72,7 +77,7 @@ class PrecomputeConfig:
     @property
     def target_dir(self) -> Path:
         model_slug = re.sub(r"[^A-Za-z0-9._-]+", "-", self.model_name).strip("-")
-        return self.output_dir / model_slug / self.variant.value / self.split.value
+        return self.output_dir / model_slug / self.subset / self.split.value
 
 
 class EmbeddingShardWriter:
@@ -295,7 +300,7 @@ def encode_item_batch(
 
 
 def run(config: PrecomputeConfig) -> Path:
-    """Execute one end-to-end Polyvore precomputation job."""
+    """Execute one end-to-end embedding precomputation job."""
     config.validate()
     device = resolve_device(config.device)
     LOGGER.info("device=%s", device)
@@ -307,10 +312,19 @@ def run(config: PrecomputeConfig) -> Path:
     )
 
     image_transform = build_fashion_clip_transform(config.model_name)
-    loader = build_polyvore_item_loader(
-        image_transform=image_transform,
-        variant=config.variant,
-        split=config.split,
+    source = get_dataset_source(config.dataset_name)
+    dataset = source.item_dataset(
+        DatasetRequest(
+            subset=config.subset,
+            split=config.split,
+            root=config.dataset_root,
+            cache_dir=config.cache_dir,
+            token=config.token,
+        ),
+        image_transform,
+    )
+    loader = create_item_loader(
+        dataset,
         config=LoaderConfig(
             batch_size=config.batch_size,
             num_workers=config.num_workers,
@@ -318,9 +332,6 @@ def run(config: PrecomputeConfig) -> Path:
             persistent_workers=config.num_workers > 0,
         ),
         shuffle=False,
-        token=config.token,
-        cache_dir=config.cache_dir,
-        dataset_root=config.dataset_root,
     )
 
     visual_encoder = FashionCLIPVisualEncoder(
@@ -382,21 +393,25 @@ def resolve_device(value: str) -> torch.device:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
+    default_source = get_dataset_source(DEFAULT_DATASET_NAME)
     parser = argparse.ArgumentParser(
         description=(
             "Precompute concatenated FashionCLIP visual/text embeddings for "
-            "Polyvore items."
+            "fashion dataset items."
         )
     )
+    parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
     parser.add_argument(
+        "--subset",
         "--variant",
-        choices=[variant.value for variant in PolyvoreVariant],
-        default=PolyvoreVariant.DISJOINT.value,
+        dest="subset",
+        default=default_source.descriptor.subsets[0],
+        help="dataset subset; --variant remains as a compatibility alias",
     )
     parser.add_argument(
         "--split",
-        choices=[split.value for split in PolyvoreSplit],
-        default=PolyvoreSplit.TRAIN.value,
+        choices=[split.value for split in DataSplit],
+        default=DataSplit.TRAIN.value,
     )
     parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME)
     parser.add_argument(
@@ -407,7 +422,6 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        default=DEFAULT_DATASET_ROOT,
     )
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--batch-size", type=int, default=128)
@@ -426,14 +440,17 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     authentication.add_argument("--token")
     authentication.add_argument("--no-token", action="store_true")
     arguments = parser.parse_args(argv)
+    source = get_dataset_source(arguments.dataset)
+    subset = source.descriptor.validate_subset(arguments.subset)
     token: bool | str | None = False if arguments.no_token else arguments.token or True
 
     config = PrecomputeConfig(
-        variant=PolyvoreVariant(arguments.variant),
-        split=PolyvoreSplit(arguments.split),
+        dataset_name=source.descriptor.name,
+        subset=subset,
+        split=DataSplit(arguments.split),
         model_name=arguments.model_name,
         output_dir=arguments.output_dir,
-        dataset_root=arguments.dataset_root,
+        dataset_root=arguments.dataset_root or source.descriptor.default_root,
         cache_dir=arguments.cache_dir,
         batch_size=arguments.batch_size,
         num_workers=arguments.num_workers,
@@ -507,6 +524,7 @@ def _build_manifest_metadata(
     visual_encoder: FashionCLIPVisualEncoder,
     text_encoder: FashionCLIPTextEncoder,
 ) -> dict[str, Any]:
+    source = get_dataset_source(config.dataset_name)
     encoder_metadata = {
         "model_name": config.model_name,
         "visual_encoder": type(visual_encoder).__name__,
@@ -523,9 +541,11 @@ def _build_manifest_metadata(
         separators=(",", ":"),
     ).encode("utf-8")
     return {
-        "dataset": "mvasil/polyvore-outfits",
+        "dataset": source.descriptor.dataset_id,
+        "dataset_name": source.descriptor.name,
         "dataset_root": str(config.dataset_root),
-        "variant": config.variant.value,
+        "subset": config.subset,
+        "variant": config.subset,
         "split": config.split.value,
         "limit": config.limit,
         "encoder": encoder_metadata,

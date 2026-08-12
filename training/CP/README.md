@@ -24,7 +24,7 @@ dropout `0.3` e pre-norm.
 
 | Aspetto | Valore |
 |---|---|
-| Dataset | `nondisjoint` |
+| Dataset | `polyvore`, subset `nondisjoint` |
 | Modalità feature | `clip` |
 | Epoche | 200 |
 | Microbatch | 512 |
@@ -45,10 +45,11 @@ dropout `0.3` e pre-norm.
 | `--classic` | disabilitato | Usa immagini e testi originali con ResNet-18 ImageNet e SentenceBERT, proiettati a `64 + 64`. È mutuamente esclusivo con gli altri profili. |
 | `--new-classic` | disabilitato | Usa la pipeline classic con proiezioni ampliate a `512 + 512`. È mutuamente esclusivo con gli altri profili. |
 | `--clip` | abilitato | Usa embedding FashionCLIP prodotti da `precompute_embeddings`. È mutuamente esclusivo con gli altri profili. |
-| `--variant` | `nondisjoint` | Seleziona variante Polyvore. Valori ammessi: `disjoint`, `nondisjoint`. |
-| `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<variant>/<split>`. Ignorato da `classic` e `new_classic`. |
+| `--dataset` | `polyvore` | Seleziona source registrata nell'API pubblica `data`. |
+| `--subset` | `nondisjoint` | Seleziona subset della source. `--variant` resta alias compatibile. |
+| `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<subset>/<split>`. Ignorato da `classic` e `new_classic`. |
 | `--dataset-root` | `datasets/polyvore-outfits` | Cerca qui dataset e annotazioni prima di usare cache Hugging Face o download. |
-| `--checkpoint-dir` | `checkpoints/<variant>/cp_<mode>` | Indica directory di configurazione, checkpoint e grafici. Deve non contenere già un run. |
+| `--checkpoint-dir` | `checkpoints/<subset>/cp_<mode>` | Indica directory di configurazione, checkpoint e grafici. Deve non contenere già un run. |
 | `--cache-dir` | `None` | Imposta directory cache usata da Hugging Face per dataset e annotazioni. |
 | `--epochs` | `200` | Imposta numero massimo di epoche. |
 | `--batch-size` | `512` | Imposta numero di outfit per microbatch. |
@@ -74,13 +75,17 @@ dropout `0.3` e pre-norm.
 Solo `--clip` richiede cache separate per train e validation:
 
 ```powershell
-python -m scripts.precompute_embeddings --variant nondisjoint --split train
-python -m scripts.precompute_embeddings --variant nondisjoint --split validation
+python -m scripts.precompute_embeddings --subset nondisjoint --split train
+python -m scripts.precompute_embeddings --subset nondisjoint --split validation
 ```
 
 Per tutte le modalità, risorse Polyvore seguono ordine locale, cache Hugging
 Face, download. In `clip` vengono cercate soltanto annotazioni outfit/CP:
 immagini e metadata non vengono caricati durante training.
+
+Training usa soltanto `DatasetSource`, `DatasetRequest` e tipi pubblici di
+`data`. Parser, download e struttura Polyvore restano confinati in
+`data/polyvore`.
 
 ## Avvio
 

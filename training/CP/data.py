@@ -1,4 +1,4 @@
-"""Polyvore CP data for classic inputs and precomputed CLIP embeddings."""
+"""Dataset-neutral CP inputs and precomputed CLIP embeddings."""
 
 from __future__ import annotations
 
@@ -11,16 +11,14 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 from data import (
+    CompatibilityIndexExample,
+    DataSplit,
+    DatasetRequest,
+    IndexedDataset,
     LoaderConfig,
-    build_polyvore_compatibility_loader,
     build_resnet18_transform,
-)
-from data.polyvore import (
-    PolyvoreSplit,
-    PolyvoreTask,
-    PolyvoreVariant,
-    download_polyvore_resources,
-    load_outfit_token_index,
+    create_compatibility_loader,
+    get_dataset_source,
 )
 from model import TransformerConfig
 from training.common import EmbeddingCache
@@ -63,7 +61,8 @@ class CompatibilityLoaders:
 class CompatibilityDataConfig:
     """Data-only settings shared by CP training and evaluation."""
 
-    variant: PolyvoreVariant
+    dataset_name: str
+    subset: str
     feature_mode: FeatureMode
     embedding_root: Path
     dataset_root: Path
@@ -80,7 +79,8 @@ class CompatibilityDataConfig:
         config: CPTrainingConfig,
     ) -> "CompatibilityDataConfig":
         return cls(
-            variant=config.variant,
+            dataset_name=config.dataset_name,
+            subset=config.subset,
             feature_mode=config.feature_mode,
             embedding_root=config.embedding_root,
             dataset_root=config.dataset_root,
@@ -93,8 +93,8 @@ class CompatibilityDataConfig:
         )
 
     def validate(self) -> None:
-        if not isinstance(self.variant, PolyvoreVariant):
-            raise TypeError("variant must be a PolyvoreVariant")
+        source = get_dataset_source(self.dataset_name)
+        source.descriptor.validate_subset(self.subset)
         if not isinstance(self.feature_mode, FeatureMode):
             raise TypeError("feature_mode must be a FeatureMode")
         if self.batch_size <= 0:
@@ -113,27 +113,26 @@ class PrecomputedCompatibilityDataset(
 
     def __init__(
         self,
-        compatibility_path: str | Path,
-        outfits_path: str | Path,
+        examples: IndexedDataset[CompatibilityIndexExample],
         embeddings: EmbeddingCache,
     ) -> None:
         self._embeddings = embeddings
-        token_index = load_outfit_token_index(outfits_path)
-        self._annotations = _load_annotations(
-            compatibility_path,
-            token_index,
-            embeddings,
+        self._examples = tuple(
+            examples[index] for index in range(len(examples))
         )
+        _validate_embedding_coverage(self._examples, embeddings)
 
     def __len__(self) -> int:
-        return len(self._annotations)
+        return len(self._examples)
 
     def __getitem__(self, index: int) -> CompatibilityEmbeddingExample:
-        example_id, label, item_ids = self._annotations[index]
+        example = self._examples[index]
         return CompatibilityEmbeddingExample(
-            example_id=example_id,
-            outfit=torch.stack([self._embeddings[item_id] for item_id in item_ids]),
-            label=label,
+            example_id=example.example_id,
+            outfit=torch.stack(
+                [self._embeddings[item_id] for item_id in example.item_ids]
+            ),
+            label=example.label,
         )
 
 
@@ -149,13 +148,13 @@ def build_compatibility_loaders(
         return CompatibilityLoaders(
             train=_build_classic_loader(
                 data_config,
-                split=PolyvoreSplit.TRAIN,
+                split=DataSplit.TRAIN,
                 shuffle=True,
                 token=token,
             ),
             validation=_build_classic_loader(
                 data_config,
-                split=PolyvoreSplit.VALIDATION,
+                split=DataSplit.VALIDATION,
                 shuffle=False,
                 token=token,
             ),
@@ -163,20 +162,20 @@ def build_compatibility_loaders(
 
     train_loader, train_cache = _build_clip_loader(
         data_config,
-        split=PolyvoreSplit.TRAIN,
+        split=DataSplit.TRAIN,
         shuffle=True,
         token=token,
     )
     validation_loader, validation_cache = _build_clip_loader(
         data_config,
-        split=PolyvoreSplit.VALIDATION,
+        split=DataSplit.VALIDATION,
         shuffle=False,
         token=token,
     )
     _require_matching_fingerprints(
         {
-            PolyvoreSplit.TRAIN: train_cache,
-            PolyvoreSplit.VALIDATION: validation_cache,
+            DataSplit.TRAIN: train_cache,
+            DataSplit.VALIDATION: validation_cache,
         }
     )
     return CompatibilityLoaders(
@@ -188,14 +187,14 @@ def build_compatibility_loaders(
 def build_compatibility_loader(
     config: CompatibilityDataConfig,
     *,
-    split: PolyvoreSplit,
+    split: DataSplit,
     token: bool | str | None = True,
     shuffle: bool = False,
 ) -> DataLoader[Any]:
     """Build one CP loader for a requested dataset split."""
     config.validate()
-    if not isinstance(split, PolyvoreSplit):
-        raise TypeError("split must be a PolyvoreSplit")
+    if not isinstance(split, DataSplit):
+        raise TypeError("split must be a DataSplit")
     if config.feature_mode.uses_raw_inputs:
         return _build_classic_loader(
             config,
@@ -215,7 +214,7 @@ def build_compatibility_loader(
 def _build_classic_loader(
     config: CompatibilityDataConfig,
     *,
-    split: PolyvoreSplit,
+    split: DataSplit,
     shuffle: bool,
     token: bool | str | None,
 ) -> DataLoader[Any]:
@@ -226,30 +225,30 @@ def _build_classic_loader(
         persistent_workers=config.num_workers > 0,
         seed=config.seed,
     )
-    return build_polyvore_compatibility_loader(
-        image_transform=build_resnet18_transform(
-            augment=split is PolyvoreSplit.TRAIN
-        ),
-        variant=config.variant,
-        split=split,
+    source = get_dataset_source(config.dataset_name)
+    dataset = source.compatibility_dataset(
+        _dataset_request(config, split, token),
+        build_resnet18_transform(augment=split is DataSplit.TRAIN),
+    )
+    return create_compatibility_loader(
+        dataset,
         config=loader_config,
         shuffle=shuffle,
-        token=token,
-        cache_dir=config.cache_dir,
-        dataset_root=config.dataset_root,
     )
 
 
 def _build_clip_loader(
     config: CompatibilityDataConfig,
     *,
-    split: PolyvoreSplit,
+    split: DataSplit,
     shuffle: bool,
     token: bool | str | None,
 ) -> tuple[DataLoader[Any], EmbeddingCache]:
+    source = get_dataset_source(config.dataset_name)
     cache = EmbeddingCache(
-        config.embedding_root / config.variant.value / split.value,
-        expected_variant=config.variant.value,
+        config.embedding_root / config.subset / split.value,
+        expected_dataset_id=source.descriptor.dataset_id,
+        expected_subset=config.subset,
         expected_split=split.value,
     )
     if cache.embedding_dim != config.model_config.model_dim:
@@ -258,20 +257,10 @@ def _build_clip_loader(
             f"{config.model_config.model_dim}, got {cache.embedding_dim}"
         )
 
-    resources = download_polyvore_resources(
-        task=PolyvoreTask.COMPATIBILITY,
-        variant=config.variant,
-        split=split,
-        token=token,
-        cache_dir=config.cache_dir,
-        dataset_root=config.dataset_root,
-        include_items=False,
-    )
-    if resources.compatibility_path is None or resources.outfits_path is None:
-        raise RuntimeError("downloaded CP resources are incomplete")
     dataset = PrecomputedCompatibilityDataset(
-        resources.compatibility_path,
-        resources.outfits_path,
+        source.compatibility_index_dataset(
+            _dataset_request(config, split, token)
+        ),
         cache,
     )
 
@@ -303,58 +292,35 @@ def collate_compatibility_embeddings(
     )
 
 
-def _load_annotations(
-    path: str | Path,
-    token_index: dict[str, str],
+def _validate_embedding_coverage(
+    examples: tuple[CompatibilityIndexExample, ...],
     embeddings: EmbeddingCache,
-) -> tuple[tuple[str, int, tuple[str, ...]], ...]:
-    selected_path = Path(path)
-    if not selected_path.is_file():
-        raise FileNotFoundError(
-            f"compatibility annotation file does not exist: {selected_path}"
-        )
-
-    annotations: list[tuple[str, int, tuple[str, ...]]] = []
-    with selected_path.open(encoding="utf-8") as source:
-        for line_number, line in enumerate(source, start=1):
-            fields = line.split()
-            if not fields:
-                continue
-            if fields[0] not in {"0", "1"} or len(fields) < 2:
-                raise ValueError(f"invalid compatibility line {line_number}")
-            item_ids = tuple(
-                _resolve_item_id(token, token_index, embeddings, line_number)
-                for token in fields[1:]
-            )
-            annotations.append(
-                (f"compatibility:{line_number}", int(fields[0]), item_ids)
-            )
-    if not annotations:
-        raise ValueError("compatibility annotation file contains no examples")
-    return tuple(annotations)
+) -> None:
+    for example in examples:
+        for item_id in example.item_ids:
+            if item_id not in embeddings:
+                raise ValueError(
+                    f"missing embedding for item {item_id!r} "
+                    f"in {example.example_id}"
+                )
 
 
-def _resolve_item_id(
-    token: str,
-    token_index: dict[str, str],
-    embeddings: EmbeddingCache,
-    line_number: int,
-) -> str:
-    try:
-        item_id = token_index[token]
-    except KeyError as error:
-        raise ValueError(
-            f"unknown outfit token {token!r} on line {line_number}"
-        ) from error
-    if item_id not in embeddings:
-        raise ValueError(
-            f"missing embedding for item {item_id!r} on line {line_number}"
-        )
-    return item_id
+def _dataset_request(
+    config: CompatibilityDataConfig,
+    split: DataSplit,
+    token: bool | str | None,
+) -> DatasetRequest:
+    return DatasetRequest(
+        subset=config.subset,
+        split=split,
+        root=config.dataset_root,
+        cache_dir=config.cache_dir,
+        token=token,
+    )
 
 
 def _require_matching_fingerprints(
-    caches: dict[PolyvoreSplit, EmbeddingCache],
+    caches: dict[DataSplit, EmbeddingCache],
 ) -> None:
     fingerprints = {cache.model_fingerprint for cache in caches.values()}
     if "" in fingerprints:

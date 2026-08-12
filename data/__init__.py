@@ -3,12 +3,21 @@
 from .collate import collate_compatibility, collate_items, collate_retrieval
 from .loaders import (
     LoaderConfig,
-    build_polyvore_compatibility_loader,
-    build_polyvore_item_loader,
-    build_polyvore_retrieval_loader,
     create_compatibility_loader,
     create_item_loader,
     create_retrieval_loader,
+)
+from .source import (
+    DEFAULT_DATASET_NAME,
+    DataSplit,
+    DatasetDescriptor,
+    DatasetDownloadRequest,
+    DatasetRequest,
+    DatasetSource,
+    IndexedDataset,
+    available_dataset_names,
+    get_dataset_source,
+    resolve_dataset_name,
 )
 from .transforms import (
     ImageTransform,
@@ -18,6 +27,7 @@ from .transforms import (
 from .types import (
     CompatibilityBatch,
     CompatibilityExample,
+    CompatibilityIndexExample,
     FashionItem,
     ItemBatch,
     RetrievalBatch,
@@ -27,16 +37,21 @@ from .types import (
 __all__ = [
     "CompatibilityBatch",
     "CompatibilityExample",
+    "CompatibilityIndexExample",
+    "DEFAULT_DATASET_NAME",
+    "DataSplit",
+    "DatasetDescriptor",
+    "DatasetDownloadRequest",
+    "DatasetRequest",
+    "DatasetSource",
     "FashionItem",
     "ImageTransform",
+    "IndexedDataset",
     "ItemBatch",
     "LoaderConfig",
     "RetrievalBatch",
     "RetrievalExample",
     "build_fashion_clip_transform",
-    "build_polyvore_compatibility_loader",
-    "build_polyvore_item_loader",
-    "build_polyvore_retrieval_loader",
     "build_resnet18_transform",
     "collate_compatibility",
     "collate_items",
@@ -44,4 +59,7 @@ __all__ = [
     "create_compatibility_loader",
     "create_item_loader",
     "create_retrieval_loader",
+    "available_dataset_names",
+    "get_dataset_source",
+    "resolve_dataset_name",
 ]

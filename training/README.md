@@ -72,9 +72,9 @@ FashionCLIP in `clip`.
 | Costo | Encoder eseguiti a ogni epoca | Encoder eseguiti a ogni epoca | Encoder eseguiti una sola volta |
 | Backpropagation | Aggiorna ResNet e proiezioni | Aggiorna ResNet e proiezione testo | Si ferma alla cache |
 
-La cache CLIP è separata per variante e split. Manifest e shard vengono
+La cache CLIP è separata per subset e split. Manifest e shard vengono
 controllati prima del training: schema, quantità, dimensione, valori finiti,
-duplicati, variante, split e fingerprint del modello devono essere coerenti.
+duplicati, dataset, subset, split e fingerprint del modello devono essere coerenti.
 Le descrizioni oltre il limite FashionCLIP vengono troncate a 77 token durante
 la precomputazione.
 

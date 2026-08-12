@@ -123,10 +123,10 @@ shard `.pt` associati agli `item_id`. Questo evita di rieseguire FashionCLIP a
 ogni epoca quando gli encoder restano congelati.
 
 ```powershell
-python -m scripts.precompute_embeddings --variant nondisjoint --split validation
+python -m scripts.precompute_embeddings --subset nondisjoint --split validation
 ```
 ```powershell
-python -m scripts.precompute_embeddings --variant nondisjoint --split train
+python -m scripts.precompute_embeddings --subset nondisjoint --split train
 ```
 
 Ripetere con `--split validation` e `--split test` per gli altri split. Gli
@@ -140,13 +140,13 @@ poi avviare evaluation:
 
 ```powershell
 python -m scripts.precompute_embeddings `
-  --variant nondisjoint `
+  --subset nondisjoint `
   --split test
 
 python -m evaluation.CP.evaluate_cp `
   --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
 ```
 
-Comando ricava variante, modalita feature e architettura dal checkpoint. Salva
+Comando ricava dataset, subset, modalità feature e architettura dal checkpoint. Salva
 accuracy, precision, recall, F1 e ROC AUC sotto `results/cp/`. Flag completi e
 formato output: [guida evaluation CP](evaluation/CP/README.md).

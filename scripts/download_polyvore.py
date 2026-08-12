@@ -1,4 +1,4 @@
-"""Download the complete Polyvore Outfits dataset to a local directory."""
+"""Download a registered dataset to a local directory."""
 
 from __future__ import annotations
 
@@ -8,15 +8,20 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from data.polyvore import DEFAULT_DATASET_ROOT, POLYVORE_DATASET_ID
+from data import (
+    DEFAULT_DATASET_NAME,
+    DatasetDownloadRequest,
+    get_dataset_source,
+)
 
 LOGGER = logging.getLogger("download_polyvore")
 
 
 @dataclass(frozen=True)
 class DownloadConfig:
-    """Settings for one complete Polyvore repository download."""
+    """Settings for one complete dataset repository download."""
 
+    dataset_name: str
     output_dir: Path
     cache_dir: Path | None
     revision: str | None
@@ -25,62 +30,52 @@ class DownloadConfig:
     force_download: bool
 
     def validate(self) -> None:
-        if self.max_workers <= 0:
-            raise ValueError("max_workers must be positive")
-        if self.output_dir.exists() and not self.output_dir.is_dir():
-            raise NotADirectoryError(
-                f"output path is not a directory: {self.output_dir}"
-            )
+        get_dataset_source(self.dataset_name)
+        self.as_request()
+
+    def as_request(self) -> DatasetDownloadRequest:
+        """Return validated request understood by dataset sources."""
+        return DatasetDownloadRequest(
+            output_dir=self.output_dir,
+            cache_dir=self.cache_dir,
+            revision=self.revision,
+            token=self.token,
+            max_workers=self.max_workers,
+            force_download=self.force_download,
+        )
 
 
 def download_dataset(config: DownloadConfig) -> Path:
     """Download all repository files and return the local dataset path."""
     config.validate()
-    config.output_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as error:
-        raise ImportError(
-            "Polyvore download requires the 'huggingface-hub' package"
-        ) from error
+    source = get_dataset_source(config.dataset_name)
 
     LOGGER.info(
         "dataset=%s destination=%s",
-        POLYVORE_DATASET_ID,
+        source.descriptor.dataset_id,
         config.output_dir,
     )
-    downloaded_path = snapshot_download(
-        repo_id=POLYVORE_DATASET_ID,
-        repo_type="dataset",
-        revision=config.revision,
-        cache_dir=config.cache_dir,
-        local_dir=config.output_dir,
-        token=config.token,
-        max_workers=config.max_workers,
-        force_download=config.force_download,
-    )
-    destination = Path(downloaded_path)
-    if not destination.is_dir():
-        raise FileNotFoundError(
-            f"downloaded dataset directory does not exist: {destination}"
-        )
+    destination = source.download(config.as_request())
     LOGGER.info("download_complete destination=%s", destination)
     return destination
 
 
 def parse_args(argv: Sequence[str] | None = None) -> DownloadConfig:
+    default_source = get_dataset_source(DEFAULT_DATASET_NAME)
     parser = argparse.ArgumentParser(
         description=(
-            "Download the complete mvasil/polyvore-outfits dataset to a "
+            "Download a complete registered fashion dataset to a "
             "local directory. Existing unchanged files are reused."
         )
     )
+    parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=DEFAULT_DATASET_ROOT,
-        help=f"destination directory (default: {DEFAULT_DATASET_ROOT})",
+        help=(
+            "destination directory "
+            f"(default: {default_source.descriptor.default_root})"
+        ),
     )
     parser.add_argument(
         "--cache-dir",
@@ -113,11 +108,13 @@ def parse_args(argv: Sequence[str] | None = None) -> DownloadConfig:
         help="disable Hugging Face authentication",
     )
     arguments = parser.parse_args(argv)
+    source = get_dataset_source(arguments.dataset)
     token: bool | str | None = (
         False if arguments.no_token else arguments.token or True
     )
     config = DownloadConfig(
-        output_dir=arguments.output_dir,
+        dataset_name=source.descriptor.name,
+        output_dir=arguments.output_dir or source.descriptor.default_root,
         cache_dir=arguments.cache_dir,
         revision=arguments.revision,
         token=token,

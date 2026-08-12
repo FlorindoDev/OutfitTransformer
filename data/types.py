@@ -54,6 +54,25 @@ class CompatibilityExample:
 
 
 @dataclass(frozen=True)
+class CompatibilityIndexExample:
+    """Compatibility example containing item IDs but no loaded features."""
+
+    example_id: str
+    item_ids: tuple[str, ...]
+    label: int
+
+    def __post_init__(self) -> None:
+        if not self.example_id.strip():
+            raise ValueError("example_id cannot be empty")
+        if not self.item_ids:
+            raise ValueError("item_ids cannot be empty")
+        if any(not item_id.strip() for item_id in self.item_ids):
+            raise ValueError("item_ids cannot contain empty values")
+        if self.label not in {0, 1}:
+            raise ValueError("label must be 0 or 1")
+
+
+@dataclass(frozen=True)
 class RetrievalExample:
     """Partial outfit, positive completion and explicit negative candidates."""
 

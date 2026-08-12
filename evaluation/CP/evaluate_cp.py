@@ -7,7 +7,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from data.polyvore import DEFAULT_DATASET_ROOT, PolyvoreSplit
+from data import DataSplit, get_dataset_source
 from training.CP.data import (
     CompatibilityDataConfig,
     build_compatibility_loader,
@@ -34,14 +34,14 @@ def run(
     embedding_root = config.embedding_root or checkpoint.embedding_root
     if embedding_root is None:
         embedding_root = Path("precomputed_embeddings")
-    dataset_root = (
-        config.dataset_root
-        or checkpoint.dataset_root
-        or DEFAULT_DATASET_ROOT
-    )
+    source = get_dataset_source(checkpoint.dataset_name)
+    dataset_root = config.dataset_root or checkpoint.dataset_root
+    if dataset_root is None:
+        dataset_root = source.descriptor.default_root
 
     data_config = CompatibilityDataConfig(
-        variant=checkpoint.variant,
+        dataset_name=checkpoint.dataset_name,
+        subset=checkpoint.subset,
         feature_mode=checkpoint.feature_mode,
         embedding_root=embedding_root,
         dataset_root=dataset_root,
@@ -67,7 +67,8 @@ def run(
     )
     output_path = config.output_path or _default_output_path(
         checkpoint.path,
-        checkpoint.variant.value,
+        checkpoint.dataset_name,
+        checkpoint.subset,
         config.split,
     )
     result = CPEvaluationResult(
@@ -75,7 +76,9 @@ def run(
         checkpoint_epoch=checkpoint.epoch,
         output_path=output_path,
         split=config.split,
-        variant=checkpoint.variant,
+        dataset_name=checkpoint.dataset_name,
+        dataset_id=checkpoint.dataset_id,
+        subset=checkpoint.subset,
         feature_mode=checkpoint.feature_mode,
         threshold=config.threshold,
         metrics=metrics,
@@ -93,8 +96,8 @@ def parse_args(
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument(
         "--split",
-        choices=[PolyvoreSplit.VALIDATION.value, PolyvoreSplit.TEST.value],
-        default=PolyvoreSplit.TEST.value,
+        choices=[DataSplit.VALIDATION.value, DataSplit.TEST.value],
+        default=DataSplit.TEST.value,
     )
     parser.add_argument("--embedding-root", type=Path)
     parser.add_argument("--dataset-root", type=Path)
@@ -114,7 +117,7 @@ def parse_args(
 
     config = CPEvaluationConfig(
         checkpoint=arguments.checkpoint,
-        split=PolyvoreSplit(arguments.split),
+        split=DataSplit(arguments.split),
         embedding_root=arguments.embedding_root,
         dataset_root=arguments.dataset_root,
         output_path=arguments.output,
@@ -136,8 +139,9 @@ def parse_args(
 
 def _default_output_path(
     checkpoint: Path,
-    variant: str,
-    split: PolyvoreSplit,
+    dataset_name: str,
+    subset: str,
+    split: DataSplit,
 ) -> Path:
     run_name = (
         checkpoint.parent.parent.name
@@ -147,7 +151,8 @@ def _default_output_path(
     return (
         Path("results")
         / "cp"
-        / variant
+        / dataset_name
+        / subset
         / run_name
         / f"{checkpoint.stem}_{split.value}.json"
     )

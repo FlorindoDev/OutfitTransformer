@@ -18,14 +18,16 @@ class EmbeddingCache(Mapping[str, Tensor]):
         self,
         directory: str | Path,
         *,
-        expected_variant: str | None = None,
+        expected_dataset_id: str | None = None,
+        expected_subset: str | None = None,
         expected_split: str | None = None,
     ) -> None:
         self.directory = Path(directory)
         self.manifest = _load_manifest(self.directory / "manifest.json")
         _validate_manifest_identity(
             self.manifest,
-            expected_variant=expected_variant,
+            expected_dataset_id=expected_dataset_id,
+            expected_subset=expected_subset,
             expected_split=expected_split,
         )
         self.embedding_dim = _positive_int(
@@ -126,13 +128,23 @@ def _load_manifest(path: Path) -> dict[str, Any]:
 def _validate_manifest_identity(
     manifest: Mapping[str, Any],
     *,
-    expected_variant: str | None,
+    expected_dataset_id: str | None,
+    expected_subset: str | None,
     expected_split: str | None,
 ) -> None:
-    if expected_variant is not None and manifest.get("variant") != expected_variant:
+    if (
+        expected_dataset_id is not None
+        and manifest.get("dataset") != expected_dataset_id
+    ):
         raise ValueError(
-            f"embedding variant must be {expected_variant!r}, "
-            f"got {manifest.get('variant')!r}"
+            f"embedding dataset must be {expected_dataset_id!r}, "
+            f"got {manifest.get('dataset')!r}"
+        )
+    manifest_subset = manifest.get("subset", manifest.get("variant"))
+    if expected_subset is not None and manifest_subset != expected_subset:
+        raise ValueError(
+            f"embedding subset must be {expected_subset!r}, "
+            f"got {manifest_subset!r}"
         )
     if expected_split is not None and manifest.get("split") != expected_split:
         raise ValueError(
@@ -145,4 +157,3 @@ def _positive_int(value: Any, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return value
-

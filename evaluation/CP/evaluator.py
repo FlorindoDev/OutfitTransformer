@@ -11,7 +11,7 @@ from typing import Any, Protocol
 import torch
 from torch import Tensor, nn
 
-from data.polyvore import PolyvoreSplit, PolyvoreVariant
+from data import DataSplit
 from metrics import BinaryClassificationMetrics, binary_classification_metrics
 from training.CP import FeatureMode
 
@@ -33,8 +33,10 @@ class CPEvaluationResult:
     checkpoint: Path
     checkpoint_epoch: int
     output_path: Path
-    split: PolyvoreSplit
-    variant: PolyvoreVariant
+    split: DataSplit
+    dataset_name: str
+    dataset_id: str
+    subset: str
     feature_mode: FeatureMode
     threshold: float
     metrics: BinaryClassificationMetrics
@@ -43,8 +45,10 @@ class CPEvaluationResult:
         return {
             "checkpoint": str(self.checkpoint),
             "checkpoint_epoch": self.checkpoint_epoch,
+            "dataset": self.dataset_name,
+            "dataset_id": self.dataset_id,
             "split": self.split.value,
-            "variant": self.variant.value,
+            "subset": self.subset,
             "feature_mode": self.feature_mode.value,
             "threshold": self.threshold,
             "metrics": self.metrics.as_dict(),

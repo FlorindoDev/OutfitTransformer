@@ -48,7 +48,8 @@ training, evaluation e precomputazione trovano subito risorse locali.
 | Flag | Default | Cosa fa |
 | --- | --- | --- |
 | `-h`, `--help` | — | Mostra la guida dei comandi e termina. |
-| `--variant` | `disjoint` | Seleziona la variante Polyvore: `disjoint` oppure `nondisjoint`. |
+| `--dataset` | `polyvore` | Seleziona source registrata nell'API pubblica `data`. |
+| `--subset` | `disjoint` | Seleziona subset del dataset. `--variant` resta alias compatibile. |
 | `--split` | `train` | Seleziona lo split da elaborare: `train`, `validation` oppure `test`. |
 | `--model-name` | `patrickjohncyh/fashion-clip` | Sceglie il modello FashionCLIP usato per codificare immagini e testi. |
 | `--output-dir` | `precomputed_embeddings` | Imposta la cartella radice in cui salvare cache e manifest. |
@@ -69,7 +70,7 @@ training, evaluation e precomputazione trovano subito risorse locali.
 
 `precompute_embeddings.py` prepara una rappresentazione multimodale per ogni articolo Polyvore:
 
-1. carica lo split e la variante richiesti;
+1. chiede alla source pubblica item dello split e subset richiesti;
 2. codifica l'immagine con la torre visiva di FashionCLIP;
 3. codifica la descrizione con la torre testuale, rispettando la lunghezza massima prevista dal modello;
 4. normalizza separatamente le due rappresentazioni;
@@ -93,7 +94,7 @@ Shard e manifest vengono scritti in modo atomico, così un'interruzione non lasc
 La destinazione segue la forma:
 
 ```text
-precomputed_embeddings/<modello>/<variante>/<split>/
+precomputed_embeddings/<modello>/<subset>/<split>/
 ```
 
 | Artefatto | Contenuto concettuale |
@@ -125,7 +126,7 @@ Ogni riga di `embeddings` è composta da due parti concatenate:
 
 ## Uso nel training CP
 
-La modalità CLIP del training CP richiede almeno le cache `train` e `validation` della stessa variante e dello stesso modello. Lo split `test` è facoltativo e serve per una valutazione separata. Le modalità classic e new classic non usano questi artefatti perché ricavano direttamente le feature da immagini e descrizioni.
+La modalità CLIP del training CP richiede almeno le cache `train` e `validation` dello stesso dataset, subset e modello. Lo split `test` è facoltativo e serve per una valutazione separata. Le modalità classic e new classic non usano questi artefatti perché ricavano direttamente le feature da immagini e descrizioni.
 
 `float16` riduce spazio su disco e memoria, con minore precisione; `float32` è la scelta predefinita. Il training converte comunque gli embedding nel tipo richiesto dal modello.
 
@@ -134,13 +135,13 @@ La modalità CLIP del training CP richiede almeno le cache `train` e `validation
 Precomputazione completa per il training predefinito `nondisjoint`:
 
 ```powershell
-python -m scripts.precompute_embeddings --variant nondisjoint --split train
-python -m scripts.precompute_embeddings --variant nondisjoint --split validation
-python -m scripts.precompute_embeddings --variant nondisjoint --split test
+python -m scripts.precompute_embeddings --subset nondisjoint --split train
+python -m scripts.precompute_embeddings --subset nondisjoint --split validation
+python -m scripts.precompute_embeddings --subset nondisjoint --split test
 ```
 
 Prova rapida su 100 articoli:
 
 ```powershell
-python -m scripts.precompute_embeddings --variant nondisjoint --split train --limit 100 --device auto
+python -m scripts.precompute_embeddings --subset nondisjoint --split train --limit 100 --device auto
 ```

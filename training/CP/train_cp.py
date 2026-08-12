@@ -7,7 +7,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from data.polyvore import PolyvoreVariant
+from data import DEFAULT_DATASET_NAME, get_dataset_source
 from training.common import load_model_weights, resolve_device, seed_everything
 
 from .config import CPTrainingConfig, FeatureMode
@@ -46,6 +46,7 @@ def run(
 def parse_args(
     argv: Sequence[str] | None = None,
 ) -> tuple[CPTrainingConfig, bool | str | None]:
+    default_source = get_dataset_source(DEFAULT_DATASET_NAME)
     parser = argparse.ArgumentParser(
         description="Train OutfitTransformer Compatibility Prediction."
     )
@@ -69,10 +70,13 @@ def parse_args(
         dest="feature_mode",
     )
     parser.set_defaults(feature_mode=FeatureMode.CLIP)
+    parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
     parser.add_argument(
+        "--subset",
         "--variant",
-        choices=[variant.value for variant in PolyvoreVariant],
-        default=PolyvoreVariant.NONDISJOINT.value,
+        dest="subset",
+        default=default_source.descriptor.default_subset,
+        help="dataset subset; --variant remains as a compatibility alias",
     )
     parser.add_argument(
         "--embedding-root",
@@ -82,7 +86,6 @@ def parse_args(
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        default=Path("datasets/polyvore-outfits"),
     )
     parser.add_argument("--checkpoint-dir", type=Path)
     parser.add_argument("--cache-dir", type=Path)
@@ -111,17 +114,20 @@ def parse_args(
     authentication.add_argument("--no-token", action="store_true")
     arguments = parser.parse_args(argv)
 
-    variant = PolyvoreVariant(arguments.variant)
+    source = get_dataset_source(arguments.dataset)
+    subset = source.descriptor.validate_subset(arguments.subset)
+    dataset_root = arguments.dataset_root or source.descriptor.default_root
     checkpoint_dir = arguments.checkpoint_dir or (
         Path("checkpoints")
-        / variant.value
+        / subset
         / f"cp_{arguments.feature_mode.value}"
     )
     config = CPTrainingConfig(
-        variant=variant,
+        dataset_name=source.descriptor.name,
+        subset=subset,
         feature_mode=arguments.feature_mode,
         embedding_root=arguments.embedding_root,
-        dataset_root=arguments.dataset_root,
+        dataset_root=dataset_root,
         checkpoint_dir=checkpoint_dir,
         cache_dir=arguments.cache_dir,
         epochs=arguments.epochs,

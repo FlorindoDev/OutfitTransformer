@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from data.polyvore import DEFAULT_DATASET_ROOT, PolyvoreVariant
+from data import DEFAULT_DATASET_NAME, get_dataset_source
 from model import TransformerConfig
 
 BestMetric = Literal["val_auc", "val_accuracy", "val_loss"]
 
-DATASET_ID = "mvasil/polyvore-outfits"
 MAX_GRAD_NORM = 1.0
 ONE_CYCLE_PCT_START = 0.3
 ONE_CYCLE_DIV_FACTOR = 25.0
@@ -50,12 +49,21 @@ def default_transformer_config(mode: FeatureMode) -> TransformerConfig:
 class CPTrainingConfig:
     """Validated settings for one CP training run."""
 
-    variant: PolyvoreVariant = PolyvoreVariant.NONDISJOINT
+    dataset_name: str = DEFAULT_DATASET_NAME
+    subset: str = field(
+        default_factory=lambda: get_dataset_source(
+            DEFAULT_DATASET_NAME
+        ).descriptor.default_subset
+    )
     feature_mode: FeatureMode = FeatureMode.CLIP
     embedding_root: Path = Path(
         "precomputed_embeddings/patrickjohncyh-fashion-clip"
     )
-    dataset_root: Path = DEFAULT_DATASET_ROOT
+    dataset_root: Path = field(
+        default_factory=lambda: get_dataset_source(
+            DEFAULT_DATASET_NAME
+        ).descriptor.default_root
+    )
     checkpoint_dir: Path = Path("checkpoints/nondisjoint/cp_clip")
     cache_dir: Path | None = None
     epochs: int = 200
@@ -77,6 +85,8 @@ class CPTrainingConfig:
     model: TransformerConfig | None = None
 
     def validate(self) -> None:
+        source = get_dataset_source(self.dataset_name)
+        source.descriptor.validate_subset(self.subset)
         if not isinstance(self.feature_mode, FeatureMode):
             raise TypeError("feature_mode must be a FeatureMode")
         if self.epochs <= 0:
@@ -120,10 +130,12 @@ class CPTrainingConfig:
 
     def as_dict(self, *, resolved_device: str | None = None) -> dict[str, Any]:
         """Return checkpoint-safe configuration without authentication data."""
+        source = get_dataset_source(self.dataset_name)
         return {
             "dataset": {
-                "id": DATASET_ID,
-                "variant": self.variant.value,
+                "name": source.descriptor.name,
+                "id": source.descriptor.dataset_id,
+                "subset": self.subset,
                 "feature_mode": self.feature_mode.value,
                 "embedding_root": (
                     str(self.embedding_root)

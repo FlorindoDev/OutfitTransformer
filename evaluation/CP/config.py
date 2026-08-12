@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from data.polyvore import PolyvoreSplit
+from data import DataSplit
 
 
 @dataclass(frozen=True)
@@ -13,7 +13,7 @@ class CPEvaluationConfig:
     """Validated runtime settings for one CP evaluation."""
 
     checkpoint: Path
-    split: PolyvoreSplit = PolyvoreSplit.TEST
+    split: DataSplit = DataSplit.TEST
     embedding_root: Path | None = None
     dataset_root: Path | None = None
     output_path: Path | None = None
@@ -31,7 +31,7 @@ class CPEvaluationConfig:
             raise FileNotFoundError(
                 f"evaluation checkpoint does not exist: {self.checkpoint}"
             )
-        if self.split not in {PolyvoreSplit.VALIDATION, PolyvoreSplit.TEST}:
+        if self.split not in {DataSplit.VALIDATION, DataSplit.TEST}:
             raise ValueError("evaluation split must be validation or test")
         if self.batch_size <= 0:
             raise ValueError("batch_size must be positive")

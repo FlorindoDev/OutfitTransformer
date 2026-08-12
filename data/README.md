@@ -6,6 +6,7 @@
 - [Flusso complessivo](#flusso-complessivo)
 - [Responsabilità dei componenti](#responsabilità-dei-componenti)
 - [`types.py`: contratti dei dati](#typespy-contratti-dei-dati)
+- [`source.py`: interfaccia delle sorgenti](#sourcepy-interfaccia-delle-sorgenti)
 - [`transforms.py`: preprocessing delle immagini](#transformspy-preprocessing-delle-immagini)
 - [`collate.py`: costruzione dei batch](#collatepy-costruzione-dei-batch)
 - [`loaders.py`: configurazione dei DataLoader](#loaderspy-configurazione-dei-dataloader)
@@ -19,43 +20,49 @@
 |---|---|
 | `__init__.py` | Espone l’API pubblica del package `data`. |
 | `types.py` | Definisce item, esempi dei task e batch condivisi. |
+| `source.py` | Definisce source, split, richieste e registry indipendenti dal dataset concreto. |
 | `transforms.py` | Prepara le immagini per ResNet-18 o FashionCLIP. |
 | `collate.py` | Unisce gli esempi e li converte nell’input pubblico del modello. |
-| `loaders.py` | Configura i `DataLoader` e costruisce le pipeline Polyvore complete. |
+| `loaders.py` | Configura i `DataLoader` per item, compatibility e retrieval. |
 | `polyvore/` | Interpreta risorse, identificatori e annotazioni di Polyvore Outfits. |
 
 ## Flusso complessivo
 
 ```mermaid
 flowchart TD
-    SOURCE["Risorse Polyvore<br/>immagini, metadati e annotazioni"]
-    DOWNLOAD["Download e verifica"]
-    TRANSFORM["Transform scelta per<br/>l’encoder visuale"]
-    CATALOG["Catalog<br/>item_id → immagine, testo, categoria"]
-    TASK{"Task selezionato"}
-    ITEM["Dataset item"]
-    CP["Dataset compatibility"]
-    CIR["Dataset retrieval"]
-    COLLATE["Collate specifica del task"]
-    LOADER["DataLoader"]
+    RAW["Dataset originale<br/>immagini, metadati e annotazioni"]
+    TRANSFORM["transforms.py<br/>immagine → Tensor"]
+    TYPES["types.py<br/>contratti Example e Batch"]
+    SOURCE["source.py<br/>carica e adatta i dati"]
+    DATASET["Dataset[Example]<br/>item, compatibility o retrieval"]
+    LOADER["loaders.py<br/>crea e configura DataLoader"]
+    CONFIG["batch size, shuffle,<br/>worker e memoria"]
+    COLLATE["collate.py<br/>unisce Example in Batch"]
+    BATCH["ItemBatch, CompatibilityBatch<br/>o RetrievalBatch"]
     TRAINING["Training o precomputazione"]
     MODEL["OutfitTransformer"]
 
-    SOURCE --> DOWNLOAD
-    DOWNLOAD --> CATALOG
-    TRANSFORM --> CATALOG
-    CATALOG --> TASK
-    TASK --> ITEM
-    TASK --> CP
-    TASK --> CIR
-    ITEM --> COLLATE
-    CP --> COLLATE
-    CIR --> COLLATE
+    RAW --> SOURCE
+    TRANSFORM --> SOURCE
+    TYPES -.-> SOURCE
+    SOURCE --> DATASET
+    DATASET --> LOADER
+    CONFIG --> LOADER
     COLLATE --> LOADER
-    LOADER --> TRAINING
+    LOADER --> BATCH
+    TYPES -.-> BATCH
+    BATCH --> TRAINING
     TRAINING --> MODEL
 
 ```
+
+| Componente | Responsabilità | Output |
+|---|---|---|
+| `transforms.py` | Converte e normalizza immagini nel formato richiesto dall’encoder. | `Tensor [3, H, W]` |
+| `types.py` | Definisce contratti comuni per item, esempi e batch. | `FashionItem`, `Example` e `Batch` |
+| `source.py` | Carica il dataset originale e adatta i dati ai tipi comuni del progetto. | `Dataset[Example]` |
+| `loaders.py` | Decide come leggere più esempi: batch size, shuffle, worker e memoria. | `DataLoader` |
+| `collate.py` | Unisce gli esempi letti dal loader e costruisce un batch del task. | `ItemBatch`, `CompatibilityBatch` o `RetrievalBatch` |
 
 ## Responsabilità dei componenti
 
@@ -81,6 +88,7 @@ stessi tipi senza richiedere modifiche al modello.
 |---|---|
 | `FashionItem` | Un articolo con ID, immagine trasformata, descrizione e categoria. |
 | `CompatibilityExample` | Un singolo outfit completo e la label binaria associata. |
+| `CompatibilityIndexExample` | Un outfit espresso solo tramite `item_id`, usato con feature precomputate. |
 | `RetrievalExample` | Un outfit parziale, il completamento corretto e i negativi. |
 | `ItemBatch` | Articoli indipendenti destinati alla precomputazione. |
 | `CompatibilityBatch` | Outfit pronti per CP, ID originali e label `[batch, 1]`. |
@@ -231,15 +239,16 @@ implementazioni concorrenti del padding.
 
 ## `loaders.py`: configurazione dei DataLoader
 
-Coordina dataset, collate e impostazioni PyTorch. Offre due livelli:
+`loaders.py` crea i `DataLoader` PyTorch usati da training, evaluation e
+precomputazione. Riceve un dataset, sceglie la collate del task e applica
+batch size, shuffle e impostazioni dei worker. Il risultato è un iteratore di
+`ItemBatch`, `CompatibilityBatch` o `RetrievalBatch` pronti per il progetto.
 
-- factory generiche, usabili con qualsiasi dataset che restituisca gli Example
-  condivisi;
-- factory complete Polyvore, che scaricano le risorse necessarie, costruiscono
-  catalogo e dataset e selezionano automaticamente la collate del task.
+Le factory accettano qualsiasi dataset che restituisca gli Example condivisi.
+Creazione e lettura del dataset concreto appartengono a `DatasetSource`.
 
 `LoaderConfig` raccoglie batch size, numero di worker, pinning, worker
-persistenti, eliminazione dell’ultimo batch incompleto e seed. Richiede valori
+persistenti, eliminazione dell'ultimo batch incompleto e seed. Richiede valori
 coerenti, per esempio worker persistenti solo quando è presente almeno un
 worker.
 
@@ -250,11 +259,9 @@ worker.
 
 | Parametro del DataLoader | Provenienza | Ruolo |
 |---|---|---|
-| `dataset` | `item_dataset.py`, `compatibility_dataset.py`, `retrieval_dataset.py` oppure chiamante esterno | Restituisce un singolo Example quando riceve un indice. |
+| `dataset` | Dataset restituito da una source oppure chiamante esterno | Restituisce un singolo Example quando riceve un indice. |
 | `collate_fn` | `collate.py` | Converte una lista di Example nel Batch specifico del task. |
 | `batch_size`, worker, shuffle e altre opzioni | `LoaderConfig` e argomenti della factory | Controllano come gli esempi vengono letti e raggruppati. |
-
-
 
 Per compatibility e retrieval lo shuffle viene attivato automaticamente sullo
 split di training, salvo scelta esplicita diversa. Il loader item resta invece
@@ -281,9 +288,85 @@ Output di una sua iterazione
 ```
 
 La factory restituisce il `DataLoader`, non tutti i dati caricati in memoria.
-Gli esempi vengono richiesti al dataset batch dopo batch. Una factory Polyvore
-riceve inoltre variante, split, transform, token e cache; il suo output resta un
-`DataLoader` dello stesso tipo.
+Gli esempi vengono richiesti al dataset batch dopo batch. Source concreta riceve
+subset, split, transform, token e cache; loader risultante usa sempre stesso
+contratto pubblico.
+
+
+## `source.py`: interfaccia delle sorgenti
+
+`source.py` definisce l'API comune tra progetto e dataset. Training, evaluation
+e script usano questa interfaccia per chiedere i dati necessari:
+
+```text
+«Dammi esempi compatibility dello split train»
+```
+
+`get_dataset_source` seleziona adapter corretto. Nel caso attuale restituisce
+`PolyvoreSource`, adapter che legge file Polyvore e li converte nei tipi comuni
+del progetto.
+
+```text
+training/evaluation/script
+            ↓
+API DatasetSource
+            ↓
+adapter PolyvoreSource
+            ↓
+tipi comuni del progetto
+```
+
+Workflow dipendono solo dall'interfaccia `DatasetSource`. Dettagli specifici,
+come nomi dei file, download e parsing, restano dentro adapter. Per supportare
+altro dataset basta creare e registrare nuovo adapter dentro `data`.
+
+### Elementi principali
+
+| Elemento | Cosa fa |
+|---|---|
+| `DatasetRequest` | Dice quale subset, split e cartella usare. |
+| `DatasetSource` | Interfaccia che stabilisce quali dati ogni adapter deve fornire. |
+| `get_dataset_source("polyvore")` | Seleziona `PolyvoreSource`. |
+| `PolyvoreSource` | Adapter che legge Polyvore e restituisce tipi comuni. |
+
+### Esempio
+
+```python
+from pathlib import Path
+
+from data import DataSplit, DatasetRequest, get_dataset_source
+
+source = get_dataset_source("polyvore")
+request = DatasetRequest(
+    subset="nondisjoint",
+    split=DataSplit.TRAIN,
+    root=Path("datasets/polyvore-outfits"),
+)
+dataset = source.compatibility_index_dataset(request)
+example = dataset[0]
+```
+
+Passaggi eseguiti:
+
+1. `get_dataset_source` seleziona `PolyvoreSource`;
+2. `DatasetRequest` indica dati richiesti;
+3. `PolyvoreSource` trova e legge file Polyvore;
+4. token Polyvore vengono convertiti in `item_id`;
+5. risultato è un `CompatibilityIndexExample` generico.
+
+```text
+Output
+  example_id: "compatibility:1"
+  item_ids:   ("132621870", "153967122", "167174323")
+  label:      1
+```
+
+Training vede solo `item_ids` e label. Non sa da quale file arrivano.
+`loaders.py` trasforma poi questi esempi in batch.
+
+Per modalità classic si usa `compatibility_dataset`, che restituisce anche
+immagini e descrizioni. Per CLIP si usa `compatibility_index_dataset`, che
+carica solo ID necessari per recuperare embedding precomputati.
 
 ## Dataset disponibili
 
@@ -317,7 +400,7 @@ Esempio:
 
 ```powershell
 python -m scripts.precompute_embeddings `
-  --variant disjoint `
+  --subset disjoint `
   --split train `
   --batch-size 128 `
   --device auto

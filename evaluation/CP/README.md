@@ -95,7 +95,7 @@ richiede cache embedding dello split scelto. Per test predefinito:
 
 ```powershell
 python -m scripts.precompute_embeddings `
-  --variant nondisjoint `
+  --subset nondisjoint `
   --split test
 ```
 
@@ -142,7 +142,7 @@ python -m evaluation.CP.evaluate_cp `
 Senza `--output`, report scritto in:
 
 ```text
-results/cp/<variant>/<directory-checkpoint>/<checkpoint>_<split>.json
+results/cp/<dataset>/<subset>/<directory-checkpoint>/<checkpoint>_<split>.json
 ```
 
 JSON contiene identita checkpoint, epoca, dataset, feature mode, soglia e
