@@ -21,6 +21,7 @@ from .source import (
 from .transforms import (
     ImageTransform,
     build_fashion_clip_transform,
+    build_openrouter_transform,
     build_resnet18_transform,
 )
 from .types import (
@@ -51,6 +52,7 @@ __all__ = [
     "RetrievalBatch",
     "RetrievalExample",
     "build_fashion_clip_transform",
+    "build_openrouter_transform",
     "build_resnet18_transform",
     "collate_compatibility",
     "collate_items",

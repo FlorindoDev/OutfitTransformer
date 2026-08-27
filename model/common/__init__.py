@@ -3,6 +3,7 @@
 from .task_embedding import TaskEmbedding
 from .text_encoder import (
     FashionCLIPTextEncoder,
+    OpenRouterTextEncoder,
     SentenceTransformerTextEncoder,
     TextEncoder,
 )
@@ -14,6 +15,7 @@ from .transformer import (
 )
 from .visual_encoder import (
     FashionCLIPVisualEncoder,
+    OpenRouterVisualEncoder,
     ResNet18VisualEncoder,
     VisualEncoder,
 )
@@ -21,6 +23,8 @@ from .visual_encoder import (
 __all__ = [
     "FashionCLIPTextEncoder",
     "FashionCLIPVisualEncoder",
+    "OpenRouterTextEncoder",
+    "OpenRouterVisualEncoder",
     "OutfitItem",
     "OutfitTransformer",
     "OutfitTransformerOutput",

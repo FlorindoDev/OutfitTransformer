@@ -3,6 +3,8 @@
 from .common import (
     FashionCLIPTextEncoder,
     FashionCLIPVisualEncoder,
+    OpenRouterTextEncoder,
+    OpenRouterVisualEncoder,
     OutfitItem,
     OutfitTransformer,
     OutfitTransformerOutput,
@@ -24,6 +26,8 @@ __all__ = [
     "OutfitItem",
     "OutfitTransformer",
     "OutfitTransformerOutput",
+    "OpenRouterTextEncoder",
+    "OpenRouterVisualEncoder",
     "ResNet18VisualEncoder",
     "SentenceTransformerTextEncoder",
     "TaskEmbedding",

@@ -91,3 +91,19 @@ def build_fashion_clip_transform(
 
     processor = AutoImageProcessor.from_pretrained(model_name)
     return _FashionCLIPTransform(processor)
+
+
+def build_openrouter_transform(*, image_size: int = 224) -> ImageTransform:
+    """Build RGB tensors suitable for OpenRouter image embedding requests."""
+    if image_size <= 0:
+        raise ValueError("image_size must be positive")
+    return transforms.Compose(
+        [
+            transforms.Resize(
+                (image_size, image_size),
+                interpolation=InterpolationMode.BILINEAR,
+                antialias=True,
+            ),
+            transforms.ToTensor(),
+        ]
+    )

@@ -18,8 +18,9 @@
 
 | File | Cosa fa |
 |---|---|
-| `visual_encoder.py` | Definisce gli encoder visuali e include ResNet-18 e FashionCLIP ViT. |
-| `text_encoder.py` | Definisce gli encoder testuali e include SentenceTransformer e FashionCLIP. |
+| `visual_encoder.py` | Definisce gli encoder visuali ResNet-18, FashionCLIP ViT e OpenRouter. |
+| `text_encoder.py` | Definisce gli encoder testuali SentenceTransformer, FashionCLIP e OpenRouter. |
+| `openrouter.py` | Gestisce batching, retry e validazione delle risposte dell'API embedding OpenRouter. |
 | `transformer.py` | Gestisce API Pydantic, fusione, padding, Transformer e output. |
 | `task_embedding.py` | Definisce l'embedding allenabile condiviso dai moduli specifici CP e CIR. |
 | `__init__.py` | Espone i componenti pubblici di `model.common`. |
@@ -35,8 +36,8 @@ flowchart TD
     TYPE -->|"testo"| TEXT["Descrizione"]
     TYPE -->|"embedding"| PRE["Embedding precomputato<br/>1024 feature"]
 
-    IMAGE --> VE["Encoder visuale<br/>ResNet-18 / FashionCLIP ViT"]
-    TEXT --> TE["Encoder testuale<br/>SentenceTransformer / FashionCLIP"]
+    IMAGE --> VE["Encoder visuale<br/>ResNet-18 / FashionCLIP / OpenRouter"]
+    TEXT --> TE["Encoder testuale<br/>SentenceTransformer / FashionCLIP / OpenRouter"]
     VE --> VP["Proiezione a 512 + L2"]
     TE --> TP["Proiezione a 512 + L2"]
     VP --> CAT["Concatenazione<br/>512 + 512"]
@@ -101,16 +102,22 @@ Encoder visuali disponibili:
 - **ResNet-18**: pesi ImageNet predefiniti, classificatore rimosso, backbone
   allenabile per impostazione predefinita;
 - **FashionCLIP ViT**: visual tower di FashionCLIP, backbone allenabile per
-  impostazione predefinita.
+  impostazione predefinita;
+- **OpenRouter**: invia immagini PNG base64 a un modello embedding multimodale
+  remoto; non contiene parametri allenabili.
 
 Encoder testuali disponibili:
 
 - **SentenceTransformer**: backbone preaddestrato e congelato per impostazione
   predefinita; proiezione dimensionale allenabile;
 - **FashionCLIP text tower**: tokenizzazione inclusa e backbone allenabile per
-  impostazione predefinita.
+  impostazione predefinita;
+- **OpenRouter**: usa lo stesso modello embedding remoto scelto per le immagini,
+  così le due modalità condividono spazio vettoriale e dimensione.
 
-I pesi preaddestrati possono essere scaricati al primo utilizzo.
+I pesi preaddestrati possono essere scaricati al primo utilizzo. Gli encoder
+OpenRouter richiedono un modello con input immagine e output embedding, oltre a
+una API key valida.
 
 ## Fusione multimodale
 

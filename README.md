@@ -42,8 +42,8 @@ il task CIR è previsto ma non ancora implementato.
 flowchart TD
     A["OutfitBatch<br/>immagini, descrizioni, outfit variabili"]
 
-    A --> B["Encoder visuale<br/>ResNet-18 o FashionCLIP ViT"]
-    A --> C["Encoder testuale<br/>SentenceTransformer o FashionCLIP"]
+    A --> B["Encoder visuale<br/>ResNet-18 / FashionCLIP / OpenRouter"]
+    A --> C["Encoder testuale<br/>SentenceTransformer / FashionCLIP / OpenRouter"]
 
     B --> D["Proiezione + norm L2<br/>64 o 512 feature visuali"]
     C --> E["Proiezione + norm L2<br/>64 o 512 feature testuali"]
@@ -52,7 +52,7 @@ flowchart TD
     E --> F
 
     F --> G["Item embeddings<br/>B × L × 128 o 1024"]
-    P["Embedding FashionCLIP precomputato<br/>512 + 512 feature"] --> G
+    P["Embedding precomputato<br/>FashionCLIP o OpenRouter"] --> G
     G --> H["norm L2 + padding appreso + padding mask<br/>massimo 16 item"]
     H --> I["Transformer common encoder-only<br/>6 layer · 16 teste · nessuna posizione"]
     I --> J["Item embeddings contestualizzati<br/>B × 16 × 128 o 1024"]
@@ -117,10 +117,11 @@ essere parziali: fallback remoto riguarda solo quelli assenti.
 
 ## Precomputazione degli embedding
 
-La precomputazione esegue una sola volta le tower visuale e testuale
-FashionCLIP. I due output vengono normalizzati L2, concatenati e salvati in
-shard `.pt` associati agli `item_id`. Questo evita di rieseguire FashionCLIP a
-ogni epoca quando gli encoder restano congelati.
+La precomputazione usa per default le tower visuale e testuale FashionCLIP. Con
+`--openrouter` può usare un modello embedding multimodale remoto scelto tramite
+`--model-name`; la chiave viene letta da `OPENROUTER_API_KEY`. I due output
+vengono normalizzati L2, concatenati e salvati in shard `.pt` associati agli
+`item_id`.
 
 ```powershell
 python -m scripts.precompute_embeddings --subset nondisjoint --split validation

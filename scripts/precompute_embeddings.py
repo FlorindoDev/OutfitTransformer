@@ -1,4 +1,4 @@
-"""Precompute normalized FashionCLIP image/text embeddings for fashion items."""
+"""Precompute normalized image/text embeddings for fashion items."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -21,19 +22,28 @@ from data import (
     DEFAULT_DATASET_NAME,
     DataSplit,
     DatasetRequest,
+    ImageTransform,
     ItemBatch,
     LoaderConfig,
     build_fashion_clip_transform,
+    build_openrouter_transform,
     create_item_loader,
     get_dataset_source,
 )
-from model import FashionCLIPTextEncoder, FashionCLIPVisualEncoder
+from model import (
+    FashionCLIPTextEncoder,
+    FashionCLIPVisualEncoder,
+    OpenRouterTextEncoder,
+    OpenRouterVisualEncoder,
+)
 from model.common import TextEncoder, VisualEncoder
 
 OutputDType = Literal["float32", "float16"]
 
 LOGGER = logging.getLogger("precompute_embeddings")
 DEFAULT_MODEL_NAME = "patrickjohncyh/fashion-clip"
+DEFAULT_OPENROUTER_MODEL_NAME = "google/gemini-embedding-2"
+DEFAULT_OPENROUTER_DIMENSIONS = 512
 SCHEMA_VERSION = 2
 
 
@@ -57,6 +67,16 @@ class PrecomputeConfig:
     limit: int | None
     overwrite: bool
     log_every: int
+    use_openrouter: bool = False
+    openrouter_api_key: str | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    openrouter_dimensions: int = DEFAULT_OPENROUTER_DIMENSIONS
+    openrouter_request_batch_size: int = 8
+    openrouter_image_size: int = 224
+    openrouter_timeout: float = 60.0
 
     def validate(self) -> None:
         source = get_dataset_source(self.dataset_name)
@@ -73,10 +93,27 @@ class PrecomputeConfig:
             raise ValueError("limit must be positive")
         if self.log_every <= 0:
             raise ValueError("log_every must be positive")
+        if self.use_openrouter:
+            if not self.openrouter_api_key or not self.openrouter_api_key.strip():
+                raise ValueError(
+                    "OPENROUTER_API_KEY must be set when --openrouter is enabled"
+                )
+            if self.openrouter_dimensions <= 0:
+                raise ValueError("openrouter_dimensions must be positive")
+            if self.openrouter_request_batch_size <= 0:
+                raise ValueError(
+                    "openrouter_request_batch_size must be positive"
+                )
+            if self.openrouter_image_size <= 0:
+                raise ValueError("openrouter_image_size must be positive")
+            if self.openrouter_timeout <= 0.0:
+                raise ValueError("openrouter_timeout must be positive")
 
     @property
     def target_dir(self) -> Path:
         model_slug = re.sub(r"[^A-Za-z0-9._-]+", "-", self.model_name).strip("-")
+        if self.use_openrouter:
+            model_slug = f"openrouter-{model_slug}"
         return self.output_dir / model_slug / self.subset / self.split.value
 
 
@@ -302,7 +339,12 @@ def encode_item_batch(
 def run(config: PrecomputeConfig) -> Path:
     """Execute one end-to-end embedding precomputation job."""
     config.validate()
-    device = resolve_device(config.device)
+    requested_device = (
+        "cpu"
+        if config.use_openrouter and config.device == "auto"
+        else config.device
+    )
+    device = resolve_device(requested_device)
     LOGGER.info("device=%s", device)
     writer = EmbeddingShardWriter(
         config.target_dir,
@@ -311,7 +353,7 @@ def run(config: PrecomputeConfig) -> Path:
         overwrite=config.overwrite,
     )
 
-    image_transform = build_fashion_clip_transform(config.model_name)
+    image_transform = _build_image_transform(config)
     source = get_dataset_source(config.dataset_name)
     dataset = source.item_dataset(
         DatasetRequest(
@@ -334,18 +376,11 @@ def run(config: PrecomputeConfig) -> Path:
         shuffle=False,
     )
 
-    visual_encoder = FashionCLIPVisualEncoder(
-        config.model_name,
-        trainable=False,
-    ).to(device)
-    text_encoder = FashionCLIPTextEncoder(
-        config.model_name,
-        trainable=False,
-    ).to(device)
+    visual_encoder, text_encoder = _build_encoders(config, device)
     visual_encoder.eval()
     text_encoder.eval()
     if visual_encoder.output_dim != text_encoder.output_dim:
-        raise ValueError("FashionCLIP visual and text projection dimensions differ")
+        raise ValueError("visual and text embedding dimensions differ")
 
     for batch_index, batch in enumerate(loader, start=1):
         selected_batch = _apply_limit(batch, config.limit, writer.count)
@@ -373,6 +408,48 @@ def run(config: PrecomputeConfig) -> Path:
     return manifest_path
 
 
+def _build_image_transform(config: PrecomputeConfig) -> ImageTransform:
+    if config.use_openrouter:
+        return build_openrouter_transform(
+            image_size=config.openrouter_image_size,
+        )
+    return build_fashion_clip_transform(config.model_name)
+
+
+def _build_encoders(
+    config: PrecomputeConfig,
+    device: torch.device,
+) -> tuple[VisualEncoder, TextEncoder]:
+    if config.use_openrouter:
+        api_key = config.openrouter_api_key
+        if api_key is None:
+            raise ValueError("OPENROUTER_API_KEY is required")
+        visual_encoder: VisualEncoder = OpenRouterVisualEncoder(
+            config.model_name,
+            api_key,
+            output_dim=config.openrouter_dimensions,
+            request_batch_size=config.openrouter_request_batch_size,
+            timeout_seconds=config.openrouter_timeout,
+        )
+        text_encoder: TextEncoder = OpenRouterTextEncoder(
+            config.model_name,
+            api_key,
+            output_dim=config.openrouter_dimensions,
+            request_batch_size=config.openrouter_request_batch_size,
+            timeout_seconds=config.openrouter_timeout,
+        )
+    else:
+        visual_encoder = FashionCLIPVisualEncoder(
+            config.model_name,
+            trainable=False,
+        )
+        text_encoder = FashionCLIPTextEncoder(
+            config.model_name,
+            trainable=False,
+        )
+    return visual_encoder.to(device), text_encoder.to(device)
+
+
 def resolve_device(value: str) -> torch.device:
     """Resolve ``auto`` or validate an explicit PyTorch device."""
     if value == "auto":
@@ -396,8 +473,8 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     default_source = get_dataset_source(DEFAULT_DATASET_NAME)
     parser = argparse.ArgumentParser(
         description=(
-            "Precompute concatenated FashionCLIP visual/text embeddings for "
-            "fashion dataset items."
+            "Precompute concatenated visual/text embeddings for fashion "
+            "dataset items. FashionCLIP is used unless --openrouter is set."
         )
     )
     parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
@@ -411,7 +488,42 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
         choices=[split.value for split in DataSplit],
         default=DataSplit.TRAIN.value,
     )
-    parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME)
+    parser.add_argument(
+        "--model-name",
+        help=(
+            "encoder model; defaults to FashionCLIP locally or "
+            f"{DEFAULT_OPENROUTER_MODEL_NAME} with --openrouter"
+        ),
+    )
+    parser.add_argument(
+        "--openrouter",
+        action="store_true",
+        help="use OpenRouter embedding API instead of local FashionCLIP",
+    )
+    parser.add_argument(
+        "--openrouter-dimensions",
+        type=int,
+        default=DEFAULT_OPENROUTER_DIMENSIONS,
+        help="embedding dimensions per image and text request",
+    )
+    parser.add_argument(
+        "--openrouter-request-batch-size",
+        type=int,
+        default=8,
+        help="maximum inputs sent in each OpenRouter API request",
+    )
+    parser.add_argument(
+        "--openrouter-image-size",
+        type=int,
+        default=224,
+        help="square image size encoded and sent to OpenRouter",
+    )
+    parser.add_argument(
+        "--openrouter-timeout",
+        type=float,
+        default=60.0,
+        help="timeout in seconds for each OpenRouter API attempt",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -441,12 +553,20 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     source = get_dataset_source(arguments.dataset)
     subset = source.descriptor.validate_subset(arguments.subset)
     token: bool | str | None = False if arguments.no_token else arguments.token or True
+    model_name = arguments.model_name or (
+        DEFAULT_OPENROUTER_MODEL_NAME
+        if arguments.openrouter
+        else DEFAULT_MODEL_NAME
+    )
+    openrouter_api_key = (
+        os.environ.get("OPENROUTER_API_KEY") if arguments.openrouter else None
+    )
 
     config = PrecomputeConfig(
         dataset_name=source.descriptor.name,
         subset=subset,
         split=DataSplit(arguments.split),
-        model_name=arguments.model_name,
+        model_name=model_name,
         output_dir=arguments.output_dir,
         dataset_root=arguments.dataset_root or source.descriptor.default_root,
         cache_dir=arguments.cache_dir,
@@ -459,6 +579,12 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
         limit=arguments.limit,
         overwrite=arguments.overwrite,
         log_every=arguments.log_every,
+        use_openrouter=arguments.openrouter,
+        openrouter_api_key=openrouter_api_key,
+        openrouter_dimensions=arguments.openrouter_dimensions,
+        openrouter_request_batch_size=arguments.openrouter_request_batch_size,
+        openrouter_image_size=arguments.openrouter_image_size,
+        openrouter_timeout=arguments.openrouter_timeout,
     )
     config.validate()
     return config
@@ -519,20 +645,27 @@ def _l2_normalize(embeddings: Tensor, name: str) -> Tensor:
 
 def _build_manifest_metadata(
     config: PrecomputeConfig,
-    visual_encoder: FashionCLIPVisualEncoder,
-    text_encoder: FashionCLIPTextEncoder,
+    visual_encoder: VisualEncoder,
+    text_encoder: TextEncoder,
 ) -> dict[str, Any]:
     source = get_dataset_source(config.dataset_name)
     encoder_metadata = {
+        "provider": "openrouter" if config.use_openrouter else "huggingface",
         "model_name": config.model_name,
         "visual_encoder": type(visual_encoder).__name__,
         "text_encoder": type(text_encoder).__name__,
-        "visual_commit": getattr(visual_encoder.backbone.config, "_commit_hash", None),
-        "text_commit": getattr(text_encoder.backbone.config, "_commit_hash", None),
+        "visual_commit": _encoder_commit(visual_encoder),
+        "text_commit": _encoder_commit(text_encoder),
         "modality_dim": visual_encoder.output_dim,
         "normalization": "l2_per_modality",
         "aggregation": "concat_visual_then_text",
     }
+    if config.use_openrouter:
+        encoder_metadata.update(
+            {
+                "image_size": config.openrouter_image_size,
+            }
+        )
     fingerprint_source = json.dumps(
         encoder_metadata,
         sort_keys=True,
@@ -548,6 +681,13 @@ def _build_manifest_metadata(
         "encoder": encoder_metadata,
         "model_fingerprint": hashlib.sha256(fingerprint_source).hexdigest(),
     }
+
+
+def _encoder_commit(encoder: VisualEncoder | TextEncoder) -> str | None:
+    backbone = getattr(encoder, "backbone", None)
+    config = getattr(backbone, "config", None)
+    commit = getattr(config, "_commit_hash", None)
+    return commit if isinstance(commit, str) and commit else None
 
 
 if __name__ == "__main__":

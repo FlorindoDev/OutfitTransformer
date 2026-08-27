@@ -1,9 +1,15 @@
 """Interchangeable visual encoders for clothing images."""
 
+import base64
 from abc import ABC, abstractmethod
+from io import BytesIO
 
+import torch
 from torch import Tensor, nn
 from torchvision.models import ResNet18_Weights, resnet18
+from torchvision.transforms.functional import to_pil_image
+
+from .openrouter import OpenRouterEmbeddingClient
 
 
 class VisualEncoder(nn.Module, ABC):
@@ -113,3 +119,75 @@ class FashionCLIPVisualEncoder(VisualEncoder):
         if images.size(1) != 3:
             raise ValueError("FashionCLIP expects three-channel images")
         return self.backbone(pixel_values=images).image_embeds
+
+
+class OpenRouterVisualEncoder(VisualEncoder):
+    """Remote image encoder backed by OpenRouter's embedding API."""
+
+    def __init__(
+        self,
+        model_name: str,
+        api_key: str,
+        *,
+        output_dim: int = 512,
+        request_batch_size: int = 8,
+        timeout_seconds: float = 60.0,
+        max_retries: int = 3,
+    ) -> None:
+        super().__init__()
+        self.model_name = model_name.strip()
+        self.client = OpenRouterEmbeddingClient(
+            self.model_name,
+            api_key,
+            output_dim=output_dim,
+            request_batch_size=request_batch_size,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+        self._output_dim = output_dim
+        self.register_buffer("_device_anchor", torch.empty(0), persistent=False)
+
+    @property
+    def output_dim(self) -> int:
+        return self._output_dim
+
+    def forward(self, images: Tensor) -> Tensor:
+        _validate_openrouter_images(images)
+        cpu_images = images.detach().cpu()
+        inputs = tuple(
+            {
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": _image_data_url(image)},
+                    }
+                ]
+            }
+            for image in cpu_images
+        )
+        return self.client.embed_multimodal(
+            inputs,
+            device=self.get_buffer("_device_anchor").device,
+        )
+
+
+def _validate_openrouter_images(images: Tensor) -> None:
+    if images.ndim != 4:
+        raise ValueError("images must have shape [items, channels, height, width]")
+    if images.size(0) == 0:
+        raise ValueError("images cannot be empty")
+    if images.size(1) != 3:
+        raise ValueError("OpenRouter expects three-channel images")
+    if not torch.is_floating_point(images):
+        raise TypeError("OpenRouter images must be floating point")
+    if not bool(torch.isfinite(images).all()):
+        raise ValueError("OpenRouter images must contain only finite values")
+    if bool((images < 0.0).any()) or bool((images > 1.0).any()):
+        raise ValueError("OpenRouter images must contain values in [0, 1]")
+
+
+def _image_data_url(image: Tensor) -> str:
+    buffer = BytesIO()
+    to_pil_image(image).save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"

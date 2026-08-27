@@ -6,6 +6,8 @@ from collections.abc import Sequence
 import torch
 from torch import Tensor, nn
 
+from .openrouter import OpenRouterEmbeddingClient
+
 
 class TextEncoder(nn.Module, ABC):
     """Contract required by the multimodal OutfitTransformer."""
@@ -142,6 +144,44 @@ class FashionCLIPTextEncoder(TextEncoder):
             return_tensors="pt",
         ).to(device)
         return self.backbone(**tokens).text_embeds
+
+
+class OpenRouterTextEncoder(TextEncoder):
+    """Remote text encoder backed by OpenRouter's embedding API."""
+
+    def __init__(
+        self,
+        model_name: str,
+        api_key: str,
+        *,
+        output_dim: int = 512,
+        request_batch_size: int = 8,
+        timeout_seconds: float = 60.0,
+        max_retries: int = 3,
+    ) -> None:
+        super().__init__()
+        self.model_name = model_name.strip()
+        self.client = OpenRouterEmbeddingClient(
+            self.model_name,
+            api_key,
+            output_dim=output_dim,
+            request_batch_size=request_batch_size,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+        self._output_dim = output_dim
+        self.register_buffer("_device_anchor", torch.empty(0), persistent=False)
+
+    @property
+    def output_dim(self) -> int:
+        return self._output_dim
+
+    def forward(self, descriptions: Sequence[str]) -> Tensor:
+        _validate_descriptions(descriptions)
+        return self.client.embed_texts(
+            descriptions,
+            device=self.get_buffer("_device_anchor").device,
+        )
 
 
 def _validate_descriptions(descriptions: Sequence[str]) -> None:

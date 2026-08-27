@@ -7,7 +7,7 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 - [File](#file)
 - [Download Polyvore](#download-polyvore)
 - [Flag precomputazione](#flag-precomputazione)
-- [Precomputazione FashionCLIP](#precomputazione-fashionclip)
+- [Precomputazione multimodale](#precomputazione-multimodale)
 - [Controlli e sicurezza](#controlli-e-sicurezza)
 - [Artefatti prodotti](#artefatti-prodotti)
 - [Contenuto degli shard](#contenuto-degli-shard)
@@ -19,7 +19,7 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 | File | Funzione concettuale |
 | --- | --- |
 | `download_polyvore.py` | Scarica intero repository Polyvore nella cartella locale usata dal progetto. |
-| `precompute_embeddings.py` | Trasforma immagini e descrizioni Polyvore in embedding FashionCLIP già pronti per il training CP in modalità CLIP. |
+| `precompute_embeddings.py` | Trasforma immagini e descrizioni Polyvore in embedding FashionCLIP locali o OpenRouter remoti. |
 
 ## Download Polyvore
 
@@ -51,7 +51,12 @@ training, evaluation e precomputazione trovano subito risorse locali.
 | `--dataset` | `polyvore` | Seleziona source registrata nell'API pubblica `data`. |
 | `--subset` | `disjoint` | Seleziona il subset del dataset. |
 | `--split` | `train` | Seleziona lo split da elaborare: `train`, `validation` oppure `test`. |
-| `--model-name` | `patrickjohncyh/fashion-clip` | Sceglie il modello FashionCLIP usato per codificare immagini e testi. |
+| `--model-name` | dipende dal backend | Sceglie il modello. Senza `--openrouter` usa `patrickjohncyh/fashion-clip`; con OpenRouter usa `google/gemini-embedding-2`. |
+| `--openrouter` | disattivato | Usa API embedding OpenRouter. Senza flag resta sempre attivo FashionCLIP locale. |
+| `--openrouter-dimensions` | `512` | Dimensione richiesta per ciascuna modalità; `512` produce cache finali da `1024` compatibili col training predefinito. |
+| `--openrouter-request-batch-size` | `8` | Numero massimo di input inviati in una singola richiesta API. |
+| `--openrouter-image-size` | `224` | Lato in pixel delle immagini quadrate inviate come PNG base64. |
+| `--openrouter-timeout` | `60` | Timeout in secondi per ogni tentativo API; gli errori transitori vengono ritentati automaticamente. |
 | `--output-dir` | `precomputed_embeddings` | Imposta la cartella radice in cui salvare cache e manifest. |
 | `--dataset-root` | `datasets/polyvore-outfits` | Cerca qui dataset Polyvore prima di usare cache Hugging Face o download. |
 | `--cache-dir` | non impostato | Indica una cache personalizzata per i file scaricati da Hugging Face. |
@@ -59,29 +64,38 @@ training, evaluation e precomputazione trovano subito risorse locali.
 | `--num-workers` | `0` | Numero di processi usati per caricare i dati. `0` mantiene il caricamento nel processo principale. |
 | `--shard-size` | `10000` | Numero massimo di articoli in ogni file di output; non modifica il batch di inferenza. |
 | `--output-dtype` | `float32` | Precisione degli embedding salvati: `float32` o `float16`. |
-| `--device` | `auto` | Sceglie il dispositivo. In automatico prova CUDA, poi MPS e infine CPU; accetta anche un dispositivo esplicito. |
+| `--device` | `auto` | Sceglie il dispositivo. FashionCLIP prova CUDA, poi MPS e CPU; OpenRouter usa CPU in automatico perché inferenza è remota. Accetta anche un dispositivo esplicito. |
 | `--limit` | non impostato | Limita il numero totale di articoli, utile per prove rapide; senza valore elabora tutto lo split. |
 | `--overwrite` | disattivato | Sostituisce una cache già esistente, eliminando esclusivamente gli artefatti gestiti dallo script. |
 | `--log-every` | `25` | Mostra l'avanzamento ogni N batch. |
 | `--token` | credenziali locali | Usa un token Hugging Face esplicito; in assenza del flag vengono usate le credenziali locali disponibili. |
 | `--no-token` | disattivato | Forza l'accesso anonimo a Hugging Face; è incompatibile con `--token`. |
 
-## Precomputazione FashionCLIP
+## Precomputazione multimodale
 
 `precompute_embeddings.py` prepara una rappresentazione multimodale per ogni articolo Polyvore:
 
 1. chiede alla source pubblica item dello split e subset richiesti;
-2. codifica l'immagine con la torre visiva di FashionCLIP;
-3. codifica la descrizione con la torre testuale, rispettando la lunghezza massima prevista dal modello;
+2. codifica l'immagine con FashionCLIP oppure con un modello embedding
+   multimodale OpenRouter;
+3. codifica la descrizione con lo stesso backend e modello;
 4. normalizza separatamente le due rappresentazioni;
-5. concatena `512` valori visivi e `512` testuali in un vettore finale da `1024` valori;
-6. salva progressivamente i risultati in shard, senza calcolare gradienti o aggiornare FashionCLIP.
+5. concatena `D` valori visivi e `D` testuali; con default `D=512` ottiene un vettore da `1024` valori;
+6. salva progressivamente i risultati in shard, senza calcolare gradienti o aggiornare encoder.
 
 Risoluzione dati segue ordine: `--dataset-root`, cache Hugging Face, download.
 Se parquet e metadata sono già locali, precomputazione non contatta repository
 Polyvore.
 
-La precomputazione separa il costo di FashionCLIP dal training: il modulo CP legge vettori già pronti, riducendo tempo di calcolo e memoria richiesta durante le epoche.
+FashionCLIP resta backend predefinito e non richiede flag. OpenRouter è opt-in,
+legge la chiave solo dalla variabile `OPENROUTER_API_KEY` e non la salva nel
+manifest. Immagini e descrizioni vengono inviate al provider remoto; richieste
+possono avere costi. Modello scelto deve accettare input immagine e testo e
+restituire embedding nello stesso spazio.
+
+La precomputazione separa costo degli encoder dal training: il modulo CP legge
+vettori già pronti, riducendo tempo di calcolo e memoria richiesta durante le
+epoche.
 
 ## Controlli e sicurezza
 
@@ -113,16 +127,20 @@ Ogni `shard-*.pt` è un dizionario PyTorch con tre campi:
 | --- | --- | --- |
 | `schema_version` | Intero, attualmente `2` | Versione del formato, usata per riconoscere cache compatibili. |
 | `item_ids` | Tupla di `N` stringhe | Identificativi Polyvore degli articoli contenuti nello shard. |
-| `embeddings` | Tensore CPU `[N, 1024]` | Una riga per ogni `item_id`, nello stesso ordine, salvata in `float32` o `float16`. |
+| `embeddings` | Tensore CPU `[N, 2D]` | Una riga per ogni `item_id`, nello stesso ordine, salvata in `float32` o `float16`. |
 
 Ogni riga di `embeddings` è composta da due parti concatenate:
 
 | Posizione | Contenuto | Preparazione |
 | --- | --- | --- |
-| `0:512` | Rappresentazione dell'immagine | Prodotta dalla torre visiva FashionCLIP e normalizzata L2. |
-| `512:1024` | Rappresentazione della descrizione | Prodotta dalla torre testuale FashionCLIP e normalizzata L2. |
+| `0:D` | Rappresentazione dell'immagine | Prodotta dall'encoder visuale e normalizzata L2. |
+| `D:2D` | Rappresentazione della descrizione | Prodotta dall'encoder testuale e normalizzata L2. |
 
-`N` è al massimo pari a `--shard-size`: gli shard intermedi sono normalmente pieni, mentre l'ultimo può essere più piccolo. Gli shard non contengono immagini, descrizioni, categorie o pesi di FashionCLIP; conservano soltanto gli identificativi e le rappresentazioni numeriche necessarie al training.
+`D` vale `512` per default, quindi ogni riga contiene `1024` valori. Cambiare
+`--openrouter-dimensions` richiede una configurazione Transformer con dimensioni
+coerenti.
+
+`N` è al massimo pari a `--shard-size`: gli shard intermedi sono normalmente pieni, mentre l'ultimo può essere più piccolo. Gli shard non contengono immagini, descrizioni, categorie, pesi o API key; conservano soltanto identificativi e rappresentazioni numeriche necessarie al training.
 
 ## Uso nel training CP
 
@@ -145,3 +163,19 @@ Prova rapida su 100 articoli:
 ```powershell
 python -m scripts.precompute_embeddings --subset nondisjoint --split train --limit 100 --device auto
 ```
+
+Prova OpenRouter. PowerShell:
+
+```powershell
+$env:OPENROUTER_API_KEY = "<chiave>"
+python -m scripts.precompute_embeddings `
+  --openrouter `
+  --model-name google/gemini-embedding-2 `
+  --subset nondisjoint `
+  --split train `
+  --limit 100
+```
+
+Cache viene salvata sotto
+`precomputed_embeddings/openrouter-google-gemini-embedding-2/`. Passare questa
+cartella a `--embedding-root` durante training CP.
