@@ -11,7 +11,6 @@ preparare il futuro retrieval di articoli complementari.
 - [Creazione dell'ambiente](#creazione-dellambiente)
   - [Windows PowerShell](#windows-powershell)
   - [Linux e macOS](#linux-e-macos)
-- [Pesi preaddestrati locali](#pesi-preaddestrati-locali)
 - [Dataset locale](#dataset-locale)
 - [Precomputazione degli embedding](#precomputazione-degli-embedding)
 - [Addestramento CP](#addestramento-cp)
@@ -112,27 +111,6 @@ hf auth login
 Per i comandi disponibili dopo il setup: [guida degli script](scripts/README.md).
 Autenticazione e risoluzione delle risorse Polyvore sono descritte nella
 [guida del dataset](data/polyvore/README.md).
-
-## Pesi preaddestrati locali
-
-Passaggio opzionale: scaricare FashionCLIP, ResNet-18 e Sentence-BERT nella
-cartella `pretrained_models/` del progetto.
-
-PowerShell:
-
-```powershell
-python -m scripts.download_model_weights
-```
-
-Linux e macOS:
-
-```bash
-python -m scripts.download_model_weights
-```
-
-Modelli, percorsi, flag e struttura delle directory: [download dei pesi nella
-guida degli script](scripts/README.md#download-pesi-dei-modelli). Encoder e
-modalità d'uso sono descritti nella [guida del modello common](model/common/README.md#encoder-visuale-e-testuale).
 
 ## Dataset locale
 

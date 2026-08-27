@@ -6,7 +6,6 @@ __pycache__/
 checkpoints
 datasets/
 precomputed_embeddings/
-pretrained_models/
 results/
 outfit_preview.png
 show_dataset_outfit.py

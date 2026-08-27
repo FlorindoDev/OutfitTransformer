@@ -5,7 +5,6 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 ## Indice
 
 - [File](#file)
-- [Download pesi dei modelli](#download-pesi-dei-modelli)
 - [Download Polyvore](#download-polyvore)
 - [Flag precomputazione](#flag-precomputazione)
 - [Precomputazione multimodale](#precomputazione-multimodale)
@@ -19,48 +18,8 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 
 | File | Funzione concettuale |
 | --- | --- |
-| `download_model_weights.py` | Scarica nel progetto i pesi FashionCLIP, ResNet-18 e Sentence-BERT usati dagli encoder locali. |
 | `download_polyvore.py` | Scarica intero repository Polyvore nella cartella locale usata dal progetto. |
 | `precompute_embeddings.py` | Trasforma immagini e descrizioni Polyvore in embedding FashionCLIP locali o OpenRouter remoti. |
-
-## Download pesi dei modelli
-
-Scarica e verifica tutti i pesi preaddestrati usati dagli encoder locali:
-
-```powershell
-python -m scripts.download_model_weights
-```
-
-FashionCLIP e Sentence-BERT mantengono la struttura dei repository Hugging
-Face. ResNet-18 viene salvato come checkpoint `.pth`. Esecuzioni successive
-riusano i file invariati. La cartella `pretrained_models/` è esclusa da Git.
-
-Modelli Hugging Face diversi possono essere scelti esplicitamente:
-
-PowerShell:
-
-```powershell
-python -m scripts.download_model_weights `
-  --output-dir pretrained_models `
-  --fashion-clip-model-name patrickjohncyh/fashion-clip `
-  --sentence-transformer-model-name sentence-transformers/all-MiniLM-L6-v2
-```
-
-Linux (Bash):
-
-```bash
-python -m scripts.download_model_weights \
-  --output-dir pretrained_models \
-  --fashion-clip-model-name patrickjohncyh/fashion-clip \
-  --sentence-transformer-model-name sentence-transformers/all-MiniLM-L6-v2
-```
-
-`--output-dir` cambia la directory radice. I percorsi relativi vengono risolti
-dalla directory in cui viene eseguito il comando; eseguirlo dalla root del
-progetto mantiene i file dentro il progetto.
-
-`--token` usa un token Hugging Face esplicito; `--no-token` forza accesso
-anonimo. Senza entrambi vengono usate le credenziali Hugging Face disponibili.
 
 ## Download Polyvore
 
