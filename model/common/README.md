@@ -40,17 +40,17 @@ flowchart TD
 
     IMAGE --> VE["Encoder visuale<br/>ResNet-18 / FashionCLIP / OpenRouter"]
     TEXT --> TE["Encoder testuale<br/>SentenceTransformer / FashionCLIP / OpenRouter"]
-    VE --> VP["Proiezione a 512 + L2"]
-    TE --> TP["Proiezione a 512 + L2"]
+    VE --> VP["Proiezione a 512 + L2(normalizzazione)"]
+    TE --> TP["Proiezione a 512 + L2(normalizzazione)"]
     VP --> CAT["Concatenazione<br/>512 + 512"]
     TP --> CAT
 
     CAT --> ITEM["Item embedding<br/>1024 feature"]
-    PRE --> PN["Separazione modalità + L2"]
+    PRE --> PN["Separazione modalità + L2(normalizzazione)"]
     PN --> ITEM
 
     ITEM --> PAD["Padding appreso / troncamento<br/>massimo 16 item"]
-    PAD --> L2["L2 prima del Transformer"]
+    PAD --> L2["L2(normalizzazione) prima del Transformer"]
     L2 --> TR["Transformer encoder<br/>senza positional embedding"]
     TR --> OUT["Embedding contestualizzati<br/>mask, lunghezze, troncamenti"]
 ```
@@ -68,13 +68,14 @@ e CIR non sono ancora incluse.
 ## Configurazione centralizzata
 
 Tutti i default del modello sono in `model/common/config.py`. Il punto di
-accesso pubblico è `DEFAULT_MODEL_CONFIG`; contiene profilo Transformer
-predefinito, profili `classic` e `new_classic`, encoder e focal loss. La API key
-OpenRouter resta fuori dalla configurazione e viene letta dall'ambiente.
+accesso pubblico è `DEFAULT_MODEL_CONFIG`; contiene profili `classic`,
+`new_classic` e `precomputed`, oltre a encoder e focal loss. Config
+encoder include anche OpenRouter; API key resta fuori e viene letta
+dall'ambiente.
 
 | Sezione | Parametri principali |
 |---|---|
-| `transformer` | Dimensioni, layer, teste, FFN, dropout, attivazione, normalizzazione, massimo item e inizializzazione embedding. |
+| `transformer` | Profilo generico per embedding precomputati. |
 | `classic_transformer` | Profilo architetturale usato da `--classic`. |
 | `new_classic_transformer` | Profilo architetturale usato da `--new-classic`. |
 | `encoders` | Modelli, trainabilità, output OpenRouter, batching, dimensione immagini, timeout, retry e API base. |
@@ -224,7 +225,7 @@ attuale, questa mask impedisce al padding di influenzare gli item reali: il
 parametro è allenabile, ma riceve gradiente utile solo se una loss utilizza
 anche gli output padded.
 
-### Normalizzazione L2
+### L2 (normalizzazione)
 
 La normalizzazione L2 porta la lunghezza di un vettore a `1`, mantenendone la
 direzione:
@@ -241,7 +242,7 @@ l'intero item embedding:
 Visuale: [3, 4] -> [0.6, 0.8]
 Testo:   [0, 2] -> [0, 1]
 Fusione: [0.6, 0.8, 0, 1]
-L2 finale: [0.424, 0.566, 0, 0.707]
+L2 (normalizzazione) finale: [0.424, 0.566, 0, 0.707]
 ```
 
 Vettori nulli vengono rifiutati perché non possiedono una direzione

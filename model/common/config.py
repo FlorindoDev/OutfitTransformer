@@ -123,6 +123,15 @@ class CompatibilityConfig:
             )
 
 
+def _new_classic_transformer() -> TransformerConfig:
+    return TransformerConfig(
+        modality_embedding_dim=512,
+        feedforward_dim=512,
+        dropout=0.1,
+        norm_first=False,
+    )
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     """Single entry point for model defaults and feature-mode profiles."""
@@ -137,12 +146,7 @@ class ModelConfig:
         )
     )
     new_classic_transformer: TransformerConfig = field(
-        default_factory=lambda: TransformerConfig(
-            modality_embedding_dim=512,
-            feedforward_dim=512,
-            dropout=0.1,
-            norm_first=False,
-        )
+        default_factory=_new_classic_transformer
     )
     encoders: EncoderConfig = field(default_factory=EncoderConfig)
     compatibility: CompatibilityConfig = field(

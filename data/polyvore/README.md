@@ -206,19 +206,8 @@ La cartella locale può contenere anche solo parte del dataset. I parquet
 seguono `data/<variant>/<split>.parquet`; metadata e annotazioni mantengono i
 percorsi del repository `mvasil/polyvore-outfits`.
 
-Per scaricare entrambe le varianti e tutti gli split nella cartella locale:
-
-PowerShell:
-
-```powershell
-python -m scripts.download_polyvore
-```
-
-Linux (Bash):
-
-```bash
-python -m scripts.download_polyvore
-```
+Comandi PowerShell/Linux e flag di download stanno solo nella
+[guida degli script](../../scripts/README.md#download-polyvore).
 
 ## Varianti e split
 

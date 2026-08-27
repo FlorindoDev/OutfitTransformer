@@ -1,4 +1,4 @@
-"""Dataset-neutral CP inputs and precomputed CLIP embeddings."""
+"""Dataset-neutral CP inputs and precomputed embeddings."""
 
 from __future__ import annotations
 
@@ -141,7 +141,7 @@ def build_compatibility_loaders(
     *,
     token: bool | str | None = True,
 ) -> CompatibilityLoaders:
-    """Build loaders for raw inputs or precomputed CLIP features."""
+    """Build loaders for raw inputs or precomputed features."""
     data_config = CompatibilityDataConfig.from_training_config(config)
     data_config.validate()
     if data_config.feature_mode.uses_raw_inputs:
@@ -160,13 +160,13 @@ def build_compatibility_loaders(
             ),
         )
 
-    train_loader, train_cache = _build_clip_loader(
+    train_loader, train_cache = _build_precomputed_loader(
         data_config,
         split=DataSplit.TRAIN,
         shuffle=True,
         token=token,
     )
-    validation_loader, validation_cache = _build_clip_loader(
+    validation_loader, validation_cache = _build_precomputed_loader(
         data_config,
         split=DataSplit.VALIDATION,
         shuffle=False,
@@ -202,7 +202,7 @@ def build_compatibility_loader(
             shuffle=shuffle,
             token=token,
         )
-    loader, _ = _build_clip_loader(
+    loader, _ = _build_precomputed_loader(
         config,
         split=split,
         shuffle=shuffle,
@@ -237,7 +237,7 @@ def _build_classic_loader(
     )
 
 
-def _build_clip_loader(
+def _build_precomputed_loader(
     config: CompatibilityDataConfig,
     *,
     split: DataSplit,

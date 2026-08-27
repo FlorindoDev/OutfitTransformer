@@ -11,7 +11,11 @@ from data import DEFAULT_DATASET_NAME, get_dataset_source
 from model import DEFAULT_MODEL_CONFIG
 from training.common import load_model_weights, resolve_device, seed_everything
 
-from .config import CPTrainingConfig, DEFAULT_EMBEDDING_ROOT, FeatureMode
+from .config import (
+    CPTrainingConfig,
+    DEFAULT_PRECOMPUTED_EMBEDDING_ROOT,
+    FeatureMode,
+)
 from .data import build_compatibility_loaders
 from .model import CPTrainingModel
 from .trainer import TrainingResult, train
@@ -57,20 +61,23 @@ def parse_args(
         action="store_const",
         const=FeatureMode.CLASSIC,
         dest="feature_mode",
+        help="encode raw inputs with the classic 64+64 profile",
     )
     feature_source.add_argument(
         "--new-classic",
         action="store_const",
         const=FeatureMode.NEW_CLASSIC,
         dest="feature_mode",
+        help="encode raw inputs with the default 512+512 profile",
     )
     feature_source.add_argument(
-        "--clip",
+        "--precomputed",
         action="store_const",
-        const=FeatureMode.CLIP,
+        const=FeatureMode.PRECOMPUTED,
         dest="feature_mode",
+        help="load item embeddings precomputed with any compatible model",
     )
-    parser.set_defaults(feature_mode=FeatureMode.CLIP)
+    parser.set_defaults(feature_mode=FeatureMode.NEW_CLASSIC)
     parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
     parser.add_argument(
         "--subset",
@@ -80,7 +87,6 @@ def parse_args(
     parser.add_argument(
         "--embedding-root",
         type=Path,
-        default=DEFAULT_EMBEDDING_ROOT,
     )
     parser.add_argument(
         "--dataset-root",
@@ -134,11 +140,14 @@ def parse_args(
         / subset
         / f"cp_{arguments.feature_mode.value}"
     )
+    embedding_root = (
+        arguments.embedding_root or DEFAULT_PRECOMPUTED_EMBEDDING_ROOT
+    )
     config = CPTrainingConfig(
         dataset_name=source.descriptor.name,
         subset=subset,
         feature_mode=arguments.feature_mode,
-        embedding_root=arguments.embedding_root,
+        embedding_root=embedding_root,
         dataset_root=dataset_root,
         checkpoint_dir=checkpoint_dir,
         cache_dir=arguments.cache_dir,

@@ -33,7 +33,7 @@ il task CIR è previsto ma non ancora implementato.
 | `model` | Espone architettura comune e moduli specifici dei task. | [README](model/README.md) |
 | `model/common` | Crea embedding multimodali e li contestualizza con il Transformer. | [README](model/common/README.md) |
 | `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
-| `training` | Allena CP in modalità classic, new classic o CLIP e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
+| `training` | Allena CP con input runtime o embedding precomputati e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
 | `metrics` | Calcola metriche riutilizzabili per training e valutazione. | [README](metrics/README.md) |
 
 ## Architettura generale
@@ -45,15 +45,15 @@ flowchart TD
     A --> B["Encoder visuale<br/>ResNet-18 / FashionCLIP / OpenRouter"]
     A --> C["Encoder testuale<br/>SentenceTransformer / FashionCLIP / OpenRouter"]
 
-    B --> D["Proiezione + norm L2<br/>64 o 512 feature visuali"]
-    C --> E["Proiezione + norm L2<br/>64 o 512 feature testuali"]
+    B --> D["Proiezione + L2 (normalizzazione)<br/>64 o 512 feature visuali"]
+    C --> E["Proiezione + L2 (normalizzazione)<br/>64 o 512 feature testuali"]
 
     D --> F["Concatenazione visuale + testo"]
     E --> F
 
     F --> G["Item embeddings<br/>B × L × 128 o 1024"]
     P["Embedding precomputato<br/>FashionCLIP o OpenRouter"] --> G
-    G --> H["norm L2 + padding appreso + padding mask<br/>massimo 16 item"]
+    G --> H["L2 (normalizzazione) + padding appreso + padding mask<br/>massimo 16 item"]
     H --> I["Transformer common encoder-only<br/>6 layer · 16 teste · nessuna posizione"]
     I --> J["Item embeddings contestualizzati<br/>B × 16 × 128 o 1024"]
 
@@ -129,7 +129,8 @@ La precomputazione usa per default le tower visuale e testuale FashionCLIP. Con
 `--openrouter` può usare un modello embedding multimodale remoto scelto tramite
 `--model-name`; la chiave viene letta da `OPENROUTER_API_KEY`. I due output
 vengono normalizzati L2, concatenati e salvati in shard `.pt` associati agli
-`item_id`.
+`item_id`. Nel training entrambe le cache usano `--precomputed`; la cache viene
+scelta con `--embedding-root`.
 
 PowerShell:
 
@@ -151,8 +152,8 @@ viene sostituita senza l'opzione esplicita `--overwrite`.
 
 ## Valutazione CP
 
-Preparare prima embedding dello split `test` quando checkpoint usa FashionCLIP,
-poi avviare evaluation:
+Preparare prima embedding dello split `test` quando checkpoint usa input
+precomputati, poi avviare evaluation:
 
 PowerShell:
 
@@ -162,7 +163,7 @@ python -m scripts.precompute_embeddings `
   --split test
 
 python -m evaluation.CP.evaluate_cp `
-  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
+  --checkpoint checkpoints/nondisjoint/cp_precomputed/best.pt
 ```
 
 Linux (Bash):
@@ -173,7 +174,7 @@ python -m scripts.precompute_embeddings \
   --split test
 
 python -m evaluation.CP.evaluate_cp \
-  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
+  --checkpoint checkpoints/nondisjoint/cp_precomputed/best.pt
 ```
 
 Comando ricava dataset, subset, modalità feature e architettura dal checkpoint. Salva

@@ -19,13 +19,13 @@ from .config import FeatureMode, default_transformer_config
 
 
 class CPTrainingModel(nn.Module):
-    """Compose CP with runtime encoders or precomputed CLIP embeddings."""
+    """Compose CP with runtime encoders or precomputed embeddings."""
 
     def __init__(
         self,
         config: TransformerConfig | None = None,
         *,
-        feature_mode: FeatureMode = FeatureMode.CLIP,
+        feature_mode: FeatureMode = FeatureMode.NEW_CLASSIC,
         visual_encoder: VisualEncoder | None = None,
         text_encoder: TextEncoder | None = None,
     ) -> None:
@@ -44,7 +44,7 @@ class CPTrainingModel(nn.Module):
         else:
             if visual_encoder is not None or text_encoder is not None:
                 raise ValueError(
-                    "CLIP mode cannot receive runtime visual or text encoders"
+                    "precomputed mode cannot receive runtime encoders"
                 )
             self.common = OutfitContextTransformer(self.config)
         self.cp = CompatibilityTransformer(self.config)

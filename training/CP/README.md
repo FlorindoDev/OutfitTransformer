@@ -1,10 +1,9 @@
 # Training Compatibility Prediction
 
-Training CP supporta tre profili selezionabili con flag mutuamente esclusivi.
-`--classic` mantiene le dimensioni storiche dei checkpoint, `--new-classic`
-usa gli stessi encoder con rappresentazioni più ampie e `--clip` usa embedding
-FashionCLIP precomputati. Transformer common, Transformer CP, token e testa di
-classificazione vengono allenati in tutte le modalità.
+Training CP supporta tre profili selezionabili con flag mutuamente
+esclusivi. `--classic` mantiene dimensioni storiche; `--new-classic` usa stessi
+encoder con rappresentazioni più ampie; `--precomputed` carica embedding
+prodotti da qualsiasi modello compatibile. Default è sempre `new_classic`.
 
 ## Modalità
 
@@ -12,20 +11,20 @@ classificazione vengono allenati in tutte le modalità.
 |---|---|---:|---|---|
 | `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
 | `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
-| `--clip` | FashionCLIP visuale + testo | `512 + 512 = 1024` | Transformer e CP; tower FashionCLIP congelate | Richiesta per train e validation |
+| `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer e CP | Richiesta per train e validation |
 
-`classic` e `new_classic` condividono encoder, 6 layer, 16 teste, feed-forward
-512, dropout `0.1` e post-norm. Cambia soltanto la dimensione di ogni modalità:
-`classic` usa 64 feature per mantenere la forma dei checkpoint storici;
-`new_classic` ne usa 512. `clip` mantiene 6 layer, 16 teste, feed-forward 2024,
-dropout `0.3` e pre-norm.
+`classic` e `new_classic` condividono encoder runtime, 6 layer, 16
+teste, feed-forward 512, dropout `0.1` e post-norm. `classic` usa 64 feature per
+modalità; `new_classic` ne usa 512. `precomputed` mantiene profilo
+generico con feed-forward 2024, dropout `0.3` e pre-norm, indipendentemente dal
+modello che ha prodotto la cache.
 
 ## Configurazione predefinita
 
 | Aspetto | Valore |
 |---|---|
 | Dataset | `polyvore`, subset `nondisjoint` |
-| Modalità feature | `clip` |
+| Modalità feature | `new_classic` |
 | Epoche | 200 |
 | Microbatch | 512 |
 | Accumulo gradienti | 4 microbatch, batch effettivo 2048 |
@@ -43,11 +42,11 @@ dropout `0.3` e pre-norm.
 |---|---|---|
 | `-h`, `--help` | — | Mostra guida dei comandi e termina. |
 | `--classic` | disabilitato | Usa immagini e testi originali con ResNet-18 ImageNet e SentenceBERT, proiettati a `64 + 64`. È mutuamente esclusivo con gli altri profili. |
-| `--new-classic` | disabilitato | Usa la pipeline classic con proiezioni ampliate a `512 + 512`. È mutuamente esclusivo con gli altri profili. |
-| `--clip` | abilitato | Usa embedding FashionCLIP prodotti da `precompute_embeddings`. È mutuamente esclusivo con gli altri profili. |
+| `--new-classic` | abilitato | Usa pipeline runtime con proiezioni `512 + 512`. |
+| `--precomputed` | disabilitato | Usa cache prodotta da qualsiasi modello con dimensioni compatibili. |
 | `--dataset` | `polyvore` | Seleziona source registrata nell'API pubblica `data`. |
 | `--subset` | `nondisjoint` | Seleziona il subset della source. |
-| `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | In modalità `clip`, indica root delle cache embedding; training aggiunge automaticamente `<subset>/<split>`. Ignorato da `classic` e `new_classic`. |
+| `--embedding-root` | `precomputed_embeddings/patrickjohncyh-fashion-clip` | Sceglie quale cache usare; training aggiunge `<subset>/<split>`. Ignorato da `classic` e `new_classic`. |
 | `--dataset-root` | `datasets/polyvore-outfits` | Cerca qui dataset e annotazioni prima di usare cache Hugging Face o download. |
 | `--checkpoint-dir` | `checkpoints/<subset>/cp_<mode>` | Indica directory di configurazione, checkpoint e grafici. Deve non contenere già un run. |
 | `--cache-dir` | `None` | Imposta directory cache usata da Hugging Face per dataset e annotazioni. |
@@ -71,27 +70,15 @@ dropout `0.3` e pre-norm.
 | `--token` | token locale Hugging Face | Usa token esplicito per scaricare risorse. È mutuamente esclusivo con `--no-token`. |
 | `--no-token` | disabilitato | Forza accesso Hugging Face senza autenticazione. È mutuamente esclusivo con `--token`. |
 
-## Preparazione CLIP
+## Preparazione embedding
 
-Solo `--clip` richiede cache separate per train e validation:
-
-PowerShell:
-
-```powershell
-python -m scripts.precompute_embeddings --subset nondisjoint --split train
-python -m scripts.precompute_embeddings --subset nondisjoint --split validation
-```
-
-Linux (Bash):
-
-```bash
-python -m scripts.precompute_embeddings --subset nondisjoint --split train
-python -m scripts.precompute_embeddings --subset nondisjoint --split validation
-```
+`--precomputed` richiede cache separate per train e validation. Generazione,
+flag FashionCLIP/OpenRouter ed esempi PowerShell/Linux stanno solo nella
+[guida degli script](../../scripts/README.md#esempi).
 
 Per tutte le modalità, risorse Polyvore seguono ordine locale, cache Hugging
-Face, download. In `clip` vengono cercate soltanto annotazioni outfit/CP:
-immagini e metadata non vengono caricati durante training.
+Face, download. Con embedding precomputati vengono cercate soltanto annotazioni
+outfit/CP: immagini e metadata non vengono caricati durante training.
 
 Training usa soltanto `DatasetSource`, `DatasetRequest` e tipi pubblici di
 `data`. Parser, download e struttura Polyvore restano confinati in
@@ -113,32 +100,54 @@ Linux (Bash):
 python -m training.CP.train_cp --classic
 ```
 
-Versione classic ampliata a 512 feature per modalità:
+New classic, profilo predefinito:
+
+Senza flag oppure con flag esplicito:
 
 PowerShell:
 
 ```powershell
+python -m training.CP.train_cp
 python -m training.CP.train_cp --new-classic
 ```
 
 Linux (Bash):
 
 ```bash
+python -m training.CP.train_cp
 python -m training.CP.train_cp --new-classic
 ```
 
-Versione FashionCLIP con embedding precomputati:
+Embedding FashionCLIP precomputati, usando root predefinita:
 
 PowerShell:
 
 ```powershell
-python -m training.CP.train_cp --clip
+python -m training.CP.train_cp --precomputed
 ```
 
 Linux (Bash):
 
 ```bash
-python -m training.CP.train_cp --clip
+python -m training.CP.train_cp --precomputed
+```
+
+Embedding OpenRouter precomputati, scegliendo relativa root:
+
+PowerShell:
+
+```powershell
+python -m training.CP.train_cp `
+  --precomputed `
+  --embedding-root precomputed_embeddings/openrouter-google-gemini-embedding-2
+```
+
+Linux (Bash):
+
+```bash
+python -m training.CP.train_cp \
+  --precomputed \
+  --embedding-root precomputed_embeddings/openrouter-google-gemini-embedding-2
 ```
 
 Esempio con early stopping e directory dedicata:
@@ -147,7 +156,7 @@ PowerShell:
 
 ```powershell
 python -m training.CP.train_cp `
-  --clip `
+  --precomputed `
   --early-stopping-patience 10 `
   --best-metric val_auc `
   --checkpoint-dir checkpoints/nondisjoint/esperimento_01
@@ -157,7 +166,7 @@ Linux (Bash):
 
 ```bash
 python -m training.CP.train_cp \
-  --clip \
+  --precomputed \
   --early-stopping-patience 10 \
   --best-metric val_auc \
   --checkpoint-dir checkpoints/nondisjoint/esperimento_01
@@ -169,7 +178,7 @@ PowerShell:
 
 ```powershell
 python -m training.CP.train_cp `
-  --clip `
+  --precomputed `
   --resume checkpoints/nondisjoint/esperimento_01/best.pt `
   --checkpoint-dir checkpoints/nondisjoint/esperimento_02
 ```
@@ -178,7 +187,7 @@ Linux (Bash):
 
 ```bash
 python -m training.CP.train_cp \
-  --clip \
+  --precomputed \
   --resume checkpoints/nondisjoint/esperimento_01/best.pt \
   --checkpoint-dir checkpoints/nondisjoint/esperimento_02
 ```
@@ -188,6 +197,8 @@ la sessione creata da `hf auth login`, oppure passare `--token`.
 
 ## Artefatti
 
-Ogni profilo usa per default una directory distinta:
-`cp_classic`, `cp_new_classic` oppure `cp_clip`. Struttura e contenuto degli
-artefatti sono descritti nel [README generale del training](../README.md#checkpoint-e-monitoraggio).
+Ogni profilo usa directory distinta: `cp_classic`,
+`cp_new_classic` oppure `cp_precomputed`. Modello degli embedding non
+cambia nome modalità; usare `--checkpoint-dir` per distinguere esperimenti.
+Struttura e contenuto degli artefatti sono descritti nel
+[README generale del training](../README.md#checkpoint-e-monitoraggio).

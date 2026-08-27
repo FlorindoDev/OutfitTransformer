@@ -17,7 +17,7 @@ MAX_GRAD_NORM = 1.0
 ONE_CYCLE_PCT_START = 0.3
 ONE_CYCLE_DIV_FACTOR = 25.0
 ONE_CYCLE_FINAL_DIV_FACTOR = 10_000.0
-DEFAULT_EMBEDDING_ROOT = (
+DEFAULT_PRECOMPUTED_EMBEDDING_ROOT = (
     Path("precomputed_embeddings")
     / DEFAULT_MODEL_CONFIG.encoders.fashion_clip_model_name.replace("/", "-")
 )
@@ -28,16 +28,38 @@ class FeatureMode(str, Enum):
 
     CLASSIC = "classic"
     NEW_CLASSIC = "new_classic"
-    CLIP = "clip"
+    PRECOMPUTED = "precomputed"
 
     @property
     def uses_raw_inputs(self) -> bool:
         """Return whether images and descriptions are encoded during training."""
-        return self in {FeatureMode.CLASSIC, FeatureMode.NEW_CLASSIC}
+        return self in {
+            FeatureMode.CLASSIC,
+            FeatureMode.NEW_CLASSIC,
+        }
+
+    @property
+    def uses_precomputed_embeddings(self) -> bool:
+        """Return whether item embeddings are loaded from cache."""
+        return self is FeatureMode.PRECOMPUTED
+
+    @classmethod
+    def from_serialized(cls, value: str) -> "FeatureMode":
+        """Parse current and legacy checkpoint feature-mode names."""
+        legacy_modes = {
+            "fashion_clip_approach": cls.NEW_CLASSIC,
+            "clip": cls.PRECOMPUTED,
+            "openrouter": cls.PRECOMPUTED,
+        }
+        if value in legacy_modes:
+            return legacy_modes[value]
+        return cls(value)
 
 
 def default_transformer_config(mode: FeatureMode) -> TransformerConfig:
     """Return architecture dimensions matching the selected feature source."""
+    if not isinstance(mode, FeatureMode):
+        raise TypeError("mode must be a FeatureMode")
     if mode is FeatureMode.CLASSIC:
         return DEFAULT_MODEL_CONFIG.classic_transformer
     if mode is FeatureMode.NEW_CLASSIC:
@@ -55,14 +77,16 @@ class CPTrainingConfig:
             DEFAULT_DATASET_NAME
         ).descriptor.default_subset
     )
-    feature_mode: FeatureMode = FeatureMode.CLIP
-    embedding_root: Path = DEFAULT_EMBEDDING_ROOT
+    feature_mode: FeatureMode = FeatureMode.NEW_CLASSIC
+    embedding_root: Path = DEFAULT_PRECOMPUTED_EMBEDDING_ROOT
     dataset_root: Path = field(
         default_factory=lambda: get_dataset_source(
             DEFAULT_DATASET_NAME
         ).descriptor.default_root
     )
-    checkpoint_dir: Path = Path("checkpoints/nondisjoint/cp_clip")
+    checkpoint_dir: Path = Path(
+        "checkpoints/nondisjoint/cp_new_classic"
+    )
     cache_dir: Path | None = None
     epochs: int = 200
     batch_size: int = 512
@@ -142,7 +166,7 @@ class CPTrainingConfig:
                 "feature_mode": self.feature_mode.value,
                 "embedding_root": (
                     str(self.embedding_root)
-                    if self.feature_mode is FeatureMode.CLIP
+                    if self.feature_mode.uses_precomputed_embeddings
                     else None
                 ),
                 "dataset_root": str(self.dataset_root),
@@ -212,7 +236,7 @@ def _feature_config(mode: FeatureMode) -> dict[str, Any]:
         }
     return {
         "mode": mode.value,
-        "encoder": encoders.fashion_clip_model_name,
+        "encoder": "from_embedding_manifest",
         "precomputed": True,
         "trainable": False,
     }

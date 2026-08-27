@@ -63,7 +63,9 @@ def load_cp_checkpoint(path: str | Path) -> CPCheckpoint:
         _string_value(dataset, "subset")
     )
     try:
-        feature_mode = FeatureMode(_string_value(dataset, "feature_mode"))
+        feature_mode = FeatureMode.from_serialized(
+            _string_value(dataset, "feature_mode")
+        )
     except ValueError as error:
         raise ValueError("checkpoint contains unsupported feature mode") from error
     try:
@@ -73,8 +75,10 @@ def load_cp_checkpoint(path: str | Path) -> CPCheckpoint:
     model_config.validate()
 
     embedding_root = _optional_path(dataset.get("embedding_root"))
-    if feature_mode is FeatureMode.CLIP and embedding_root is None:
-        raise ValueError("CLIP checkpoint does not declare embedding_root")
+    if feature_mode.uses_precomputed_embeddings and embedding_root is None:
+        raise ValueError(
+            "precomputed checkpoint does not declare embedding_root"
+        )
     epoch = payload.get("epoch")
     if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch <= 0:
         raise ValueError("checkpoint epoch must be a positive integer")

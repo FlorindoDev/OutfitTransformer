@@ -90,32 +90,18 @@ AUC valuta l'ordinamento, mentre accuracy valuta le classi dopo il taglio.
 
 ## Preparazione
 
-`classic` e `new_classic` leggono immagini e descrizioni Polyvore. `clip`
-richiede cache embedding dello split scelto. Per test predefinito:
-
-PowerShell:
-
-```powershell
-python -m scripts.precompute_embeddings `
-  --subset nondisjoint `
-  --split test
-```
-
-Linux (Bash):
-
-```bash
-python -m scripts.precompute_embeddings \
-  --subset nondisjoint \
-  --split test
-```
+`classic` e `new_classic` leggono immagini e descrizioni Polyvore.
+`precomputed` richiede cache embedding dello split scelto. Comandi per produrre
+cache FashionCLIP o OpenRouter stanno solo nella
+[guida degli script](../../scripts/README.md#esempi).
 
 Root cache salvata nel checkpoint viene riusata. Se cache spostata, passare
 `--embedding-root`.
 
 Annotazioni vengono cercate prima in `datasets/polyvore-outfits/`, poi nella
 cache Hugging Face; soltanto file mancanti vengono scaricati. Percorso locale
-diverso si imposta con `--dataset-root`. In modalità `clip`, evaluation non
-carica parquet immagini né metadata.
+diverso si imposta con `--dataset-root`. Con embedding precomputati, evaluation
+non carica parquet immagini né metadata.
 
 ## Avvio
 
@@ -123,14 +109,14 @@ PowerShell:
 
 ```powershell
 python -m evaluation.CP.evaluate_cp `
-  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
+  --checkpoint checkpoints/nondisjoint/cp_precomputed/best.pt
 ```
 
 Linux (Bash):
 
 ```bash
 python -m evaluation.CP.evaluate_cp \
-  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
+  --checkpoint checkpoints/nondisjoint/cp_precomputed/best.pt
 ```
 
 Esempio validation e output esplicito:
@@ -139,7 +125,7 @@ PowerShell:
 
 ```powershell
 python -m evaluation.CP.evaluate_cp `
-  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt `
+  --checkpoint checkpoints/nondisjoint/cp_precomputed/best.pt `
   --split validation `
   --output results/cp_validation.json
 ```
@@ -148,7 +134,7 @@ Linux (Bash):
 
 ```bash
 python -m evaluation.CP.evaluate_cp \
-  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt \
+  --checkpoint checkpoints/nondisjoint/cp_precomputed/best.pt \
   --split validation \
   --output results/cp_validation.json
 ```
@@ -159,7 +145,7 @@ python -m evaluation.CP.evaluate_cp \
 |---|---|---|
 | `--checkpoint` | richiesto | Checkpoint schema v2 prodotto dal training CP. |
 | `--split` | `test` | Split `test` o `validation`. |
-| `--embedding-root` | valore checkpoint | Sovrascrive root cache CLIP. |
+| `--embedding-root` | valore checkpoint | Sovrascrive root cache embedding. |
 | `--dataset-root` | valore checkpoint o `datasets/polyvore-outfits` | Cerca qui annotazioni e dati prima del fallback Hugging Face. |
 | `--output` | derivato dal checkpoint | Percorso JSON del report. |
 | `--batch-size` | `512` | Outfit per batch. |

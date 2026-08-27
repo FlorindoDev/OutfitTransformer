@@ -364,9 +364,10 @@ Output
 Training vede solo `item_ids` e label. Non sa da quale file arrivano.
 `loaders.py` trasforma poi questi esempi in batch.
 
-Per modalità classic si usa `compatibility_dataset`, che restituisce anche
-immagini e descrizioni. Per CLIP si usa `compatibility_index_dataset`, che
-carica solo ID necessari per recuperare embedding precomputati.
+Per modalità con input runtime si usa `compatibility_dataset`, che restituisce
+anche immagini e descrizioni. Per `precomputed` si usa
+`compatibility_index_dataset`, che carica solo ID necessari per recuperare
+embedding precomputati.
 
 ## Dataset disponibili
 
@@ -390,64 +391,8 @@ la rappresentazione risultante al suo `item_id`. Il salvataggio e il caricamento
 della cache non appartengono al dataset: sono responsabilità del job
 `scripts/precompute_embeddings.py`.
 
-Il job usa le due tower del checkpoint FashionCLIP: una
-`CLIPVisionModelWithProjection` per le immagini e una
-`CLIPTextModelWithProjection` per le descrizioni. Normalizza L2 ogni modalità e
-concatena prima visuale, poi testo. Con FashionCLIP standard il risultato ha
-1024 feature ed è compatibile con `OutfitItem(embedding=...)`.
-
-Esempio:
-
-PowerShell:
-
-```powershell
-python -m scripts.precompute_embeddings `
-  --subset disjoint `
-  --split train `
-  --batch-size 128 `
-  --device auto
-```
-
-Linux (Bash):
-
-```bash
-python -m scripts.precompute_embeddings \
-  --subset disjoint \
-  --split train \
-  --batch-size 128 \
-  --device auto
-```
-
-Controllo rapido senza elaborare tutto lo split:
-
-PowerShell:
-
-```powershell
-python -m scripts.precompute_embeddings --split train --limit 100
-```
-
-Linux (Bash):
-
-```bash
-python -m scripts.precompute_embeddings --split train --limit 100
-```
-
-Output predefinito:
-
-```text
-precomputed_embeddings/
-  patrickjohncyh-fashion-clip/
-    disjoint/
-      train/
-        manifest.json
-        shard-00000.pt
-        shard-00001.pt
-```
-
-Ogni shard contiene `item_ids` ed `embeddings`. Il manifest registra modello,
-commit dei due encoder, split, dtype, dimensione e fingerprint. Directory non
-vuote non vengono sovrascritte senza `--overwrite`. Per disjoint, eseguire job
-separati per `train`, `validation` e `test`.
+Backend, formato cache, flag ed esempi PowerShell/Linux stanno solo nella
+[guida degli script](../scripts/README.md#precomputazione-multimodale).
 
 Gli embedding possono sostituire immagini e testo soltanto se gli encoder e le
 proiezioni che li hanno prodotti restano congelati. Se questi componenti devono

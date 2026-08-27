@@ -152,7 +152,11 @@ coerenti.
 
 ## Uso nel training CP
 
-La modalità CLIP del training CP richiede almeno le cache `train` e `validation` dello stesso dataset, subset e modello. Lo split `test` è facoltativo e serve per una valutazione separata. Le modalità classic e new classic non usano questi artefatti perché ricavano direttamente le feature da immagini e descrizioni.
+La modalità `precomputed` del training CP richiede almeno cache `train` e
+`validation` dello stesso dataset, subset e modello. Split `test` è facoltativo
+e serve per evaluation. Cache FashionCLIP e OpenRouter si selezionano nello
+stesso modo tramite loro directory. `classic` e `new_classic` ricavano
+invece feature da immagini e descrizioni durante training.
 
 `float16` riduce spazio su disco e memoria, con minore precisione; `float32` è la scelta predefinita. Il training converte comunque gli embedding nel tipo richiesto dal modello.
 
@@ -217,5 +221,6 @@ python -m scripts.precompute_embeddings \
 ```
 
 Cache viene salvata sotto
-`precomputed_embeddings/openrouter-google-gemini-embedding-2/`. Passare questa
-cartella a `--embedding-root` durante training CP.
+`precomputed_embeddings/openrouter-google-gemini-embedding-2/`. Per usarla nel
+training, selezionarla con `--precomputed --embedding-root`; esempi restano nella
+[guida del training CP](../training/CP/README.md#avvio).

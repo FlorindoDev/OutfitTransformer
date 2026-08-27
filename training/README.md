@@ -24,9 +24,9 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | Common | [`common/runtime.py`](common/runtime.py) | Gestisce seed riproducibile e scelta automatica del device. |
 | Common | [`common/metrics.py`](common/metrics.py) | Accumula loss, accuracy e ROC AUC sull’intera epoca. |
 | Common | [`common/checkpointing.py`](common/checkpointing.py) | Salva checkpoint e configurazione in modo atomico; carica solo pesi per resume. |
-| Common | [`common/embeddings.py`](common/embeddings.py) | Legge e valida cache FashionCLIP tramite manifest e shard memory-mapped. |
+| Common | [`common/embeddings.py`](common/embeddings.py) | Legge e valida cache embedding tramite manifest e shard memory-mapped. |
 | CP | [`CP/config.py`](CP/config.py) | Definisce modalità, architettura e iperparametri validati. |
-| CP | [`CP/data.py`](CP/data.py) | Costruisce pipeline Polyvore classic, new classic o CLIP per train e validation. |
+| CP | [`CP/data.py`](CP/data.py) | Costruisce pipeline runtime o precomputed per train e validation. |
 | CP | [`CP/model.py`](CP/model.py) | Compone rappresentazione common, Transformer CP e classificatore. |
 | CP | [`CP/trainer.py`](CP/trainer.py) | Coordina forward, backward, ottimizzazione, validazione e checkpoint. |
 | CP | [`CP/plots.py`](CP/plots.py) | Produce grafici cumulativi dopo ogni epoca. |
@@ -44,7 +44,7 @@ flowchart LR
     COMMON -->|classic / new_classic| RAW["ResNet-18 + proiezioni"]
     RAW -.->|stop| SBERT["Backbone SentenceBERT"]
 
-    COMMON -.->|clip: stop| CACHE["Cache FashionCLIP"]
+    COMMON -.->|precomputed: stop| CACHE["Cache embedding"]
 
     classDef trainable fill:#d5f5e3,stroke:#1e8449,color:#17202a;
     classDef frozen fill:#eeeeee,stroke:#616a6b,color:#17202a;
@@ -57,26 +57,24 @@ flowchart LR
 
 Le frecce partono dalla loss e seguono il gradiente all'indietro. Il verde
 indica ciò che viene aggiornato. Il grigio indica dove la backpropagation si
-ferma: backbone SentenceBERT in `classic` e `new_classic`, cache e tower
-FashionCLIP in `clip`.
+ferma: backbone SentenceBERT in `classic` e `new_classic`; cache in
+`precomputed`.
 
 ## Modalità CP
 
-| Aspetto | `classic` | `new_classic` | `clip` |
+| Aspetto | `classic` | `new_classic` | `precomputed` |
 |---|---|---|---|
-| Sorgente | Immagini e descrizioni originali | Immagini e descrizioni originali | Embedding FashionCLIP precomputati |
-| Visuale | ResNet-18 allenabile, proiezione a 64 | ResNet-18 allenabile, output 512 | Tower FashionCLIP congelata, output 512 |
-| Testo | SentenceBERT congelato, proiezione 384→64 | SentenceBERT congelato, proiezione 384→512 | Tower FashionCLIP congelata, output 512 |
+| Sorgente | Immagini e testi | Immagini e testi | Cache da modello compatibile |
+| Visuale | ResNet-18 → 64 | ResNet-18 → 512 | Precomputata |
+| Testo | SentenceBERT → 64 | SentenceBERT → 512 | Precomputata |
 | Item embedding | 128 | 1024 | 1024 |
-| Data augmentation | Attiva nel train visuale | Attiva nel train visuale | Non applicata durante training |
-| Costo | Encoder eseguiti a ogni epoca | Encoder eseguiti a ogni epoca | Encoder eseguiti una sola volta |
-| Backpropagation | Aggiorna ResNet e proiezioni | Aggiorna ResNet e proiezione testo | Si ferma alla cache |
+| Data augmentation | Attiva | Attiva | Assente nel training |
+| Costo encoder | Ogni epoca | Ogni epoca | Solo precomputazione |
+| Backpropagation | ResNet + proiezioni | ResNet + proiezioni | Si ferma alla cache |
 
-La cache CLIP è separata per subset e split. Manifest e shard vengono
+Ogni cache è separata per subset e split. Manifest e shard vengono
 controllati prima del training: schema, quantità, dimensione, valori finiti,
-duplicati, dataset, subset, split e fingerprint del modello devono essere coerenti.
-Le descrizioni oltre il limite FashionCLIP vengono troncate a 77 token durante
-la precomputazione.
+duplicati, dataset, subset, split e fingerprint modello devono essere coerenti.
 
 ## Modello e backpropagation
 
@@ -88,8 +86,8 @@ reali. Testa finale converte stato del token in probabilità tramite sigmoid.
 Focal Loss riduce peso degli esempi già facili e concentra gradienti su quelli
 incerti o errati. In `classic` e `new_classic`, gradienti attraversano
 Transformer common fino a ResNet-18 e alle proiezioni, ma non entrano nel
-backbone SentenceBERT. In `clip`, cache non appartiene al grafo e tower
-FashionCLIP restano fuori dal run.
+backbone SentenceBERT. In `precomputed`, cache non appartiene al grafo e modello
+embedding resta fuori dal run.
 
 ## Ottimizzazione
 
@@ -151,5 +149,5 @@ optimizer e scheduler non viene quindi salvato nei checkpoint.
 
 ## Avvio
 
-Dettagli su preparazione CLIP, comandi, flag e relativi default sono in
+Dettagli su preparazione embedding, comandi, flag e relativi default sono in
 [Training Compatibility Prediction](CP/README.md).
