@@ -11,8 +11,10 @@ preparare il futuro retrieval di articoli complementari.
 - [Creazione dell'ambiente](#creazione-dellambiente)
   - [Windows PowerShell](#windows-powershell)
   - [Linux e macOS](#linux-e-macos)
+- [Pesi preaddestrati locali](#pesi-preaddestrati-locali)
 - [Dataset locale](#dataset-locale)
 - [Precomputazione degli embedding](#precomputazione-degli-embedding)
+- [Addestramento CP](#addestramento-cp)
 - [Valutazione CP](#valutazione-cp)
 
 ## Panoramica
@@ -21,6 +23,9 @@ Il progetto legge immagini e descrizioni di articoli fashion, crea embedding
 multimodali e usa un Transformer senza positional embedding per rappresentare
 outfit di lunghezza variabile. Il task CP assegna uno score di compatibilità;
 il task CIR è previsto ma non ancora implementato.
+
+Per approfondire componenti e responsabilità: [panoramica del modello](model/README.md)
+e [pipeline dei dati](data/README.md).
 
 ## Moduli
 
@@ -35,6 +40,7 @@ il task CIR è previsto ma non ancora implementato.
 | `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
 | `training` | Allena CP con input runtime o embedding precomputati e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
 | `metrics` | Calcola metriche riutilizzabili per training e valutazione. | [README](metrics/README.md) |
+
 
 ## Architettura generale
 
@@ -66,6 +72,9 @@ flowchart TD
     O --> Q["Target item embedding"]
     Q --> R["Set-wise Ranking Loss<br/>o ricerca KNN"]
 ```
+
+Per approfondire il flusso interno: [Transformer common](model/common/README.md),
+[modello CP](model/cp/README.md) e [metriche](metrics/README.md).
 
 ## Creazione dell'ambiente
 
@@ -100,6 +109,31 @@ l'accesso al dataset, salvare il token localmente:
 hf auth login
 ```
 
+Per i comandi disponibili dopo il setup: [guida degli script](scripts/README.md).
+Autenticazione e risoluzione delle risorse Polyvore sono descritte nella
+[guida del dataset](data/polyvore/README.md).
+
+## Pesi preaddestrati locali
+
+Passaggio opzionale: scaricare FashionCLIP, ResNet-18 e Sentence-BERT nella
+cartella `pretrained_models/` del progetto.
+
+PowerShell:
+
+```powershell
+python -m scripts.download_model_weights
+```
+
+Linux e macOS:
+
+```bash
+python -m scripts.download_model_weights
+```
+
+Modelli, percorsi, flag e struttura delle directory: [download dei pesi nella
+guida degli script](scripts/README.md#download-pesi-dei-modelli). Encoder e
+modalità d'uso sono descritti nella [guida del modello common](model/common/README.md#encoder-visuale-e-testuale).
+
 ## Dataset locale
 
 Scaricare intero dataset Polyvore nella cartella predefinita:
@@ -118,10 +152,13 @@ python -m scripts.download_polyvore
 
 Ogni comando cerca prima Polyvore in `datasets/polyvore-outfits/`, poi nella
 cache Hugging Face e scarica soltanto le risorse ancora mancanti. La cartella
-locale deve replicare la struttura del repository dataset:
+locale deve replicare la struttura del repository dataset.
 
 Per un percorso diverso, passare `--dataset-root`. I file locali possono
 essere parziali: fallback remoto riguarda solo quelli assenti.
+
+Per approfondire: [pipeline dati](data/README.md), [formato e caricamento
+Polyvore](data/polyvore/README.md) e [flag del downloader](scripts/README.md#download-polyvore).
 
 ## Precomputazione degli embedding
 
@@ -146,9 +183,36 @@ python -m scripts.precompute_embeddings --subset nondisjoint --split validation
 python -m scripts.precompute_embeddings --subset nondisjoint --split train
 ```
 
-Ripetere con `--split validation` e `--split test` per gli altri split. Gli
+Ripetere con `--split test` per preparare anche lo split di valutazione. Gli
 output vengono creati sotto `precomputed_embeddings/`. Una cache esistente non
 viene sostituita senza l'opzione esplicita `--overwrite`.
+
+Per approfondire: [precomputazione multimodale](scripts/README.md#precomputazione-multimodale),
+[formato degli embedding](scripts/README.md#contenuto-degli-shard) e [uso nel
+training CP](training/CP/README.md#preparazione-embedding).
+
+## Addestramento CP
+
+Dopo aver preparato gli embedding `train` e `validation`, avviare il profilo
+precomputed:
+
+PowerShell:
+
+```powershell
+python -m training.CP.train_cp --precomputed
+```
+
+Linux e macOS:
+
+```bash
+python -m training.CP.train_cp --precomputed
+```
+
+Il training salva configurazione, checkpoint, best model e grafici sotto
+`checkpoints/`. Per scegliere tra `classic`, `new_classic` e `precomputed`,
+configurare iperparametri o riprendere pesi esistenti: [panoramica training](training/README.md)
+e [guida completa CP](training/CP/README.md). Architettura della testa:
+[modello CP](model/cp/README.md).
 
 ## Valutazione CP
 
@@ -177,6 +241,8 @@ python -m evaluation.CP.evaluate_cp \
   --checkpoint checkpoints/nondisjoint/cp_precomputed/best.pt
 ```
 
-Comando ricava dataset, subset, modalità feature e architettura dal checkpoint. Salva
-accuracy, precision, recall, F1 e ROC AUC sotto `results/cp/`. Flag completi e
-formato output: [guida evaluation CP](evaluation/CP/README.md).
+Comando ricava dataset, subset, modalità feature e architettura dal checkpoint.
+Salva accuracy, precision, recall, F1 e ROC AUC sotto `results/cp/`.
+
+Per approfondire: [panoramica evaluation](evaluation/README.md), [guida
+evaluation CP](evaluation/CP/README.md) e [definizione delle metriche](metrics/README.md).
