@@ -32,7 +32,7 @@ class ResNet18VisualEncoder(VisualEncoder):
         weights = ResNet18_Weights.DEFAULT if pretrained else None
         self.backbone = resnet18(weights=weights)
         self._output_dim = self.backbone.fc.in_features
-        self.backbone.fc = nn.Identity()
+        self.backbone.add_module("fc", nn.Identity())
         self._trainable = trainable
 
         if not trainable:
