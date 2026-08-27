@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 import torch
 from torch import Tensor
 
+from .config import DEFAULT_MODEL_CONFIG
+
 
 class OpenRouterEmbeddingError(RuntimeError):
     """Raised when OpenRouter cannot return valid embedding vectors."""
@@ -20,7 +22,7 @@ class OpenRouterEmbeddingError(RuntimeError):
 class OpenRouterEmbeddingClient:
     """Send validated, batched requests to OpenRouter's embedding endpoint."""
 
-    DEFAULT_API_BASE = "https://openrouter.ai/api/v1"
+    DEFAULT_API_BASE = DEFAULT_MODEL_CONFIG.encoders.openrouter_api_base
     _RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 524, 529})
 
     def __init__(
@@ -28,10 +30,14 @@ class OpenRouterEmbeddingClient:
         model_name: str,
         api_key: str,
         *,
-        output_dim: int = 512,
-        request_batch_size: int = 8,
-        timeout_seconds: float = 60.0,
-        max_retries: int = 3,
+        output_dim: int = DEFAULT_MODEL_CONFIG.encoders.openrouter_output_dim,
+        request_batch_size: int = (
+            DEFAULT_MODEL_CONFIG.encoders.openrouter_request_batch_size
+        ),
+        timeout_seconds: float = (
+            DEFAULT_MODEL_CONFIG.encoders.openrouter_timeout_seconds
+        ),
+        max_retries: int = DEFAULT_MODEL_CONFIG.encoders.openrouter_max_retries,
         api_base: str = DEFAULT_API_BASE,
     ) -> None:
         self.model_name = _require_text(model_name, "model_name")

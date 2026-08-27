@@ -2,11 +2,17 @@
 
 from torch import Tensor, nn
 
+from ..common.config import DEFAULT_MODEL_CONFIG
+
 
 class CompatibilityHead(nn.Module):
     """Map one global outfit representation to a compatibility probability."""
 
-    def __init__(self, input_dim: int = 1024, dropout: float = 0.3) -> None:
+    def __init__(
+        self,
+        input_dim: int = DEFAULT_MODEL_CONFIG.transformer.model_dim,
+        dropout: float = DEFAULT_MODEL_CONFIG.transformer.dropout,
+    ) -> None:
         super().__init__()
         if input_dim <= 0:
             raise ValueError("input_dim must be positive")

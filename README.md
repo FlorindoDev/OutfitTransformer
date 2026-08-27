@@ -104,7 +104,15 @@ hf auth login
 
 Scaricare intero dataset Polyvore nella cartella predefinita:
 
+PowerShell:
+
 ```powershell
+python -m scripts.download_polyvore
+```
+
+Linux (Bash):
+
+```bash
 python -m scripts.download_polyvore
 ```
 
@@ -123,10 +131,17 @@ La precomputazione usa per default le tower visuale e testuale FashionCLIP. Con
 vengono normalizzati L2, concatenati e salvati in shard `.pt` associati agli
 `item_id`.
 
+PowerShell:
+
 ```powershell
 python -m scripts.precompute_embeddings --subset nondisjoint --split validation
+python -m scripts.precompute_embeddings --subset nondisjoint --split train
 ```
-```powershell
+
+Linux (Bash):
+
+```bash
+python -m scripts.precompute_embeddings --subset nondisjoint --split validation
 python -m scripts.precompute_embeddings --subset nondisjoint --split train
 ```
 
@@ -139,12 +154,25 @@ viene sostituita senza l'opzione esplicita `--overwrite`.
 Preparare prima embedding dello split `test` quando checkpoint usa FashionCLIP,
 poi avviare evaluation:
 
+PowerShell:
+
 ```powershell
 python -m scripts.precompute_embeddings `
   --subset nondisjoint `
   --split test
 
 python -m evaluation.CP.evaluate_cp `
+  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
+```
+
+Linux (Bash):
+
+```bash
+python -m scripts.precompute_embeddings \
+  --subset nondisjoint \
+  --split test
+
+python -m evaluation.CP.evaluate_cp \
   --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
 ```
 

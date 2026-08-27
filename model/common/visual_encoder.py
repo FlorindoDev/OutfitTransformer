@@ -9,6 +9,7 @@ from torch import Tensor, nn
 from torchvision.models import ResNet18_Weights, resnet18
 from torchvision.transforms.functional import to_pil_image
 
+from .config import DEFAULT_MODEL_CONFIG
 from .openrouter import OpenRouterEmbeddingClient
 
 
@@ -31,8 +32,8 @@ class ResNet18VisualEncoder(VisualEncoder):
     def __init__(
         self,
         *,
-        pretrained: bool = True,
-        trainable: bool = True,
+        pretrained: bool = DEFAULT_MODEL_CONFIG.encoders.resnet18_pretrained,
+        trainable: bool = DEFAULT_MODEL_CONFIG.encoders.resnet18_trainable,
     ) -> None:
         super().__init__()
         weights = ResNet18_Weights.DEFAULT if pretrained else None
@@ -70,13 +71,13 @@ class ResNet18VisualEncoder(VisualEncoder):
 class FashionCLIPVisualEncoder(VisualEncoder):
     """FashionCLIP ViT image tower returning projected CLIP features."""
 
-    DEFAULT_MODEL_NAME = "patrickjohncyh/fashion-clip"
+    DEFAULT_MODEL_NAME = DEFAULT_MODEL_CONFIG.encoders.fashion_clip_model_name
 
     def __init__(
         self,
         model_name: str = DEFAULT_MODEL_NAME,
         *,
-        trainable: bool = True,
+        trainable: bool = DEFAULT_MODEL_CONFIG.encoders.fashion_clip_trainable,
     ) -> None:
         super().__init__()
         try:
@@ -129,10 +130,15 @@ class OpenRouterVisualEncoder(VisualEncoder):
         model_name: str,
         api_key: str,
         *,
-        output_dim: int = 512,
-        request_batch_size: int = 8,
-        timeout_seconds: float = 60.0,
-        max_retries: int = 3,
+        output_dim: int = DEFAULT_MODEL_CONFIG.encoders.openrouter_output_dim,
+        request_batch_size: int = (
+            DEFAULT_MODEL_CONFIG.encoders.openrouter_request_batch_size
+        ),
+        timeout_seconds: float = (
+            DEFAULT_MODEL_CONFIG.encoders.openrouter_timeout_seconds
+        ),
+        max_retries: int = DEFAULT_MODEL_CONFIG.encoders.openrouter_max_retries,
+        api_base: str = DEFAULT_MODEL_CONFIG.encoders.openrouter_api_base,
     ) -> None:
         super().__init__()
         self.model_name = model_name.strip()
@@ -143,6 +149,7 @@ class OpenRouterVisualEncoder(VisualEncoder):
             request_batch_size=request_batch_size,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
+            api_base=api_base,
         )
         self._output_dim = output_dim
         self.register_buffer("_device_anchor", torch.empty(0), persistent=False)

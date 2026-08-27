@@ -1,13 +1,10 @@
 """Binary focal loss for compatibility prediction."""
 
-from typing import Literal
-
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-
-Reduction = Literal["none", "mean", "sum"]
+from ..common.config import DEFAULT_MODEL_CONFIG, Reduction
 
 
 class FocalLoss(nn.Module):
@@ -15,9 +12,11 @@ class FocalLoss(nn.Module):
 
     def __init__(
         self,
-        alpha: float = 0.5,
-        gamma: float = 2.0,
-        reduction: Reduction = "mean",
+        alpha: float = DEFAULT_MODEL_CONFIG.compatibility.focal_alpha,
+        gamma: float = DEFAULT_MODEL_CONFIG.compatibility.focal_gamma,
+        reduction: Reduction = (
+            DEFAULT_MODEL_CONFIG.compatibility.focal_reduction
+        ),
     ) -> None:
         super().__init__()
         if not 0.0 <= alpha <= 1.0:

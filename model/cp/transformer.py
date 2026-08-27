@@ -3,8 +3,12 @@
 import torch
 from torch import Tensor, nn
 
+from ..common.config import DEFAULT_MODEL_CONFIG, TransformerConfig
 from ..common.task_embedding import TaskEmbedding
-from ..common.transformer import OutfitTransformerOutput, TransformerConfig
+from ..common.transformer import (
+    OutfitTransformerOutput,
+    build_transformer_encoder,
+)
 
 from .head import CompatibilityHead
 
@@ -18,14 +22,17 @@ class CompatibilityTransformer(nn.Module):
         task_embedding: TaskEmbedding | None = None,
     ) -> None:
         super().__init__()
-        self.config = config or TransformerConfig()
+        self.config = config or DEFAULT_MODEL_CONFIG.transformer
         self.config.validate()
 
         token_part_dim = self.config.modality_embedding_dim
         selected_task_embedding = (
             task_embedding
             if task_embedding is not None
-            else TaskEmbedding(token_part_dim)
+            else TaskEmbedding(
+                token_part_dim,
+                initialization_std=self.config.embedding_initialization_std,
+            )
         )
         if not isinstance(selected_task_embedding, TaskEmbedding):
             raise TypeError("task_embedding must be a TaskEmbedding")
@@ -35,23 +42,12 @@ class CompatibilityTransformer(nn.Module):
                 f"({token_part_dim})"
             )
         self.task_embedding = selected_task_embedding
-        self.predict_emb = _embedding_parameter(token_part_dim)
+        self.predict_emb = _embedding_parameter(
+            token_part_dim,
+            initialization_std=self.config.embedding_initialization_std,
+        )
 
-        layer = nn.TransformerEncoderLayer(
-            d_model=self.config.model_dim,
-            nhead=self.config.attention_heads,
-            dim_feedforward=self.config.feedforward_dim,
-            dropout=self.config.dropout,
-            activation=nn.Mish(),
-            batch_first=True,
-            norm_first=self.config.norm_first,
-        )
-        self.encoder = nn.TransformerEncoder(
-            encoder_layer=layer,
-            num_layers=self.config.layers,
-            norm=nn.LayerNorm(self.config.model_dim),
-            enable_nested_tensor=False,
-        )
+        self.encoder = build_transformer_encoder(self.config)
         self.head = CompatibilityHead(
             input_dim=self.config.model_dim,
             dropout=self.config.dropout,
@@ -91,9 +87,13 @@ class CompatibilityTransformer(nn.Module):
         return self.task_embedding.embedding
 
 
-def _embedding_parameter(size: int) -> nn.Parameter:
+def _embedding_parameter(
+    size: int,
+    *,
+    initialization_std: float,
+) -> nn.Parameter:
     embedding = nn.Parameter(torch.empty(size))
-    nn.init.normal_(embedding, std=0.02)
+    nn.init.normal_(embedding, std=initialization_std)
     return embedding
 
 

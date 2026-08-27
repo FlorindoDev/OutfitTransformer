@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from data import DEFAULT_DATASET_NAME, get_dataset_source
 from model import TransformerConfig
+from model.common.config import DEFAULT_MODEL_CONFIG, Reduction
 
 BestMetric = Literal["val_auc", "val_accuracy", "val_loss"]
 
@@ -16,6 +17,10 @@ MAX_GRAD_NORM = 1.0
 ONE_CYCLE_PCT_START = 0.3
 ONE_CYCLE_DIV_FACTOR = 25.0
 ONE_CYCLE_FINAL_DIV_FACTOR = 10_000.0
+DEFAULT_EMBEDDING_ROOT = (
+    Path("precomputed_embeddings")
+    / DEFAULT_MODEL_CONFIG.encoders.fashion_clip_model_name.replace("/", "-")
+)
 
 
 class FeatureMode(str, Enum):
@@ -33,16 +38,11 @@ class FeatureMode(str, Enum):
 
 def default_transformer_config(mode: FeatureMode) -> TransformerConfig:
     """Return architecture dimensions matching the selected feature source."""
-    if mode.uses_raw_inputs:
-        return TransformerConfig(
-            modality_embedding_dim=64 if mode is FeatureMode.CLASSIC else 512,
-            layers=6,
-            attention_heads=16,
-            feedforward_dim=512,
-            dropout=0.1,
-            norm_first=False,
-        )
-    return TransformerConfig()
+    if mode is FeatureMode.CLASSIC:
+        return DEFAULT_MODEL_CONFIG.classic_transformer
+    if mode is FeatureMode.NEW_CLASSIC:
+        return DEFAULT_MODEL_CONFIG.new_classic_transformer
+    return DEFAULT_MODEL_CONFIG.transformer
 
 
 @dataclass(frozen=True)
@@ -56,9 +56,7 @@ class CPTrainingConfig:
         ).descriptor.default_subset
     )
     feature_mode: FeatureMode = FeatureMode.CLIP
-    embedding_root: Path = Path(
-        "precomputed_embeddings/patrickjohncyh-fashion-clip"
-    )
+    embedding_root: Path = DEFAULT_EMBEDDING_ROOT
     dataset_root: Path = field(
         default_factory=lambda: get_dataset_source(
             DEFAULT_DATASET_NAME
@@ -71,8 +69,11 @@ class CPTrainingConfig:
     gradient_accumulation_steps: int = 4
     learning_rate: float = 2e-5
     weight_decay: float = 0.01
-    focal_alpha: float = 0.5
-    focal_gamma: float = 2.0
+    focal_alpha: float = DEFAULT_MODEL_CONFIG.compatibility.focal_alpha
+    focal_gamma: float = DEFAULT_MODEL_CONFIG.compatibility.focal_gamma
+    focal_reduction: Reduction = (
+        DEFAULT_MODEL_CONFIG.compatibility.focal_reduction
+    )
     seed: int = 42
     best_metric: BestMetric = "val_auc"
     early_stopping_patience: int | None = None
@@ -103,6 +104,8 @@ class CPTrainingConfig:
             raise ValueError("focal_alpha must be in [0, 1]")
         if self.focal_gamma < 0.0:
             raise ValueError("focal_gamma cannot be negative")
+        if self.focal_reduction not in {"mean", "sum"}:
+            raise ValueError("training focal_reduction must be 'mean' or 'sum'")
         if self.seed < 0:
             raise ValueError("seed cannot be negative")
         if self.best_metric not in {"val_auc", "val_accuracy", "val_loss"}:
@@ -170,6 +173,7 @@ class CPTrainingConfig:
                 "loss": "FocalLoss",
                 "focal_alpha": self.focal_alpha,
                 "focal_gamma": self.focal_gamma,
+                "focal_reduction": self.focal_reduction,
                 "best_metric": self.best_metric,
                 "early_stopping_patience": self.early_stopping_patience,
                 "early_stopping_min_delta": self.early_stopping_min_delta,
@@ -187,22 +191,28 @@ class CPTrainingConfig:
 
 
 def _feature_config(mode: FeatureMode) -> dict[str, Any]:
+    encoders = DEFAULT_MODEL_CONFIG.encoders
     if mode.uses_raw_inputs:
-        modality_embedding_dim = default_transformer_config(mode).modality_embedding_dim
+        modality_embedding_dim = default_transformer_config(
+            mode
+        ).modality_embedding_dim
         return {
             "mode": mode.value,
             "visual_encoder": "ResNet18VisualEncoder",
-            "visual_pretrained": "ImageNet",
-            "visual_trainable": True,
+            "visual_pretrained": encoders.resnet18_pretrained,
+            "visual_trainable": encoders.resnet18_trainable,
             "visual_embedding_dim": modality_embedding_dim,
             "text_encoder": "SentenceTransformerTextEncoder",
-            "text_backbone_trainable": False,
+            "text_model_name": encoders.sentence_transformer_model_name,
+            "text_backbone_trainable": (
+                encoders.sentence_transformer_trainable
+            ),
             "text_projection_trainable": True,
             "text_embedding_dim": modality_embedding_dim,
         }
     return {
         "mode": mode.value,
-        "encoder": "patrickjohncyh/fashion-clip",
+        "encoder": encoders.fashion_clip_model_name,
         "precomputed": True,
         "trainable": False,
     }

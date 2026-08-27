@@ -398,6 +398,8 @@ concatena prima visuale, poi testo. Con FashionCLIP standard il risultato ha
 
 Esempio:
 
+PowerShell:
+
 ```powershell
 python -m scripts.precompute_embeddings `
   --subset disjoint `
@@ -406,9 +408,27 @@ python -m scripts.precompute_embeddings `
   --device auto
 ```
 
+Linux (Bash):
+
+```bash
+python -m scripts.precompute_embeddings \
+  --subset disjoint \
+  --split train \
+  --batch-size 128 \
+  --device auto
+```
+
 Controllo rapido senza elaborare tutto lo split:
 
+PowerShell:
+
 ```powershell
+python -m scripts.precompute_embeddings --split train --limit 100
+```
+
+Linux (Bash):
+
+```bash
 python -m scripts.precompute_embeddings --split train --limit 100
 ```
 

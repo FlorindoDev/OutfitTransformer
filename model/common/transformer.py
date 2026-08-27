@@ -8,46 +8,9 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from torch import Tensor, nn
 from torch.nn import functional as F
 
+from .config import DEFAULT_MODEL_CONFIG, TransformerConfig
 from .text_encoder import SentenceTransformerTextEncoder, TextEncoder
 from .visual_encoder import ResNet18VisualEncoder, VisualEncoder
-
-
-@dataclass(frozen=True)
-class TransformerConfig:
-    """Architecture defaults from the OutfitTransformer specification."""
-
-    modality_embedding_dim: int = 512
-    layers: int = 6
-    attention_heads: int = 16
-    feedforward_dim: int = 2024
-    dropout: float = 0.3
-    norm_first: bool = True
-    max_items: int = 16
-    normalization_epsilon: float = 1e-12
-
-    @property
-    def model_dim(self) -> int:
-        return 2 * self.modality_embedding_dim
-
-    def validate(self) -> None:
-        if self.modality_embedding_dim <= 0:
-            raise ValueError("modality_embedding_dim must be positive")
-        if self.layers <= 0:
-            raise ValueError("layers must be positive")
-        if self.attention_heads <= 0:
-            raise ValueError("attention_heads must be positive")
-        if self.model_dim % self.attention_heads != 0:
-            raise ValueError("model_dim must be divisible by attention_heads")
-        if self.feedforward_dim <= 0:
-            raise ValueError("feedforward_dim must be positive")
-        if not 0.0 <= self.dropout < 1.0:
-            raise ValueError("dropout must be in [0, 1)")
-        if not isinstance(self.norm_first, bool):
-            raise TypeError("norm_first must be boolean")
-        if self.max_items <= 0:
-            raise ValueError("max_items must be positive")
-        if self.normalization_epsilon <= 0.0:
-            raise ValueError("normalization_epsilon must be positive")
 
 
 class OutfitItem(BaseModel):
@@ -98,23 +61,12 @@ class OutfitContextTransformer(nn.Module):
         super().__init__()
         self.config = config
         self.padding_embedding = nn.Parameter(torch.empty(config.model_dim))
-        nn.init.normal_(self.padding_embedding, std=0.02)
+        nn.init.normal_(
+            self.padding_embedding,
+            std=config.embedding_initialization_std,
+        )
 
-        layer = nn.TransformerEncoderLayer(
-            d_model=config.model_dim,
-            nhead=config.attention_heads,
-            dim_feedforward=config.feedforward_dim,
-            dropout=config.dropout,
-            activation=nn.Mish(),
-            batch_first=True,
-            norm_first=config.norm_first,
-        )
-        self.encoder = nn.TransformerEncoder(
-            encoder_layer=layer,
-            num_layers=config.layers,
-            norm=nn.LayerNorm(config.model_dim),
-            enable_nested_tensor=False,
-        )
+        self.encoder = build_transformer_encoder(config)
 
     def forward(
         self,
@@ -207,7 +159,7 @@ class OutfitTransformer(nn.Module):
         config: TransformerConfig | None = None,
     ) -> None:
         super().__init__()
-        self.config = config or TransformerConfig()
+        self.config = config or DEFAULT_MODEL_CONFIG.transformer
         self.config.validate()
 
         self.visual_encoder = visual_encoder or ResNet18VisualEncoder()
@@ -334,6 +286,41 @@ def _projection(input_dim: int, output_dim: int) -> nn.Module:
     if input_dim == output_dim:
         return nn.Identity()
     return nn.Linear(input_dim, output_dim)
+
+
+def build_transformer_encoder(config: TransformerConfig) -> nn.TransformerEncoder:
+    """Build one Transformer encoder from the shared validated config."""
+    config.validate()
+    layer = nn.TransformerEncoderLayer(
+        d_model=config.model_dim,
+        nhead=config.attention_heads,
+        dim_feedforward=config.feedforward_dim,
+        dropout=config.dropout,
+        activation=_activation(config.activation),
+        batch_first=True,
+        norm_first=config.norm_first,
+    )
+    return nn.TransformerEncoder(
+        encoder_layer=layer,
+        num_layers=config.layers,
+        norm=nn.LayerNorm(
+            config.model_dim,
+            eps=config.layer_norm_epsilon,
+        ),
+        enable_nested_tensor=False,
+    )
+
+
+def _activation(name: str) -> nn.Module:
+    activations: dict[str, type[nn.Module]] = {
+        "relu": nn.ReLU,
+        "gelu": nn.GELU,
+        "mish": nn.Mish,
+    }
+    try:
+        return activations[name]()
+    except KeyError as error:
+        raise ValueError(f"unsupported activation: {name}") from error
 
 
 def _flatten_outfits(

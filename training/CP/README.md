@@ -58,6 +58,7 @@ dropout `0.3` e pre-norm.
 | `--weight-decay` | `0.01` | Imposta weight decay di AdamW. |
 | `--focal-alpha` | `0.5` | Imposta bilanciamento tra classi della Focal Loss. |
 | `--focal-gamma` | `2.0` | Imposta attenuazione degli esempi facili nella Focal Loss. |
+| `--focal-reduction` | `mean` | Aggrega Focal Loss con media o somma. |
 | `--seed` | `42` | Imposta seed di Python, NumPy, PyTorch e DataLoader. |
 | `--best-metric` | `val_auc` | Seleziona metrica del best model: `val_auc`, `val_accuracy` o `val_loss`. |
 | `--early-stopping-patience` | `None` | Attiva early stopping e indica quante epoche senza miglioramento attendere. Se omesso, resta disabilitato. |
@@ -74,7 +75,16 @@ dropout `0.3` e pre-norm.
 
 Solo `--clip` richiede cache separate per train e validation:
 
+PowerShell:
+
 ```powershell
+python -m scripts.precompute_embeddings --subset nondisjoint --split train
+python -m scripts.precompute_embeddings --subset nondisjoint --split validation
+```
+
+Linux (Bash):
+
+```bash
 python -m scripts.precompute_embeddings --subset nondisjoint --split train
 python -m scripts.precompute_embeddings --subset nondisjoint --split validation
 ```
@@ -91,23 +101,49 @@ Training usa soltanto `DatasetSource`, `DatasetRequest` e tipi pubblici di
 
 Versione classic del paper, senza precomputazione:
 
+PowerShell:
+
 ```powershell
+python -m training.CP.train_cp --classic
+```
+
+Linux (Bash):
+
+```bash
 python -m training.CP.train_cp --classic
 ```
 
 Versione classic ampliata a 512 feature per modalità:
 
+PowerShell:
+
 ```powershell
+python -m training.CP.train_cp --new-classic
+```
+
+Linux (Bash):
+
+```bash
 python -m training.CP.train_cp --new-classic
 ```
 
 Versione FashionCLIP con embedding precomputati:
 
+PowerShell:
+
 ```powershell
 python -m training.CP.train_cp --clip
 ```
 
+Linux (Bash):
+
+```bash
+python -m training.CP.train_cp --clip
+```
+
 Esempio con early stopping e directory dedicata:
+
+PowerShell:
 
 ```powershell
 python -m training.CP.train_cp `
@@ -117,12 +153,33 @@ python -m training.CP.train_cp `
   --checkpoint-dir checkpoints/nondisjoint/esperimento_01
 ```
 
+Linux (Bash):
+
+```bash
+python -m training.CP.train_cp \
+  --clip \
+  --early-stopping-patience 10 \
+  --best-metric val_auc \
+  --checkpoint-dir checkpoints/nondisjoint/esperimento_01
+```
+
 Resume dei soli pesi in un nuovo run:
+
+PowerShell:
 
 ```powershell
 python -m training.CP.train_cp `
   --clip `
   --resume checkpoints/nondisjoint/esperimento_01/best.pt `
+  --checkpoint-dir checkpoints/nondisjoint/esperimento_02
+```
+
+Linux (Bash):
+
+```bash
+python -m training.CP.train_cp \
+  --clip \
+  --resume checkpoints/nondisjoint/esperimento_01/best.pt \
   --checkpoint-dir checkpoints/nondisjoint/esperimento_02
 ```
 

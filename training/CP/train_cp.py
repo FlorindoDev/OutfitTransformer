@@ -8,9 +8,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from data import DEFAULT_DATASET_NAME, get_dataset_source
+from model import DEFAULT_MODEL_CONFIG
 from training.common import load_model_weights, resolve_device, seed_everything
 
-from .config import CPTrainingConfig, FeatureMode
+from .config import CPTrainingConfig, DEFAULT_EMBEDDING_ROOT, FeatureMode
 from .data import build_compatibility_loaders
 from .model import CPTrainingModel
 from .trainer import TrainingResult, train
@@ -79,7 +80,7 @@ def parse_args(
     parser.add_argument(
         "--embedding-root",
         type=Path,
-        default=Path("precomputed_embeddings/patrickjohncyh-fashion-clip"),
+        default=DEFAULT_EMBEDDING_ROOT,
     )
     parser.add_argument(
         "--dataset-root",
@@ -92,8 +93,21 @@ def parse_args(
     parser.add_argument("--gradient-accumulation-steps", type=int, default=4)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
-    parser.add_argument("--focal-alpha", type=float, default=0.5)
-    parser.add_argument("--focal-gamma", type=float, default=2.0)
+    parser.add_argument(
+        "--focal-alpha",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.compatibility.focal_alpha,
+    )
+    parser.add_argument(
+        "--focal-gamma",
+        type=float,
+        default=DEFAULT_MODEL_CONFIG.compatibility.focal_gamma,
+    )
+    parser.add_argument(
+        "--focal-reduction",
+        choices=["mean", "sum"],
+        default=DEFAULT_MODEL_CONFIG.compatibility.focal_reduction,
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--best-metric",
@@ -135,6 +149,7 @@ def parse_args(
         weight_decay=arguments.weight_decay,
         focal_alpha=arguments.focal_alpha,
         focal_gamma=arguments.focal_gamma,
+        focal_reduction=arguments.focal_reduction,
         seed=arguments.seed,
         best_metric=arguments.best_metric,
         early_stopping_patience=arguments.early_stopping_patience,

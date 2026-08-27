@@ -25,7 +25,15 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 
 Scarica entrambe le varianti e tutti gli split nella destinazione predefinita:
 
+PowerShell:
+
 ```powershell
+python -m scripts.download_polyvore
+```
+
+Linux (Bash):
+
+```bash
 python -m scripts.download_polyvore
 ```
 
@@ -152,7 +160,17 @@ La modalità CLIP del training CP richiede almeno le cache `train` e `validation
 
 Precomputazione completa per il training predefinito `nondisjoint`:
 
+PowerShell:
+
 ```powershell
+python -m scripts.precompute_embeddings --subset nondisjoint --split train
+python -m scripts.precompute_embeddings --subset nondisjoint --split validation
+python -m scripts.precompute_embeddings --subset nondisjoint --split test
+```
+
+Linux (Bash):
+
+```bash
 python -m scripts.precompute_embeddings --subset nondisjoint --split train
 python -m scripts.precompute_embeddings --subset nondisjoint --split validation
 python -m scripts.precompute_embeddings --subset nondisjoint --split test
@@ -160,11 +178,21 @@ python -m scripts.precompute_embeddings --subset nondisjoint --split test
 
 Prova rapida su 100 articoli:
 
+PowerShell:
+
 ```powershell
 python -m scripts.precompute_embeddings --subset nondisjoint --split train --limit 100 --device auto
 ```
 
-Prova OpenRouter. PowerShell:
+Linux (Bash):
+
+```bash
+python -m scripts.precompute_embeddings --subset nondisjoint --split train --limit 100 --device auto
+```
+
+Prova OpenRouter.
+
+PowerShell:
 
 ```powershell
 $env:OPENROUTER_API_KEY = "<chiave>"
@@ -173,6 +201,18 @@ python -m scripts.precompute_embeddings `
   --model-name google/gemini-embedding-2 `
   --subset nondisjoint `
   --split train `
+  --limit 100
+```
+
+Linux (Bash):
+
+```bash
+export OPENROUTER_API_KEY="<chiave>"
+python -m scripts.precompute_embeddings \
+  --openrouter \
+  --model-name google/gemini-embedding-2 \
+  --subset nondisjoint \
+  --split train \
   --limit 100
 ```
 

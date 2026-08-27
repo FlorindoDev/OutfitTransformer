@@ -65,6 +65,7 @@ def train(
     criterion = FocalLoss(
         alpha=config.focal_alpha,
         gamma=config.focal_gamma,
+        reduction=config.focal_reduction,
     )
     optimizer = AdamW(
         model.parameters(),

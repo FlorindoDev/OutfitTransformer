@@ -1,8 +1,12 @@
 """OutfitTransformer models."""
 
 from .common import (
+    DEFAULT_MODEL_CONFIG,
+    CompatibilityConfig,
+    EncoderConfig,
     FashionCLIPTextEncoder,
     FashionCLIPVisualEncoder,
+    ModelConfig,
     OpenRouterTextEncoder,
     OpenRouterVisualEncoder,
     OutfitItem,
@@ -18,11 +22,15 @@ from .common import (
 from .cp import CompatibilityHead, CompatibilityTransformer, FocalLoss
 
 __all__ = [
+    "CompatibilityConfig",
     "CompatibilityHead",
     "CompatibilityTransformer",
+    "DEFAULT_MODEL_CONFIG",
+    "EncoderConfig",
     "FashionCLIPTextEncoder",
     "FashionCLIPVisualEncoder",
     "FocalLoss",
+    "ModelConfig",
     "OutfitItem",
     "OutfitTransformer",
     "OutfitTransformerOutput",

@@ -208,7 +208,15 @@ percorsi del repository `mvasil/polyvore-outfits`.
 
 Per scaricare entrambe le varianti e tutti gli split nella cartella locale:
 
+PowerShell:
+
 ```powershell
+python -m scripts.download_polyvore
+```
+
+Linux (Bash):
+
+```bash
 python -m scripts.download_polyvore
 ```
 

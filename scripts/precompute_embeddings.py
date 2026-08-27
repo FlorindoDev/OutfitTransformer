@@ -31,6 +31,7 @@ from data import (
     get_dataset_source,
 )
 from model import (
+    DEFAULT_MODEL_CONFIG,
     FashionCLIPTextEncoder,
     FashionCLIPVisualEncoder,
     OpenRouterTextEncoder,
@@ -41,9 +42,13 @@ from model.common import TextEncoder, VisualEncoder
 OutputDType = Literal["float32", "float16"]
 
 LOGGER = logging.getLogger("precompute_embeddings")
-DEFAULT_MODEL_NAME = "patrickjohncyh/fashion-clip"
-DEFAULT_OPENROUTER_MODEL_NAME = "google/gemini-embedding-2"
-DEFAULT_OPENROUTER_DIMENSIONS = 512
+DEFAULT_MODEL_NAME = DEFAULT_MODEL_CONFIG.encoders.fashion_clip_model_name
+DEFAULT_OPENROUTER_MODEL_NAME = (
+    DEFAULT_MODEL_CONFIG.encoders.openrouter_model_name
+)
+DEFAULT_OPENROUTER_DIMENSIONS = (
+    DEFAULT_MODEL_CONFIG.encoders.openrouter_output_dim
+)
 SCHEMA_VERSION = 2
 
 
@@ -74,9 +79,15 @@ class PrecomputeConfig:
         compare=False,
     )
     openrouter_dimensions: int = DEFAULT_OPENROUTER_DIMENSIONS
-    openrouter_request_batch_size: int = 8
-    openrouter_image_size: int = 224
-    openrouter_timeout: float = 60.0
+    openrouter_request_batch_size: int = (
+        DEFAULT_MODEL_CONFIG.encoders.openrouter_request_batch_size
+    )
+    openrouter_image_size: int = (
+        DEFAULT_MODEL_CONFIG.encoders.openrouter_image_size
+    )
+    openrouter_timeout: float = (
+        DEFAULT_MODEL_CONFIG.encoders.openrouter_timeout_seconds
+    )
 
     def validate(self) -> None:
         source = get_dataset_source(self.dataset_name)
@@ -509,19 +520,19 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     parser.add_argument(
         "--openrouter-request-batch-size",
         type=int,
-        default=8,
+        default=DEFAULT_MODEL_CONFIG.encoders.openrouter_request_batch_size,
         help="maximum inputs sent in each OpenRouter API request",
     )
     parser.add_argument(
         "--openrouter-image-size",
         type=int,
-        default=224,
+        default=DEFAULT_MODEL_CONFIG.encoders.openrouter_image_size,
         help="square image size encoded and sent to OpenRouter",
     )
     parser.add_argument(
         "--openrouter-timeout",
         type=float,
-        default=60.0,
+        default=DEFAULT_MODEL_CONFIG.encoders.openrouter_timeout_seconds,
         help="timeout in seconds for each OpenRouter API attempt",
     )
     parser.add_argument(

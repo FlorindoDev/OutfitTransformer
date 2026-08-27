@@ -1,5 +1,12 @@
 """Shared multimodal components for CP and CIR tasks."""
 
+from .config import (
+    DEFAULT_MODEL_CONFIG,
+    CompatibilityConfig,
+    EncoderConfig,
+    ModelConfig,
+    TransformerConfig,
+)
 from .task_embedding import TaskEmbedding
 from .text_encoder import (
     FashionCLIPTextEncoder,
@@ -11,7 +18,6 @@ from .transformer import (
     OutfitItem,
     OutfitTransformer,
     OutfitTransformerOutput,
-    TransformerConfig,
 )
 from .visual_encoder import (
     FashionCLIPVisualEncoder,
@@ -21,8 +27,12 @@ from .visual_encoder import (
 )
 
 __all__ = [
+    "CompatibilityConfig",
+    "DEFAULT_MODEL_CONFIG",
+    "EncoderConfig",
     "FashionCLIPTextEncoder",
     "FashionCLIPVisualEncoder",
+    "ModelConfig",
     "OpenRouterTextEncoder",
     "OpenRouterVisualEncoder",
     "OutfitItem",

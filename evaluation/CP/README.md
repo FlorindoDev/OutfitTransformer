@@ -93,9 +93,19 @@ AUC valuta l'ordinamento, mentre accuracy valuta le classi dopo il taglio.
 `classic` e `new_classic` leggono immagini e descrizioni Polyvore. `clip`
 richiede cache embedding dello split scelto. Per test predefinito:
 
+PowerShell:
+
 ```powershell
 python -m scripts.precompute_embeddings `
   --subset nondisjoint `
+  --split test
+```
+
+Linux (Bash):
+
+```bash
+python -m scripts.precompute_embeddings \
+  --subset nondisjoint \
   --split test
 ```
 
@@ -109,17 +119,37 @@ carica parquet immagini né metadata.
 
 ## Avvio
 
+PowerShell:
+
 ```powershell
 python -m evaluation.CP.evaluate_cp `
   --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
 ```
 
+Linux (Bash):
+
+```bash
+python -m evaluation.CP.evaluate_cp \
+  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt
+```
+
 Esempio validation e output esplicito:
+
+PowerShell:
 
 ```powershell
 python -m evaluation.CP.evaluate_cp `
   --checkpoint checkpoints/nondisjoint/cp_clip/best.pt `
   --split validation `
+  --output results/cp_validation.json
+```
+
+Linux (Bash):
+
+```bash
+python -m evaluation.CP.evaluate_cp \
+  --checkpoint checkpoints/nondisjoint/cp_clip/best.pt \
+  --split validation \
   --output results/cp_validation.json
 ```
 

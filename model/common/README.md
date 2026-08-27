@@ -5,6 +5,7 @@
 - [File](#file)
 - [Architettura](#architettura)
 - [Scopo](#scopo)
+- [Configurazione centralizzata](#configurazione-centralizzata)
 - [API del modello](#api-del-modello)
 - [Encoder visuale e testuale](#encoder-visuale-e-testuale)
 - [Fusione multimodale](#fusione-multimodale)
@@ -18,6 +19,7 @@
 
 | File | Cosa fa |
 |---|---|
+| `config.py` | Centralizza e valida parametri Transformer, encoder, OpenRouter e Compatibility Prediction. |
 | `visual_encoder.py` | Definisce gli encoder visuali ResNet-18, FashionCLIP ViT e OpenRouter. |
 | `text_encoder.py` | Definisce gli encoder testuali SentenceTransformer, FashionCLIP e OpenRouter. |
 | `openrouter.py` | Gestisce batching, retry e validazione delle risposte dell'API embedding OpenRouter. |
@@ -62,6 +64,28 @@ Transformer lo aggiorna considerando tutti gli altri capi dell'outfit.
 
 Il modulo produce rappresentazioni comuni. Teste, loss e logica specifica di CP
 e CIR non sono ancora incluse.
+
+## Configurazione centralizzata
+
+Tutti i default del modello sono in `model/common/config.py`. Il punto di
+accesso pubblico è `DEFAULT_MODEL_CONFIG`; contiene profilo Transformer
+predefinito, profili `classic` e `new_classic`, encoder e focal loss. La API key
+OpenRouter resta fuori dalla configurazione e viene letta dall'ambiente.
+
+| Sezione | Parametri principali |
+|---|---|
+| `transformer` | Dimensioni, layer, teste, FFN, dropout, attivazione, normalizzazione, massimo item e inizializzazione embedding. |
+| `classic_transformer` | Profilo architetturale usato da `--classic`. |
+| `new_classic_transformer` | Profilo architetturale usato da `--new-classic`. |
+| `encoders` | Modelli, trainabilità, output OpenRouter, batching, dimensione immagini, timeout, retry e API base. |
+| `compatibility` | `alpha`, `gamma` e riduzione della focal loss. |
+
+Per cambiare i default dell'intero progetto, modificare questi valori in
+`config.py`: costruttori modello e CLI collegati leggono `DEFAULT_MODEL_CONFIG`.
+
+Dimensione multimodale è sempre
+`2 * modality_embedding_dim`; deve essere divisibile per `attention_heads`.
+Modifiche usate nel training vengono salvate nei checkpoint.
 
 ## API del modello
 

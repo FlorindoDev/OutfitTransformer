@@ -3,14 +3,18 @@
 import torch
 from torch import Tensor, nn
 
+from .config import DEFAULT_MODEL_CONFIG
+
 
 class TaskEmbedding(nn.Module):
     """Own one trainable vector that can be shared across CP and CIR."""
 
     def __init__(
         self,
-        embedding_dim: int = 512,
-        initialization_std: float = 0.02,
+        embedding_dim: int = DEFAULT_MODEL_CONFIG.transformer.modality_embedding_dim,
+        initialization_std: float = (
+            DEFAULT_MODEL_CONFIG.transformer.embedding_initialization_std
+        ),
     ) -> None:
         super().__init__()
         if embedding_dim <= 0:
