@@ -19,7 +19,7 @@
 
 | File | Cosa fa |
 |---|---|
-| `config.py` | Centralizza e valida soltanto parametri condivisi di Transformer, encoder e OpenRouter. |
+| `config.py` | Centralizza e valida Transformer, encoder e configurazioni specifiche di CP e CIR. |
 | `visual_encoder.py` | Definisce gli encoder visuali ResNet-18, FashionCLIP ViT e OpenRouter. |
 | `text_encoder.py` | Definisce gli encoder testuali SentenceTransformer, FashionCLIP e OpenRouter. |
 | `openrouter.py` | Gestisce batching, retry e validazione delle risposte dell'API embedding OpenRouter. |
@@ -68,11 +68,10 @@ e CIR restano intenzionalmente nei rispettivi package.
 
 ## Configurazione centralizzata
 
-I default condivisi sono in `model/common/config.py`. Il punto di accesso
-pubblico è `DEFAULT_MODEL_CONFIG`; contiene profili Transformer `classic`,
-`new_classic` e `precomputed`, oltre agli encoder. Config encoder include anche
-OpenRouter; API key resta fuori e viene letta dall'ambiente. Config specifiche
-di CP e CIR vivono nei rispettivi package.
+Tutti i default del modello sono in `model/common/config.py`. Il punto di
+accesso pubblico è `DEFAULT_MODEL_CONFIG`; contiene i profili Transformer, gli
+encoder e le sezioni specifiche di CP e CIR. La configurazione degli encoder
+include anche OpenRouter; l'API key resta fuori e viene letta dall'ambiente.
 
 | Sezione | Parametri principali |
 |---|---|
@@ -80,6 +79,8 @@ di CP e CIR vivono nei rispettivi package.
 | `classic_transformer` | Profilo architetturale usato da `--classic`. |
 | `new_classic_transformer` | Profilo architetturale usato da `--new-classic`. |
 | `encoders` | Modelli, trainabilità, output OpenRouter, batching, dimensione immagini, timeout, retry e API base. |
+| `compatibility` | `focal_alpha`, `focal_gamma` e riduzione della focal loss CP. |
+| `complementary_item` | Dimensione e normalizzazione degli embedding, margine e riduzione della loss CIR. |
 
 
 Dimensione multimodale è sempre

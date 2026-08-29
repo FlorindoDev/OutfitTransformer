@@ -8,9 +8,9 @@
 | `cp` | Usa le rappresentazioni common per stimare la compatibilità complessiva di un outfit. | [README CP](cp/README.md) |
 | `CIR` | Usa le rappresentazioni common per creare embedding confrontabili di outfit parziali e item complementari. | [README CIR](CIR/README.md) |
 
-Ogni package possiede la propria configurazione specifica: focal loss in
-`cp/config.py`, spazio retrieval e triplet loss in `CIR/config.py`. In
-`common/config.py` restano solo Transformer, encoder e profili condivisi.
+Tutta la configurazione del modello è centralizzata in `common/config.py`:
+Transformer, encoder, focal loss CP, spazio di retrieval e triplet loss CIR
+condividono così un unico punto di accesso e validazione.
 
 ## Embedding dei task
 

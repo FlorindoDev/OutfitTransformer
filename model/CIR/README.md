@@ -18,7 +18,6 @@
 
 | File | Cosa fa |
 |---|---|
-| `config.py` | Definisce e valida dimensione dello spazio di retrieval, normalizzazione dell'output e valori predefiniti della loss. |
 | `transformer.py` | Costruisce il token CIR e produce gli embedding degli outfit parziali e dei singoli item. |
 | `head.py` | Proietta query e item nello stesso spazio vettoriale. |
 | `in_batch_triplet_margin_loss.py` | Calcola la triplet margin loss usando i negativi presenti nel batch. |
@@ -109,8 +108,9 @@ Per gli item positivi:
 - `embed_items()` restituisce un vettore per ogni item, nello stesso spazio della query.
 
 La dimensione predefinita dell'output è 128 ed è configurabile tramite
-`ComplementaryItemConfig.embedding_dim`. L'epsilon numerico usato dalla
-normalizzazione appartiene al `TransformerConfig` common.
+`DEFAULT_MODEL_CONFIG.complementary_item.embedding_dim` in
+`model/common/config.py`. `ComplementaryItemConfig` descrive l'intera sezione
+CIR; l'epsilon numerico della normalizzazione appartiene al `TransformerConfig`.
 
 ## Token CIR
 
