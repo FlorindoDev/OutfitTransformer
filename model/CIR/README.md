@@ -11,8 +11,6 @@
 - [Testa di retrieval](#testa-di-retrieval)
 - [Calcolo della loss](#calcolo-della-loss)
 - [Condivisione con CP](#condivisione-con-cp)
-- [Vincoli](#vincoli)
-- [Funzionalità escluse](#funzionalità-escluse)
 
 ## File
 
@@ -321,16 +319,3 @@ parametro durante l'allenamento. Se CIR non riceve quell'istanza, crea un
 
 Il caricamento dei checkpoint e l'eventuale inizializzazione del Transformer
 CIR appartengono al futuro training runner, non a questo modulo.
-
-
-
-## Funzionalità escluse
-
-Questo passo non include:
-
-- training loop CIR;
-- optimizer, scheduler, checkpoint e resume;
-- valutazione Fill In The Blank;
-- indice FAISS o altro database vettoriale;
-- ricerca top-k nel catalogo;
-- filtro o condizionamento per categoria target.
