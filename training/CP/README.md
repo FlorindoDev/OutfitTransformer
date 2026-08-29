@@ -13,11 +13,11 @@ prodotti da qualsiasi modello compatibile. Default è sempre `new_classic`.
 | `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
 | `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer e CP | Richiesta per train e validation |
 
-`classic` e `new_classic` condividono encoder runtime, 6 layer, 16
-teste, feed-forward 512, dropout `0.1` e post-norm. `classic` usa 64 feature per
-modalità; `new_classic` ne usa 512. `precomputed` mantiene profilo
-generico con feed-forward 2024, dropout `0.3` e pre-norm, indipendentemente dal
-modello che ha prodotto la cache.
+`classic` e `new_classic` condividono encoder runtime, 6 layer, 16 teste,
+dropout `0.1` e post-norm. `classic` usa 64 feature per modalità e feed-forward
+512; `new_classic` usa 512 feature per modalità e feed-forward 2024, come il
+profilo `precomputed`. Quest'ultimo usa però dropout `0.3` e pre-norm,
+indipendentemente dal modello che ha prodotto la cache.
 
 ## Configurazione predefinita
 

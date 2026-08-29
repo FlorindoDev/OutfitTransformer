@@ -148,7 +148,6 @@ class ComplementaryItemConfig:
 def _new_classic_transformer() -> TransformerConfig:
     return TransformerConfig(
         modality_embedding_dim=512,
-        feedforward_dim=512,
         dropout=0.1,
         norm_first=False,
     )
