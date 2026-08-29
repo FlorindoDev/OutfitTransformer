@@ -1,5 +1,12 @@
 """OutfitTransformer models."""
 
+from .CIR import (
+    DEFAULT_CIR_CONFIG,
+    ComplementaryItemConfig,
+    ComplementaryItemTransformer,
+    InBatchTripletMarginLoss,
+    RetrievalEmbeddingHead,
+)
 from .common import (
     DEFAULT_MODEL_CONFIG,
     EncoderConfig,
@@ -27,15 +34,19 @@ from .cp import (
 )
 
 __all__ = [
+    "ComplementaryItemConfig",
+    "ComplementaryItemTransformer",
     "CompatibilityConfig",
     "CompatibilityHead",
     "CompatibilityTransformer",
     "DEFAULT_COMPATIBILITY_CONFIG",
     "DEFAULT_MODEL_CONFIG",
+    "DEFAULT_CIR_CONFIG",
     "EncoderConfig",
     "FashionCLIPTextEncoder",
     "FashionCLIPVisualEncoder",
     "FocalLoss",
+    "InBatchTripletMarginLoss",
     "ModelConfig",
     "OutfitItem",
     "OutfitTransformer",
@@ -43,6 +54,7 @@ __all__ = [
     "OpenRouterTextEncoder",
     "OpenRouterVisualEncoder",
     "ResNet18VisualEncoder",
+    "RetrievalEmbeddingHead",
     "SentenceTransformerTextEncoder",
     "TaskEmbedding",
     "TextEncoder",
