@@ -1,7 +1,7 @@
 # OutfitTransformer
 
 Progetto per rappresentare outfit multimodali, stimarne la compatibilità e
-preparare il futuro retrieval di articoli complementari.
+apprendere embedding per il retrieval di articoli complementari.
 
 ## Indice
 
@@ -21,7 +21,8 @@ preparare il futuro retrieval di articoli complementari.
 Il progetto legge immagini e descrizioni di articoli fashion, crea embedding
 multimodali e usa un Transformer senza positional embedding per rappresentare
 outfit di lunghezza variabile. Il task CP assegna uno score di compatibilità;
-il task CIR è previsto ma non ancora implementato.
+il modulo CIR produce embedding per outfit parziali e item positivi e include
+la loss di retrieval. Training ed evaluation CIR non sono ancora implementati.
 
 Per approfondire componenti e responsabilità: [panoramica del modello](model/README.md)
 e [pipeline dei dati](data/README.md).
@@ -37,6 +38,7 @@ e [pipeline dei dati](data/README.md).
 | `model` | Espone architettura comune e moduli specifici dei task. | [README](model/README.md) |
 | `model/common` | Crea embedding multimodali e li contestualizza con il Transformer. | [README](model/common/README.md) |
 | `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
+| `model/CIR` | Produce embedding di outfit parziali e item e definisce la loss CIR. | [README](model/CIR/README.md) |
 | `training` | Allena CP con input runtime o embedding precomputati e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
 | `metrics` | Calcola metriche riutilizzabili per training e valutazione. | [README](metrics/README.md) |
 
@@ -67,7 +69,7 @@ flowchart TD
     L --> M["Stato CP token → Dropout + Linear + Sigmoid"]
     M --> N["Compatibility probability<br/>Binary Focal Loss e metriche"]
 
-    J --> O["CIR<br/>task_emb + embed_emb + target specification"]
+    J --> O["CIR<br/>task_emb + embed_emb"]
     O --> Q["Target item embedding"]
     Q --> R["Set-wise Ranking Loss<br/>o ricerca KNN"]
 ```

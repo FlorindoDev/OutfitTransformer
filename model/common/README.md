@@ -19,11 +19,12 @@
 
 | File | Cosa fa |
 |---|---|
-| `config.py` | Centralizza e valida parametri Transformer, encoder, OpenRouter e Compatibility Prediction. |
+| `config.py` | Centralizza e valida soltanto parametri condivisi di Transformer, encoder e OpenRouter. |
 | `visual_encoder.py` | Definisce gli encoder visuali ResNet-18, FashionCLIP ViT e OpenRouter. |
 | `text_encoder.py` | Definisce gli encoder testuali SentenceTransformer, FashionCLIP e OpenRouter. |
 | `openrouter.py` | Gestisce batching, retry e validazione delle risposte dell'API embedding OpenRouter. |
 | `transformer.py` | Gestisce API Pydantic, fusione, padding, Transformer e output. |
+| `output_validation.py` | Valida output common prima dell'uso nei Transformer specifici dei task. |
 | `task_embedding.py` | Definisce l'embedding allenabile condiviso dai moduli specifici CP e CIR. |
 | `__init__.py` | Espone i componenti pubblici di `model.common`. |
 | `README.md` | Documenta concetti, comportamento e limiti del modulo. |
@@ -63,15 +64,15 @@ diventa un vettore che combina aspetto visuale e descrizione testuale; il
 Transformer lo aggiorna considerando tutti gli altri capi dell'outfit.
 
 Il modulo produce rappresentazioni comuni. Teste, loss e logica specifica di CP
-e CIR non sono ancora incluse.
+e CIR restano intenzionalmente nei rispettivi package.
 
 ## Configurazione centralizzata
 
-Tutti i default del modello sono in `model/common/config.py`. Il punto di
-accesso pubblico è `DEFAULT_MODEL_CONFIG`; contiene profili `classic`,
-`new_classic` e `precomputed`, oltre a encoder e focal loss. Config
-encoder include anche OpenRouter; API key resta fuori e viene letta
-dall'ambiente.
+I default condivisi sono in `model/common/config.py`. Il punto di accesso
+pubblico è `DEFAULT_MODEL_CONFIG`; contiene profili Transformer `classic`,
+`new_classic` e `precomputed`, oltre agli encoder. Config encoder include anche
+OpenRouter; API key resta fuori e viene letta dall'ambiente. Config specifiche
+di CP e CIR vivono nei rispettivi package.
 
 | Sezione | Parametri principali |
 |---|---|
@@ -79,10 +80,7 @@ dall'ambiente.
 | `classic_transformer` | Profilo architetturale usato da `--classic`. |
 | `new_classic_transformer` | Profilo architetturale usato da `--new-classic`. |
 | `encoders` | Modelli, trainabilità, output OpenRouter, batching, dimensione immagini, timeout, retry e API base. |
-| `compatibility` | `alpha`, `gamma` e riduzione della focal loss. |
 
-Per cambiare i default dell'intero progetto, modificare questi valori in
-`config.py`: costruttori modello e CLI collegati leggono `DEFAULT_MODEL_CONFIG`.
 
 Dimensione multimodale è sempre
 `2 * modality_embedding_dim`; deve essere divisibile per `attention_heads`.

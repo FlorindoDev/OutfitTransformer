@@ -3,6 +3,7 @@
 ## Indice
 
 - [File](#file)
+- [Configurazione CP](#configurazione-cp)
 - [Architettura](#architettura)
 - [Scopo](#scopo)
 - [Input e output](#input-e-output)
@@ -19,9 +20,25 @@
 
 | File | Cosa fa |
 |---|---|
+| `config.py` | Definisce e valida `alpha`, `gamma` e riduzione della focal loss. |
 | `transformer.py` | Costruisce il token CP, elabora outfit e token con il Transformer e produce la probabilità tramite la testa. |
 | `head.py` | Converte la rappresentazione globale dell'outfit in uno score di compatibilità. |
 | `focal_loss.py` | Calcola la focal loss binaria usata per allenare il classificatore. |
+
+## Configurazione CP
+
+`CompatibilityConfig` appartiene al package CP. Contiene soltanto parametri
+specifici della focal loss:
+
+| Parametro | Default |
+|---|---:|
+| `focal_alpha` | `0.5` |
+| `focal_gamma` | `2.0` |
+| `focal_reduction` | `mean` |
+
+`DEFAULT_COMPATIBILITY_CONFIG` fornisce i default condivisi da modello, CLI e
+training CP. Config Transformer ed encoder restano in `model.common` perché
+usati anche da CIR.
 
 
 ## Architettura

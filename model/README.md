@@ -6,7 +6,11 @@
 |---|---|---|
 | `common` | Trasforma immagini e testi degli item in rappresentazioni multimodali contestualizzate e contiene i componenti condivisi. | [README common](common/README.md) |
 | `cp` | Usa le rappresentazioni common per stimare la compatibilità complessiva di un outfit. | [README CP](cp/README.md) |
-| `cir` | Userà le rappresentazioni common per creare un embedding destinato al retrieval di item complementari. Non ancora implementato. | README non ancora disponibile |
+| `CIR` | Usa le rappresentazioni common per creare embedding confrontabili di outfit parziali e item complementari. | [README CIR](CIR/README.md) |
+
+Ogni package possiede la propria configurazione specifica: focal loss in
+`cp/config.py`, spazio retrieval e triplet loss in `CIR/config.py`. In
+`common/config.py` restano solo Transformer, encoder e profili condivisi.
 
 ## Embedding dei task
 
@@ -18,14 +22,14 @@ proprio token iniziale per gli outfit del batch; la self-attention lo rende poi
 specifico dell'outfit con cui interagisce.
 
 `TaskEmbedding` centralizza `task_emb` in `model.common`. Per condividerlo
-realmente, il futuro modello padre ne creerà una sola istanza e passerà la
-stessa istanza a CP e CIR. Se CP non ne riceve una, crea un'istanza privata.
+realmente, il chiamante crea una sola istanza e passa la stessa istanza a CP e
+CIR. Se un task non ne riceve una, crea un'istanza privata.
 
 | Embedding | Dimensione | Ruolo |
 |---|---:|---|
 | `task_emb` | 512 | Parte condivisa tra CP e CIR. Apprende conoscenza generale sulle relazioni di compatibilità. |
 | `predict_emb` | 512 | Parte specifica CP. Indica al Transformer di produrre una rappresentazione utile alla classificazione. |
-| `embed_emb` | 512 | Parte specifica CIR. Indica al Transformer di produrre una rappresentazione utile al retrieval. Non ancora implementata. |
+| `embed_emb` | 512 | Parte specifica CIR. Indica al Transformer di produrre una rappresentazione utile al retrieval. |
 
 I token completi sono concatenazioni da 1024 valori:
 
@@ -41,7 +45,7 @@ forzerebbe entrambi i task a condividere la stessa rappresentazione e potrebbe
 aumentare il conflitto tra i loro gradienti.
 
 Durante CP, la focal loss aggiorna sia `predict_emb` sia `task_emb`. Durante
-CIR, la loss di retrieval aggiornerà sia `embed_emb` sia lo stesso `task_emb`.
-`embed_emb` identifica il task di retrieval, non la categoria o la descrizione
-dell'item cercato: tale informazione dovrà essere fornita separatamente dal
-modulo CIR.
+CIR, la loss di retrieval aggiorna sia `embed_emb` sia lo stesso `task_emb`, se
+il training include entrambi tra i parametri ottimizzati. `embed_emb` identifica
+il task di retrieval: implementazione corrente non usa categoria o descrizione
+del target.
