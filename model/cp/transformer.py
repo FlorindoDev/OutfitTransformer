@@ -4,6 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from ..common.config import DEFAULT_MODEL_CONFIG, TransformerConfig
+from ..common.output_validation import validate_common_output
 from ..common.task_embedding import TaskEmbedding
 from ..common.transformer import (
     OutfitTransformerOutput,
@@ -60,7 +61,7 @@ class CompatibilityTransformer(nn.Module):
 
     def encode(self, common_output: OutfitTransformerOutput) -> Tensor:
         """Return CP token state after attending to every real outfit item."""
-        item_embeddings, padding_mask = _validate_common_output(
+        item_embeddings, padding_mask = validate_common_output(
             common_output,
             expected_dim=self.config.model_dim,
         )
@@ -95,37 +96,3 @@ def _embedding_parameter(
     embedding = nn.Parameter(torch.empty(size))
     nn.init.normal_(embedding, std=initialization_std)
     return embedding
-
-
-def _validate_common_output(
-    common_output: OutfitTransformerOutput,
-    *,
-    expected_dim: int,
-) -> tuple[Tensor, Tensor]:
-    if not isinstance(common_output, OutfitTransformerOutput):
-        raise TypeError("common_output must be an OutfitTransformerOutput")
-
-    item_embeddings = common_output.contextual_embeddings
-    padding_mask = common_output.padding_mask
-    if item_embeddings.ndim != 3 or item_embeddings.size(2) != expected_dim:
-        raise ValueError(
-            "common contextual_embeddings must have shape "
-            f"[batch, items, {expected_dim}]"
-        )
-    if item_embeddings.size(0) == 0 or item_embeddings.size(1) == 0:
-        raise ValueError("common contextual_embeddings cannot be empty")
-    if padding_mask.shape != item_embeddings.shape[:2]:
-        raise ValueError(
-            "common padding_mask must match contextual_embeddings batch and items"
-        )
-    if padding_mask.dtype != torch.bool:
-        raise TypeError("common padding_mask must be boolean")
-    if padding_mask.device != item_embeddings.device:
-        raise ValueError(
-            "common padding_mask and contextual_embeddings must share a device"
-        )
-    if bool(padding_mask.all(dim=1).any()):
-        raise ValueError("each outfit must contain at least one real item")
-    if not bool(torch.isfinite(item_embeddings).all()):
-        raise ValueError("common contextual_embeddings must contain finite values")
-    return item_embeddings, padding_mask
