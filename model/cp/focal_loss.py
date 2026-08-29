@@ -4,7 +4,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from ..common.config import DEFAULT_MODEL_CONFIG, Reduction
+from .config import DEFAULT_COMPATIBILITY_CONFIG, Reduction
 
 
 class FocalLoss(nn.Module):
@@ -12,11 +12,9 @@ class FocalLoss(nn.Module):
 
     def __init__(
         self,
-        alpha: float = DEFAULT_MODEL_CONFIG.compatibility.focal_alpha,
-        gamma: float = DEFAULT_MODEL_CONFIG.compatibility.focal_gamma,
-        reduction: Reduction = (
-            DEFAULT_MODEL_CONFIG.compatibility.focal_reduction
-        ),
+        alpha: float = DEFAULT_COMPATIBILITY_CONFIG.focal_alpha,
+        gamma: float = DEFAULT_COMPATIBILITY_CONFIG.focal_gamma,
+        reduction: Reduction = DEFAULT_COMPATIBILITY_CONFIG.focal_reduction,
     ) -> None:
         super().__init__()
         if not 0.0 <= alpha <= 1.0:

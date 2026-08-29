@@ -1,11 +1,10 @@
-"""Central, validated defaults for every model component."""
+"""Central, validated defaults for shared model components."""
 
 from dataclasses import dataclass, field
 from typing import Literal
 
 
 ActivationName = Literal["relu", "gelu", "mish"]
-Reduction = Literal["none", "mean", "sum"]
 
 
 @dataclass(frozen=True)
@@ -104,25 +103,6 @@ class EncoderConfig:
             raise ValueError("openrouter_max_retries cannot be negative")
 
 
-@dataclass(frozen=True)
-class CompatibilityConfig:
-    """Defaults specific to compatibility prediction."""
-
-    focal_alpha: float = 0.5
-    focal_gamma: float = 2.0
-    focal_reduction: Reduction = "mean"
-
-    def validate(self) -> None:
-        if not 0.0 <= self.focal_alpha <= 1.0:
-            raise ValueError("focal_alpha must be in [0, 1]")
-        if self.focal_gamma < 0.0:
-            raise ValueError("focal_gamma cannot be negative")
-        if self.focal_reduction not in {"none", "mean", "sum"}:
-            raise ValueError(
-                "focal_reduction must be 'none', 'mean', or 'sum'"
-            )
-
-
 def _new_classic_transformer() -> TransformerConfig:
     return TransformerConfig(
         modality_embedding_dim=512,
@@ -134,7 +114,7 @@ def _new_classic_transformer() -> TransformerConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """Single entry point for model defaults and feature-mode profiles."""
+    """Shared Transformer, encoder defaults, and feature-mode profiles."""
 
     transformer: TransformerConfig = field(default_factory=TransformerConfig)
     classic_transformer: TransformerConfig = field(
@@ -149,16 +129,12 @@ class ModelConfig:
         default_factory=_new_classic_transformer
     )
     encoders: EncoderConfig = field(default_factory=EncoderConfig)
-    compatibility: CompatibilityConfig = field(
-        default_factory=CompatibilityConfig
-    )
 
     def validate(self) -> None:
         self.transformer.validate()
         self.classic_transformer.validate()
         self.new_classic_transformer.validate()
         self.encoders.validate()
-        self.compatibility.validate()
 
 
 def _validate_text(value: str, name: str) -> None:

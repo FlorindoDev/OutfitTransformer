@@ -2,7 +2,6 @@
 
 from .config import (
     DEFAULT_MODEL_CONFIG,
-    CompatibilityConfig,
     EncoderConfig,
     ModelConfig,
     TransformerConfig,
@@ -27,7 +26,6 @@ from .visual_encoder import (
 )
 
 __all__ = [
-    "CompatibilityConfig",
     "DEFAULT_MODEL_CONFIG",
     "EncoderConfig",
     "FashionCLIPTextEncoder",

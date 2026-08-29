@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from data import DEFAULT_DATASET_NAME, get_dataset_source
-from model import DEFAULT_MODEL_CONFIG
+from model import DEFAULT_COMPATIBILITY_CONFIG
 from training.common import load_model_weights, resolve_device, seed_everything
 
 from .config import (
@@ -102,17 +102,17 @@ def parse_args(
     parser.add_argument(
         "--focal-alpha",
         type=float,
-        default=DEFAULT_MODEL_CONFIG.compatibility.focal_alpha,
+        default=DEFAULT_COMPATIBILITY_CONFIG.focal_alpha,
     )
     parser.add_argument(
         "--focal-gamma",
         type=float,
-        default=DEFAULT_MODEL_CONFIG.compatibility.focal_gamma,
+        default=DEFAULT_COMPATIBILITY_CONFIG.focal_gamma,
     )
     parser.add_argument(
         "--focal-reduction",
         choices=["mean", "sum"],
-        default=DEFAULT_MODEL_CONFIG.compatibility.focal_reduction,
+        default=DEFAULT_COMPATIBILITY_CONFIG.focal_reduction,
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(

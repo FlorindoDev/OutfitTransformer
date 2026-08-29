@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from data import DEFAULT_DATASET_NAME, get_dataset_source
-from model import TransformerConfig
-from model.common.config import DEFAULT_MODEL_CONFIG, Reduction
+from model import DEFAULT_MODEL_CONFIG, TransformerConfig
+from model.cp.config import DEFAULT_COMPATIBILITY_CONFIG, Reduction
 
 BestMetric = Literal["val_auc", "val_accuracy", "val_loss"]
 
@@ -93,10 +93,10 @@ class CPTrainingConfig:
     gradient_accumulation_steps: int = 4
     learning_rate: float = 2e-5
     weight_decay: float = 0.01
-    focal_alpha: float = DEFAULT_MODEL_CONFIG.compatibility.focal_alpha
-    focal_gamma: float = DEFAULT_MODEL_CONFIG.compatibility.focal_gamma
+    focal_alpha: float = DEFAULT_COMPATIBILITY_CONFIG.focal_alpha
+    focal_gamma: float = DEFAULT_COMPATIBILITY_CONFIG.focal_gamma
     focal_reduction: Reduction = (
-        DEFAULT_MODEL_CONFIG.compatibility.focal_reduction
+        DEFAULT_COMPATIBILITY_CONFIG.focal_reduction
     )
     seed: int = 42
     best_metric: BestMetric = "val_auc"

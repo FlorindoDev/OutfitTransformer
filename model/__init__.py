@@ -2,7 +2,6 @@
 
 from .common import (
     DEFAULT_MODEL_CONFIG,
-    CompatibilityConfig,
     EncoderConfig,
     FashionCLIPTextEncoder,
     FashionCLIPVisualEncoder,
@@ -19,12 +18,19 @@ from .common import (
     TransformerConfig,
     VisualEncoder,
 )
-from .cp import CompatibilityHead, CompatibilityTransformer, FocalLoss
+from .cp import (
+    DEFAULT_COMPATIBILITY_CONFIG,
+    CompatibilityConfig,
+    CompatibilityHead,
+    CompatibilityTransformer,
+    FocalLoss,
+)
 
 __all__ = [
     "CompatibilityConfig",
     "CompatibilityHead",
     "CompatibilityTransformer",
+    "DEFAULT_COMPATIBILITY_CONFIG",
     "DEFAULT_MODEL_CONFIG",
     "EncoderConfig",
     "FashionCLIPTextEncoder",
