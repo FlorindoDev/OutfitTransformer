@@ -8,8 +8,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from data import DEFAULT_DATASET_NAME, get_dataset_source
-from model import DEFAULT_MODEL_CONFIG, TransformerConfig
-from model.cp.config import DEFAULT_COMPATIBILITY_CONFIG, Reduction
+from model.common.config import (
+    DEFAULT_COMPATIBILITY_CONFIG,
+    DEFAULT_MODEL_CONFIG,
+    Reduction,
+    TransformerConfig,
+)
 
 BestMetric = Literal["val_auc", "val_accuracy", "val_loss"]
 

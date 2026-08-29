@@ -4,7 +4,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from .config import DEFAULT_COMPATIBILITY_CONFIG, Reduction
+from ..common.config import DEFAULT_COMPATIBILITY_CONFIG, Reduction
 
 
 class FocalLoss(nn.Module):

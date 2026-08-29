@@ -1,6 +1,6 @@
 """Compatibility Prediction components."""
 
-from .config import DEFAULT_COMPATIBILITY_CONFIG, CompatibilityConfig
+from ..common.config import DEFAULT_COMPATIBILITY_CONFIG, CompatibilityConfig
 from .focal_loss import FocalLoss
 from .head import CompatibilityHead
 from .transformer import CompatibilityTransformer

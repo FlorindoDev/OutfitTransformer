@@ -4,7 +4,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from .config import DEFAULT_CIR_CONFIG, Reduction
+from ..common.config import DEFAULT_CIR_CONFIG, Reduction
 
 
 class InBatchTripletMarginLoss(nn.Module):

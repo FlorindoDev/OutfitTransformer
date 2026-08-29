@@ -1,14 +1,16 @@
 """OutfitTransformer models."""
 
 from .CIR import (
-    DEFAULT_CIR_CONFIG,
-    ComplementaryItemConfig,
     ComplementaryItemTransformer,
     InBatchTripletMarginLoss,
     RetrievalEmbeddingHead,
 )
 from .common import (
+    DEFAULT_CIR_CONFIG,
+    DEFAULT_COMPATIBILITY_CONFIG,
     DEFAULT_MODEL_CONFIG,
+    ComplementaryItemConfig,
+    CompatibilityConfig,
     EncoderConfig,
     FashionCLIPTextEncoder,
     FashionCLIPVisualEncoder,
@@ -26,8 +28,6 @@ from .common import (
     VisualEncoder,
 )
 from .cp import (
-    DEFAULT_COMPATIBILITY_CONFIG,
-    CompatibilityConfig,
     CompatibilityHead,
     CompatibilityTransformer,
     FocalLoss,

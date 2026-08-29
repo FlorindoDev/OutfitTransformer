@@ -3,14 +3,18 @@
 import torch
 from torch import Tensor, nn
 
-from ..common.config import DEFAULT_MODEL_CONFIG, TransformerConfig
+from ..common.config import (
+    DEFAULT_CIR_CONFIG,
+    DEFAULT_MODEL_CONFIG,
+    ComplementaryItemConfig,
+    TransformerConfig,
+)
 from ..common.output_validation import validate_common_output
 from ..common.task_embedding import TaskEmbedding
 from ..common.transformer import (
     OutfitTransformerOutput,
     build_transformer_encoder,
 )
-from .config import DEFAULT_CIR_CONFIG, ComplementaryItemConfig
 from .head import RetrievalEmbeddingHead
 
 

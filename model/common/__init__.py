@@ -1,7 +1,11 @@
 """Shared multimodal components for CP and CIR tasks."""
 
 from .config import (
+    DEFAULT_CIR_CONFIG,
+    DEFAULT_COMPATIBILITY_CONFIG,
     DEFAULT_MODEL_CONFIG,
+    ComplementaryItemConfig,
+    CompatibilityConfig,
     EncoderConfig,
     ModelConfig,
     TransformerConfig,
@@ -26,6 +30,10 @@ from .visual_encoder import (
 )
 
 __all__ = [
+    "ComplementaryItemConfig",
+    "CompatibilityConfig",
+    "DEFAULT_CIR_CONFIG",
+    "DEFAULT_COMPATIBILITY_CONFIG",
     "DEFAULT_MODEL_CONFIG",
     "EncoderConfig",
     "FashionCLIPTextEncoder",

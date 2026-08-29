@@ -1,10 +1,11 @@
-"""Central, validated defaults for shared model components."""
+"""Central, validated defaults for all model components."""
 
 from dataclasses import dataclass, field
 from typing import Literal
 
 
 ActivationName = Literal["relu", "gelu", "mish"]
+Reduction = Literal["none", "mean", "sum"]
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,47 @@ class EncoderConfig:
             raise ValueError("openrouter_max_retries cannot be negative")
 
 
+@dataclass(frozen=True)
+class CompatibilityConfig:
+    """Defaults specific to compatibility prediction."""
+
+    focal_alpha: float = 0.5
+    focal_gamma: float = 2.0
+    focal_reduction: Reduction = "mean"
+
+    def validate(self) -> None:
+        if not 0.0 <= self.focal_alpha <= 1.0:
+            raise ValueError("focal_alpha must be in [0, 1]")
+        if self.focal_gamma < 0.0:
+            raise ValueError("focal_gamma cannot be negative")
+        if self.focal_reduction not in {"none", "mean", "sum"}:
+            raise ValueError(
+                "focal_reduction must be 'none', 'mean', or 'sum'"
+            )
+
+
+@dataclass(frozen=True)
+class ComplementaryItemConfig:
+    """Defaults specific to complementary item retrieval."""
+
+    embedding_dim: int = 128
+    normalize_embeddings: bool = False
+    triplet_margin: float = 2.0
+    loss_reduction: Reduction = "mean"
+
+    def validate(self) -> None:
+        if self.embedding_dim <= 0:
+            raise ValueError("embedding_dim must be positive")
+        if not isinstance(self.normalize_embeddings, bool):
+            raise TypeError("normalize_embeddings must be boolean")
+        if self.triplet_margin < 0.0:
+            raise ValueError("triplet_margin cannot be negative")
+        if self.loss_reduction not in {"none", "mean", "sum"}:
+            raise ValueError(
+                "loss_reduction must be 'none', 'mean', or 'sum'"
+            )
+
+
 def _new_classic_transformer() -> TransformerConfig:
     return TransformerConfig(
         modality_embedding_dim=512,
@@ -114,7 +156,7 @@ def _new_classic_transformer() -> TransformerConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """Shared Transformer, encoder defaults, and feature-mode profiles."""
+    """Single entry point for shared and task-specific model defaults."""
 
     transformer: TransformerConfig = field(default_factory=TransformerConfig)
     classic_transformer: TransformerConfig = field(
@@ -129,12 +171,20 @@ class ModelConfig:
         default_factory=_new_classic_transformer
     )
     encoders: EncoderConfig = field(default_factory=EncoderConfig)
+    compatibility: CompatibilityConfig = field(
+        default_factory=CompatibilityConfig
+    )
+    complementary_item: ComplementaryItemConfig = field(
+        default_factory=ComplementaryItemConfig
+    )
 
     def validate(self) -> None:
         self.transformer.validate()
         self.classic_transformer.validate()
         self.new_classic_transformer.validate()
         self.encoders.validate()
+        self.compatibility.validate()
+        self.complementary_item.validate()
 
 
 def _validate_text(value: str, name: str) -> None:
@@ -146,3 +196,5 @@ def _validate_text(value: str, name: str) -> None:
 
 DEFAULT_MODEL_CONFIG = ModelConfig()
 DEFAULT_MODEL_CONFIG.validate()
+DEFAULT_COMPATIBILITY_CONFIG = DEFAULT_MODEL_CONFIG.compatibility
+DEFAULT_CIR_CONFIG = DEFAULT_MODEL_CONFIG.complementary_item

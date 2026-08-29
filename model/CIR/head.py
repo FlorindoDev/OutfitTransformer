@@ -4,8 +4,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from ..common.config import DEFAULT_MODEL_CONFIG
-from .config import DEFAULT_CIR_CONFIG
+from ..common.config import DEFAULT_CIR_CONFIG, DEFAULT_MODEL_CONFIG
 
 
 class RetrievalEmbeddingHead(nn.Module):
