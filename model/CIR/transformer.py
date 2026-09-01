@@ -1,5 +1,7 @@
 """Task-specific Transformer for Complementary Item Retrieval."""
 
+from collections.abc import Sequence
+
 import torch
 from torch import Tensor, nn
 
@@ -15,6 +17,7 @@ from ..common.transformer import (
     OutfitTransformerOutput,
     build_transformer_encoder,
 )
+from .category_embedding import PolyvoreCategoryEmbedding
 from .head import RetrievalEmbeddingHead
 
 
@@ -26,10 +29,15 @@ class ComplementaryItemTransformer(nn.Module):
         config: TransformerConfig | None = None,
         cir_config: ComplementaryItemConfig | None = None,
         task_embedding: TaskEmbedding | None = None,
+        use_category_embedding: bool = False,
     ) -> None:
         super().__init__()
+        if not isinstance(use_category_embedding, bool):
+            raise TypeError("use_category_embedding must be boolean")
+
         self.config = config or DEFAULT_MODEL_CONFIG.transformer
         self.cir_config = cir_config or DEFAULT_CIR_CONFIG
+        self.use_category_embedding = use_category_embedding
         self.config.validate()
         self.cir_config.validate()
 
@@ -55,6 +63,14 @@ class ComplementaryItemTransformer(nn.Module):
             token_part_dim,
             initialization_std=self.config.embedding_initialization_std,
         )
+        self.category_embedding = (
+            PolyvoreCategoryEmbedding(
+                token_part_dim,
+                initialization_std=self.config.embedding_initialization_std,
+            )
+            if self.use_category_embedding
+            else None
+        )
         self.encoder = build_transformer_encoder(self.config)
         self.head = RetrievalEmbeddingHead(
             input_dim=self.config.model_dim,
@@ -63,30 +79,40 @@ class ComplementaryItemTransformer(nn.Module):
             normalization_epsilon=self.config.normalization_epsilon,
         )
 
-    def forward(self, common_output: OutfitTransformerOutput) -> Tensor:
+    def forward(
+        self,
+        common_output: OutfitTransformerOutput,
+        target_categories: Sequence[str] | None = None,
+    ) -> Tensor:
         """Return retrieval embeddings for a batch of partial outfits."""
-        return self.embed_query(common_output)
+        return self.embed_query(common_output, target_categories)
 
-    def embed_query(self, common_output: OutfitTransformerOutput) -> Tensor:
+    def embed_query(
+        self,
+        common_output: OutfitTransformerOutput,
+        target_categories: Sequence[str] | None = None,
+    ) -> Tensor:
         """Return missing-item embeddings conditioned on partial outfits."""
-        query_representations = self.encode_query(common_output)
+        query_representations = self.encode_query(
+            common_output,
+            target_categories,
+        )
         return self.head(query_representations)
 
-    def encode_query(self, common_output: OutfitTransformerOutput) -> Tensor:
+    def encode_query(
+        self,
+        common_output: OutfitTransformerOutput,
+        target_categories: Sequence[str] | None = None,
+    ) -> Tensor:
         """Return missing-item token states after outfit self-attention."""
         item_embeddings, padding_mask = validate_common_output(
             common_output,
             expected_dim=self.config.model_dim,
         )
         batch_size = item_embeddings.size(0)
-        missing_item_token = torch.cat(
-            (self.task_embedding(), self.embed_emb),
-            dim=0,
-        )
-        missing_item_tokens = missing_item_token.view(1, 1, -1).expand(
+        missing_item_tokens = self._missing_item_tokens(
             batch_size,
-            -1,
-            -1,
+            target_categories,
         )
         transformer_input = torch.cat(
             (missing_item_tokens, item_embeddings),
@@ -104,6 +130,38 @@ class ComplementaryItemTransformer(nn.Module):
             src_key_padding_mask=transformer_mask,
         )
         return encoded[:, 0, :]
+
+    def _missing_item_tokens(
+        self,
+        batch_size: int,
+        target_categories: Sequence[str] | None,
+    ) -> Tensor:
+        task_embeddings = self.task_embedding().view(1, -1).expand(
+            batch_size,
+            -1,
+        )
+        retrieval_embeddings = self.embed_emb.view(1, -1).expand(
+            batch_size,
+            -1,
+        )
+
+        if self.category_embedding is not None:
+            if target_categories is None:
+                raise ValueError(
+                    "target_categories are required when "
+                    "use_category_embedding is enabled"
+                )
+            category_embeddings = self.category_embedding(target_categories)
+            if category_embeddings.size(0) != batch_size:
+                raise ValueError(
+                    "target_categories length must equal the common output batch size"
+                )
+            retrieval_embeddings = retrieval_embeddings + category_embeddings
+
+        return torch.cat(
+            (task_embeddings, retrieval_embeddings),
+            dim=-1,
+        ).unsqueeze(1)
 
     def embed_items(self, common_output: OutfitTransformerOutput) -> Tensor:
         """Embed batches whose elements contain exactly one target item."""
@@ -133,6 +191,13 @@ class ComplementaryItemTransformer(nn.Module):
     def task_emb(self) -> nn.Parameter:
         """Expose the parameter shared through ``model.common``."""
         return self.task_embedding.embedding
+
+    @property
+    def category_emb(self) -> nn.Parameter | None:
+        """Expose Polyvore category vectors when conditioning is enabled."""
+        if self.category_embedding is None:
+            return None
+        return self.category_embedding.weight
 
 
 def _embedding_parameter(

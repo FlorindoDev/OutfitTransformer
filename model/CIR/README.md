@@ -16,6 +16,7 @@
 
 | File | Cosa fa |
 |---|---|
+| `category_embedding.py` | Definisce le categorie Polyvore e i relativi vettori allenabili opzionali. |
 | `transformer.py` | Costruisce il token CIR e produce gli embedding degli outfit parziali e dei singoli item. |
 | `head.py` | Proietta query e item nello stesso spazio vettoriale. |
 | `in_batch_triplet_margin_loss.py` | Calcola la triplet margin loss usando i negativi presenti nel batch. |
@@ -48,7 +49,8 @@ flowchart TD
     COMMON_QUERY["Transformer common<br/>item contestualizzati: B × L × 1024<br/>padding mask: B × L"]
     TASK["task_emb<br/>512 valori<br/>condivisibile e allenabile"]
     EMBED["embed_emb<br/>512 valori<br/>specifico CIR e allenabile"]
-    TOKEN["Concatenazione<br/>token CIR iniziale: B × 1 × 1024"]
+    CATEGORY["category_emb opzionale<br/>512 valori per categoria target<br/>allenabile"]
+    TOKEN["[task_emb | embed_emb + category_emb]<br/>token CIR: B × 1 × 1024"]
     PREPEND["Token CIR aggiunto<br/>prima dell'outfit parziale"]
     MASK["Mask estesa<br/>token CIR sempre valido"]
     QUERY_TRANSFORMER["Transformer CIR"]
@@ -69,6 +71,7 @@ flowchart TD
     PARTIAL --> COMMON_QUERY
     TASK --> TOKEN
     EMBED --> TOKEN
+    CATEGORY -. flag attivo .-> TOKEN
     TOKEN --> PREPEND
     COMMON_QUERY --> PREPEND
     COMMON_QUERY --> MASK
@@ -91,39 +94,70 @@ flowchart TD
 
 ## Input e output
 
-Il modulo riceve un `OutfitTransformerOutput` prodotto da
-`model.common.OutfitTransformer`.
+Il modulo riceve gli embedding prodotti dalla parte common del modello.
 
 Per una query CIR:
 
-- `contextual_embeddings` contiene gli item dell'outfit parziale;
-- `padding_mask` distingue gli item reali dal padding;
-- `forward()` ed `embed_query()` restituiscono un vettore per ogni outfit.
+- gli embedding contestualizzati descrivono gli item dell'outfit parziale;
+- la maschera distingue gli item reali dal padding;
+- il risultato è un vettore per ogni outfit.
 
 Per gli item positivi:
 
-- ogni elemento del batch common deve contenere esattamente un item reale;
-- `embed_items()` restituisce un vettore per ogni item, nello stesso spazio della query.
+- ogni elemento del batch deve contenere esattamente un item reale;
+- il risultato è un vettore per ogni item, nello stesso spazio della query.
 
-La dimensione predefinita dell'output è 128 ed è configurabile tramite
-`DEFAULT_MODEL_CONFIG.complementary_item.embedding_dim` in
-`model/common/config.py`. `ComplementaryItemConfig` descrive l'intera sezione
-CIR; l'epsilon numerico della normalizzazione appartiene al `TransformerConfig`.
+La dimensione predefinita dell'output è 128, ma può essere modificata nella
+configurazione del modello.
 
 ## Token CIR
 
-Il token dell'item mancante nasce concatenando `task_emb` ed `embed_emb`.
+Senza condizionamento per categoria, il token dell'item mancante nasce
+concatenando `task_emb` ed `embed_emb`.
 
-- `task_emb` appartiene a `TaskEmbedding` in `model.common` e può essere
+- `task_emb` contiene conoscenza generale sulla compatibilità e può essere
   condiviso con CP;
-- `embed_emb` appartiene esclusivamente a `ComplementaryItemTransformer`.
+- `embed_emb` contiene informazione specifica del retrieval CIR.
 
 Con la configurazione predefinita, entrambe le parti hanno 512 valori e il token
 completo ne ha 1024. I parametri sono inizializzati con una distribuzione normale
 avente deviazione standard 0,02.
 
-Il token non contiene immagine, descrizione o categoria dell'item da trovare.
-Il modello deve quindi dedurre il completamento soltanto dall'outfit parziale.
+Con flag disattivato, il token non contiene immagine, descrizione o categoria
+dell'item da trovare. Il modello deve quindi dedurre il completamento soltanto
+dall'outfit parziale.
+
+Il condizionamento per categoria è controllato da un flag, disattivato per
+impostazione predefinita.
+
+`category_emb` può essere immaginato come un vettore con 11 posizioni, una per
+ogni categoria Polyvore. In ogni posizione non si trova un singolo numero, ma un
+intero embedding allenabile di 512 valori. Matematicamente la sua struttura è
+quindi una matrice `11 × 512`:
+
+- le 11 righe rappresentano le categorie;
+- ogni riga contiene il vettore di 512 valori della relativa categoria;
+- i valori partono da piccoli numeri casuali e vengono appresi durante il
+  training.
+
+Per esempio, quando la categoria target è `shoes`, viene selezionata la riga
+associata alle scarpe. Quel vettore viene sommato a `embed_emb`, mentre
+`task_emb` resta la prima metà del token. Il token completo diventa:
+
+```text
+[task_emb | embed_emb + category_emb]
+```
+
+Con il flag attivo, ogni outfit del batch deve avere una categoria target. Nel
+training questa categoria deriva dal capo corretto rimosso dall'outfit; durante
+la ricerca indica invece il tipo di capo desiderato. La loss aggiorna anche il
+vettore della categoria selezionata.
+
+Con il flag disattivato, la struttura degli embedding di categoria non viene
+creata e il modello deduce il tipo di capo soltanto dall'outfit parziale. Le
+categorie ammesse sono
+`accessories`, `all-body`, `bags`, `bottoms`, `hats`, `jewellery`, `outerwear`,
+`scarves`, `shoes`, `sunglasses` e `tops`.
 
 ## Transformer CIR
 
@@ -146,15 +180,15 @@ riassume l'outfit parziale e la richiesta di trovare il capo mancante.
 
 ## Testa di retrieval
 
-La `RetrievalEmbeddingHead` è l'ultimo passaggio sia del ramo query sia del ramo
-item. Riceve un vettore da 1024 valori e lo trasforma in un vettore da 128. La
-stessa testa, quindi gli stessi pesi appresi, viene usata in entrambi i rami.
+La testa di retrieval è l'ultimo passaggio sia del ramo query sia del ramo item.
+Riceve un vettore da 1024 valori e lo trasforma in un vettore da 128. La stessa
+testa, quindi gli stessi pesi appresi, viene usata in entrambi i rami.
 
 È utile distinguere i nomi:
 
 | Nome | Da dove deriva | Cosa rappresenta |
 |---|---|---|
-| Token CIR iniziale | Concatenazione di `task_emb` ed `embed_emb` | Un segnaposto allenabile che chiede «quale item manca?»; non descrive ancora uno specifico capo. |
+| Token CIR iniziale | `[task_emb \| embed_emb]`, oppure `[task_emb \| embed_emb + category_emb]` con flag attivo | Un segnaposto allenabile che chiede «quale item manca?» e può indicarne la categoria target. |
 | Rappresentazione della query | Stato finale del token CIR dopo che ha osservato l'outfit parziale nel Transformer CIR | Il riassunto interno della ricerca, con 1024 valori. |
 | Vettore query di retrieval | Rappresentazione della query passata alla testa | Il vettore finale da 128 usato per cercare il completamento. |
 | Vettore item di retrieval | Rappresentazione di un singolo item passata alla stessa testa | Il vettore finale da 128 che descrive un possibile completamento. |
@@ -236,10 +270,10 @@ Per esempio, da «maglia + pantaloni + scarpe» si possono ottenere:
 - item positivo: «pantaloni»;
 - negativi ufficiali: altri articoli proposti come risposte sbagliate.
 
-La loss implementata in `InBatchTripletMarginLoss` usa però soltanto l'outfit
-parziale e l'item positivo di ogni esempio. I `negative_items` ufficiali vengono
-conservati dal dataset, ma **non entrano in questa loss**. I negativi sono invece
-ricavati dagli altri esempi presenti nello stesso batch.
+La loss usa soltanto l'outfit parziale e l'item positivo di ogni esempio. I
+negativi ufficiali vengono conservati dal dataset, ma **non entrano in questa
+loss**. I negativi sono invece ricavati dagli altri esempi presenti nello stesso
+batch.
 
 ```mermaid
 flowchart LR
@@ -312,10 +346,9 @@ responsabilità del futuro training CIR.
 
 ## Condivisione con CP
 
-Per condividere davvero `task_emb`, CP e CIR devono ricevere la stessa istanza
-di `TaskEmbedding`. In questo caso entrambi i modelli aggiornano lo stesso
-parametro durante l'allenamento. Se CIR non riceve quell'istanza, crea un
-`TaskEmbedding` proprio e non condiviso.
+Per condividere davvero `task_emb`, CP e CIR devono usare lo stesso parametro.
+In questo caso entrambi i compiti lo aggiornano durante l'allenamento. Altrimenti
+CIR usa un parametro proprio e non condiviso.
 
 Il caricamento dei checkpoint e l'eventuale inizializzazione del Transformer
 CIR appartengono al futuro training runner, non a questo modulo.

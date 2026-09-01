@@ -3,6 +3,8 @@
 from .CIR import (
     ComplementaryItemTransformer,
     InBatchTripletMarginLoss,
+    POLYVORE_CATEGORIES,
+    PolyvoreCategoryEmbedding,
     RetrievalEmbeddingHead,
 )
 from .common import (
@@ -53,6 +55,8 @@ __all__ = [
     "OutfitTransformerOutput",
     "OpenRouterTextEncoder",
     "OpenRouterVisualEncoder",
+    "POLYVORE_CATEGORIES",
+    "PolyvoreCategoryEmbedding",
     "ResNet18VisualEncoder",
     "RetrievalEmbeddingHead",
     "SentenceTransformerTextEncoder",
