@@ -50,7 +50,7 @@ def collate_compatibility(
 
 
 def collate_retrieval(examples: Sequence[RetrievalExample]) -> RetrievalBatch:
-    """Keep query and negative counts variable for future CIR objectives."""
+    """Keep query and negative counts variable for CIR objectives."""
     _require_non_empty(examples)
     return RetrievalBatch(
         example_ids=tuple(example.example_id for example in examples),

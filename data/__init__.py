@@ -32,6 +32,7 @@ from .types import (
     ItemBatch,
     RetrievalBatch,
     RetrievalExample,
+    RetrievalIndexExample,
 )
 
 __all__ = [
@@ -51,6 +52,7 @@ __all__ = [
     "LoaderConfig",
     "RetrievalBatch",
     "RetrievalExample",
+    "RetrievalIndexExample",
     "build_fashion_clip_transform",
     "build_openrouter_transform",
     "build_resnet18_transform",

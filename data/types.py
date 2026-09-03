@@ -91,6 +91,33 @@ class RetrievalExample:
 
 
 @dataclass(frozen=True)
+class RetrievalIndexExample:
+    """CIR example containing IDs and target category but no loaded features."""
+
+    example_id: str
+    partial_item_ids: tuple[str, ...]
+    positive_item_id: str
+    negative_item_ids: tuple[str, ...]
+    target_category: str
+
+    def __post_init__(self) -> None:
+        if not self.example_id.strip():
+            raise ValueError("example_id cannot be empty")
+        if not self.partial_item_ids:
+            raise ValueError("partial_item_ids cannot be empty")
+        if any(not item_id.strip() for item_id in self.partial_item_ids):
+            raise ValueError("partial_item_ids cannot contain empty values")
+        if not self.positive_item_id.strip():
+            raise ValueError("positive_item_id cannot be empty")
+        if not self.negative_item_ids:
+            raise ValueError("negative_item_ids cannot be empty")
+        if any(not item_id.strip() for item_id in self.negative_item_ids):
+            raise ValueError("negative_item_ids cannot contain empty values")
+        if not self.target_category.strip():
+            raise ValueError("target_category cannot be empty")
+
+
+@dataclass(frozen=True)
 class ItemBatch:
     """Catalog items ready for multimodal embedding precomputation."""
 

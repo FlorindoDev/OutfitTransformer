@@ -133,6 +133,20 @@ def load_outfit_token_index(path: str | Path) -> dict[str, str]:
     return token_index
 
 
+def load_item_categories(path: str | Path) -> dict[str, str]:
+    """Load semantic categories without constructing image-backed items."""
+    payload = _read_json(path)
+    if not isinstance(payload, Mapping):
+        raise ValueError("Polyvore metadata must contain a JSON object")
+
+    categories: dict[str, str] = {}
+    for raw_item_id, value in payload.items():
+        item_id = str(raw_item_id).strip()
+        if item_id and isinstance(value, Mapping):
+            categories[item_id] = _extract_category(value)
+    return categories
+
+
 def _extract_item_ids(item_rows: ItemRows) -> tuple[str, ...]:
     columns = getattr(item_rows, "column_names", None)
     if columns is not None:

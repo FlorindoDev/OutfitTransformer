@@ -90,6 +90,7 @@ stessi tipi senza richiedere modifiche al modello.
 | `CompatibilityExample` | Un singolo outfit completo e la label binaria associata. |
 | `CompatibilityIndexExample` | Un outfit espresso solo tramite `item_id`, usato con feature precomputate. |
 | `RetrievalExample` | Un outfit parziale, il completamento corretto e i negativi. |
+| `RetrievalIndexExample` | Stesso esempio CIR espresso tramite ID e categoria target, senza caricare immagini. |
 | `ItemBatch` | Articoli indipendenti destinati alla precomputazione. |
 | `CompatibilityBatch` | Outfit pronti per CP, ID originali e label `[batch, 1]`. |
 | `RetrievalBatch` | Query, positivi, negativi, categorie e relativi ID. |

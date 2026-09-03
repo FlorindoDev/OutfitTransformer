@@ -18,9 +18,10 @@ from ..types import (
     CompatibilityIndexExample,
     FashionItem,
     RetrievalExample,
+    RetrievalIndexExample,
 )
 
-from .catalog import PolyvoreCatalog
+from .catalog import PolyvoreCatalog, load_item_categories
 from .compatibility_dataset import (
     PolyvoreCompatibilityDataset,
     PolyvoreCompatibilityIndexDataset,
@@ -35,7 +36,10 @@ from .download import (
     download_polyvore_resources,
 )
 from .item_dataset import PolyvoreItemDataset
-from .retrieval_dataset import PolyvoreRetrievalDataset
+from .retrieval_dataset import (
+    PolyvoreRetrievalDataset,
+    PolyvoreRetrievalIndexDataset,
+)
 
 
 class PolyvoreSource:
@@ -95,6 +99,31 @@ class PolyvoreSource:
             _require_path(resources.outfits_path, "outfits_path"),
         )
 
+    def retrieval_index_dataset(
+        self,
+        request: DatasetRequest,
+        *,
+        include_categories: bool = True,
+    ) -> IndexedDataset[RetrievalIndexExample]:
+        resources = self._resources(
+            request,
+            PolyvoreTask.RETRIEVAL,
+            include_items=False,
+            include_metadata=include_categories,
+        )
+        categories = (
+            load_item_categories(
+                _require_path(resources.metadata_path, "metadata_path")
+            )
+            if include_categories
+            else None
+        )
+        return PolyvoreRetrievalIndexDataset(
+            _require_path(resources.retrieval_path, "retrieval_path"),
+            _require_path(resources.outfits_path, "outfits_path"),
+            categories,
+        )
+
     def download(self, request: DatasetDownloadRequest) -> Path:
         """Download complete Hugging Face repository to requested directory."""
         request.output_dir.mkdir(parents=True, exist_ok=True)
@@ -128,6 +157,7 @@ class PolyvoreSource:
         task: PolyvoreTask,
         *,
         include_items: bool = True,
+        include_metadata: bool | None = None,
     ) -> PolyvoreResources:
         variant = PolyvoreVariant(
             self.descriptor.validate_subset(request.subset)
@@ -141,6 +171,7 @@ class PolyvoreSource:
             cache_dir=request.cache_dir,
             dataset_root=request.root,
             include_items=include_items,
+            include_metadata=include_metadata,
         )
 
 

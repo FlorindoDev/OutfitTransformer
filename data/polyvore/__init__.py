@@ -1,6 +1,6 @@
 """Public Polyvore data adapters."""
 
-from .catalog import PolyvoreCatalog, load_outfit_token_index
+from .catalog import PolyvoreCatalog, load_item_categories, load_outfit_token_index
 from .compatibility_dataset import PolyvoreCompatibilityDataset
 from .download import (
     DEFAULT_DATASET_ROOT,
@@ -12,7 +12,10 @@ from .download import (
     download_polyvore_resources,
 )
 from .item_dataset import PolyvoreItemDataset
-from .retrieval_dataset import PolyvoreRetrievalDataset
+from .retrieval_dataset import (
+    PolyvoreRetrievalDataset,
+    PolyvoreRetrievalIndexDataset,
+)
 
 __all__ = [
     "DEFAULT_DATASET_ROOT",
@@ -22,9 +25,11 @@ __all__ = [
     "PolyvoreItemDataset",
     "PolyvoreResources",
     "PolyvoreRetrievalDataset",
+    "PolyvoreRetrievalIndexDataset",
     "PolyvoreSplit",
     "PolyvoreTask",
     "PolyvoreVariant",
     "download_polyvore_resources",
+    "load_item_categories",
     "load_outfit_token_index",
 ]

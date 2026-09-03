@@ -86,7 +86,7 @@ def create_retrieval_loader(
     config: LoaderConfig | None = None,
     shuffle: bool = False,
 ) -> DataLoader[Any]:
-    """Create a loader for future complementary item retrieval training."""
+    """Create a loader for complementary item retrieval training."""
     return _create_loader(
         dataset,
         collate_fn=collate_retrieval,

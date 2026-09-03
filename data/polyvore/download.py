@@ -61,6 +61,7 @@ def download_polyvore_resources(
     cache_dir: str | Path | None = None,
     dataset_root: str | Path = DEFAULT_DATASET_ROOT,
     include_items: bool = True,
+    include_metadata: bool | None = None,
 ) -> PolyvoreResources:
     """Load local resources first, downloading only missing files."""
     selected_task = _coerce_enum(task, PolyvoreTask, "task")
@@ -71,6 +72,9 @@ def download_polyvore_resources(
 
     item_rows: ItemRows | None = None
     metadata_path: Path | None = None
+    selected_include_metadata = (
+        include_items if include_metadata is None else include_metadata
+    )
     if include_items:
         item_rows = _load_item_rows(
             variant=selected_variant,
@@ -80,6 +84,7 @@ def download_polyvore_resources(
             dataset_root=selected_root,
         )
         _verify_item_rows(item_rows)
+    if selected_include_metadata:
         metadata_path = _resolve_file(
             "polyvore_item_metadata.json",
             dataset_root=selected_root,

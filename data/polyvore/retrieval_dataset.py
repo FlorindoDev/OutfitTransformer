@@ -10,7 +10,7 @@ from typing import Any
 
 from torch.utils.data import Dataset
 
-from data.types import RetrievalExample
+from data.types import RetrievalExample, RetrievalIndexExample
 
 from .catalog import PolyvoreCatalog, load_outfit_token_index
 
@@ -37,8 +37,8 @@ class PolyvoreRetrievalDataset(Dataset[RetrievalExample]):
         self._annotations = _load_annotations(
             retrieval_path,
             token_index,
-            catalog,
         )
+        _validate_catalog_coverage(self._annotations, catalog)
 
     def __len__(self) -> int:
         return len(self._annotations)
@@ -53,10 +53,40 @@ class PolyvoreRetrievalDataset(Dataset[RetrievalExample]):
         )
 
 
+class PolyvoreRetrievalIndexDataset(Dataset[RetrievalIndexExample]):
+    """Return official FITB examples without decoding catalog images."""
+
+    def __init__(
+        self,
+        retrieval_path: str | Path,
+        outfits_path: str | Path,
+        category_by_item_id: Mapping[str, str] | None = None,
+    ) -> None:
+        token_index = load_outfit_token_index(outfits_path)
+        self._annotations = _load_annotations(retrieval_path, token_index)
+        categories = category_by_item_id or {}
+        self._target_categories = tuple(
+            categories.get(annotation.positive_item_id, "unknown")
+            for annotation in self._annotations
+        )
+
+    def __len__(self) -> int:
+        return len(self._annotations)
+
+    def __getitem__(self, index: int) -> RetrievalIndexExample:
+        annotation = self._annotations[index]
+        return RetrievalIndexExample(
+            example_id=annotation.example_id,
+            partial_item_ids=annotation.query_item_ids,
+            positive_item_id=annotation.positive_item_id,
+            negative_item_ids=annotation.negative_item_ids,
+            target_category=self._target_categories[index],
+        )
+
+
 def _load_annotations(
     path: str | Path,
     token_index: dict[str, str],
-    catalog: PolyvoreCatalog,
 ) -> tuple[_RetrievalAnnotation, ...]:
     selected_path = Path(path)
     if not selected_path.is_file():
@@ -72,7 +102,7 @@ def _load_annotations(
         raise ValueError("retrieval annotations must contain a non-empty JSON list")
 
     annotations = [
-        _parse_annotation(index, value, token_index, catalog)
+        _parse_annotation(index, value, token_index)
         for index, value in enumerate(payload)
     ]
     return tuple(annotations)
@@ -82,7 +112,6 @@ def _parse_annotation(
     index: int,
     value: Any,
     token_index: dict[str, str],
-    catalog: PolyvoreCatalog,
 ) -> _RetrievalAnnotation:
     if not isinstance(value, Mapping):
         raise ValueError(f"retrieval example {index} must be an object")
@@ -106,11 +135,11 @@ def _parse_annotation(
         )
 
     query_ids = tuple(
-        _resolve_token(token, token_index, catalog, index) for token in question
+        _resolve_token(token, token_index, index) for token in question
     )
-    positive_id = _resolve_token(positive_token, token_index, catalog, index)
+    positive_id = _resolve_token(positive_token, token_index, index)
     negative_ids = tuple(
-        _resolve_token(token, token_index, catalog, index)
+        _resolve_token(token, token_index, index)
         for token in answers
         if token != positive_token
     )
@@ -141,7 +170,6 @@ def _token_set_id(token: str, index: int) -> str:
 def _resolve_token(
     token: str,
     token_index: dict[str, str],
-    catalog: PolyvoreCatalog,
     index: int,
 ) -> str:
     try:
@@ -150,9 +178,22 @@ def _resolve_token(
         raise ValueError(
             f"unknown outfit token {token!r} in retrieval example {index}"
         ) from error
-    if item_id not in catalog:
-        raise ValueError(
-            f"item {item_id!r} in retrieval example {index} "
-            "is absent from the image split"
-        )
     return item_id
+
+
+def _validate_catalog_coverage(
+    annotations: tuple[_RetrievalAnnotation, ...],
+    catalog: PolyvoreCatalog,
+) -> None:
+    for annotation in annotations:
+        item_ids = (
+            *annotation.query_item_ids,
+            annotation.positive_item_id,
+            *annotation.negative_item_ids,
+        )
+        for item_id in item_ids:
+            if item_id not in catalog:
+                raise ValueError(
+                    f"item {item_id!r} in {annotation.example_id} "
+                    "is absent from the image split"
+                )

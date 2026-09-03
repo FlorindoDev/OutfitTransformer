@@ -15,6 +15,7 @@ from .types import (
     CompatibilityIndexExample,
     FashionItem,
     RetrievalExample,
+    RetrievalIndexExample,
 )
 
 DEFAULT_DATASET_NAME = "polyvore"
@@ -137,6 +138,13 @@ class DatasetSource(Protocol):
         request: DatasetRequest,
         image_transform: ImageTransform,
     ) -> Dataset[RetrievalExample]: ...
+
+    def retrieval_index_dataset(
+        self,
+        request: DatasetRequest,
+        *,
+        include_categories: bool = True,
+    ) -> IndexedDataset[RetrievalIndexExample]: ...
 
     def download(self, request: DatasetDownloadRequest) -> Path: ...
 

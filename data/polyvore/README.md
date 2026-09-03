@@ -164,7 +164,11 @@ outfit.
 Restituisce un `RetrievalExample` con query, positivo e negativi distinti. Non
 esegue padding, non genera nuovi negativi e non elimina duplicati o falsi
 negativi presenti nel benchmark ufficiale: queste decisioni appartengono al
-futuro training CIR.
+training CIR.
+
+Espone anche `PolyvoreRetrievalIndexDataset`: restituisce ID di query, positivo,
+negativi e categoria target senza decodificare immagini. Training CIR
+`--precomputed` usa questa variante e valida copertura nella cache embedding.
 
 #### Esempio di input e output
 
@@ -324,8 +328,7 @@ La risposta corretta non è necessariamente la prima: è il token con lo stesso
 `set_id` della domanda e con indice uguale a `blank_position`.
 
 Il dataset restituisce separatamente outfit parziale, item positivo e item
-negativi. Conserva inoltre ID e categoria del target, informazioni utili per un
-futuro task CIR.
+negativi. Conserva inoltre ID e categoria del target usati dal training CIR.
 
 I candidati ufficiali vengono preservati senza deduplicazione. Alcune domande
 reali contengono token differenti associati allo stesso `item_id`, incluso
