@@ -7,6 +7,7 @@ validation e test senza creare dipendenze tra questi moduli.
 - Torna al [README principale](../README.md).
 - Consulta la [guida alla valutazione](../evaluation/README.md).
 - Consulta il [training CP](../training/CP/README.md).
+- Consulta il [training CIR](../training/CIR/README.md).
 
 ## Indice
 
@@ -14,6 +15,9 @@ validation e test senza creare dipendenze tra questi moduli.
   - [`BinaryAccuracy`](#binaryaccuracy)
   - [`binary_roc_auc`](#binary_roc_auc)
   - [`binary_classification_metrics`](#binary_classification_metrics)
+- [Metriche di retrieval CIR](#metriche-di-retrieval-cir)
+  - [Rank e `retrieval_rank`](#rank-e-retrieval_rank)
+  - [Metriche calcolate dal CIR](#metriche-calcolate-dal-cir)
 - [Accuracy, AUC e loss](#accuracy-auc-e-loss)
 - [Struttura](#struttura)
 
@@ -109,6 +113,50 @@ accuracy, precision, recall, F1 e ROC AUC. Riceve probabilita in `[0, 1]` e
 target binari monodimensionali. Soglia riguarda solo metriche discrete; AUC
 usa probabilita originali. Risultato include anche numero totale di esempi.
 
+## Metriche di retrieval CIR
+
+Durante la validation CIR, ogni outfit parziale è una **query** confrontata con
+quattro candidati: l'item corretto e tre distrattori. Il modello calcola la
+distanza euclidea tra i rispettivi embedding; una distanza minore indica una
+corrispondenza migliore.
+
+### Rank e `retrieval_rank`
+
+Il **rank** è la posizione dell'item corretto dopo aver ordinato i candidati
+dalla distanza più piccola alla più grande:
+
+- rank 1: il positivo è il candidato più vicino;
+- rank 2: un distrattore è più vicino del positivo;
+- rank 4: il positivo è l'ultimo dei quattro candidati.
+
+Per esempio, se le distanze ordinate sono `distrattore=0.4`, `positivo=0.7`,
+`distrattore=1.1`, `distrattore=1.8`, il positivo ha rank 2. La funzione
+`retrieval_rank(candidate_distances, positive_index=0)` calcola questa posizione
+a partire dalle distanze. In caso di parità, il concorrente viene considerato
+prima del positivo: così embedding tutti uguali non producono risultati
+artificialmente ottimistici.
+
+### Metriche calcolate dal CIR
+
+| Valore | Concetto | Lettura |
+|---|---|---|
+| `train_loss` | Triplet Margin Loss tra il positivo e il negativo più difficile trovato tra gli altri positivi del microbatch. | Più bassa è meglio; è l'unico valore che guida la backpropagation. |
+| `val_loss` | Stessa penalità di margine, ma il negativo più difficile è scelto tra i tre distrattori FITB ufficiali. | Più bassa è meglio; serve per diagnosi e non seleziona il checkpoint. |
+| `val_fitb_accuracy` | Frazione di query nelle quali il positivo ha rank 1. | Misura quante domande hanno una risposta esatta; più alta è meglio. |
+| `val_mrr` | Media di `1 / rank`: rank 1 vale `1`, rank 2 vale `0.5`, rank 4 vale `0.25`. | Premia anche i miglioramenti che non portano ancora il positivo al primo posto. |
+| `val_recall@2` | Frazione di query nelle quali il positivo ha rank 1 o 2. | Misura quanto spesso la risposta corretta compare tra i primi due candidati. |
+
+Con i rank `[1, 3, 2]`, FITB accuracy vale `1/3`, MRR vale
+`(1 + 1/3 + 1/2) / 3` e Recall@2 vale `2/3`.
+
+`retrieval_metrics(ranks)` restituisce insieme questi tre riepiloghi di ranking
+e il numero di esempi nella struttura `RetrievalMetrics`. Le funzioni
+`fitb_accuracy()`, `mean_reciprocal_rank()` e `recall_at_k()` permettono di
+calcolarli separatamente. Nessuna di queste metriche genera gradienti.
+
+Il checkpoint `best.pt` e l'early stopping dipendono soltanto dalla massima
+`val_fitb_accuracy`; MRR, Recall@2 e le loss aiutano a interpretare il training.
+
 ## Accuracy, AUC e loss
 
 | Valore | Cosa misura | Dipende da una soglia | Usato dal backpropagation |
@@ -123,5 +171,6 @@ usa probabilita originali. Risultato include anche numero totale di esempi.
 metrics/
   __init__.py
   classification.py   Metriche binarie per training ed evaluation CP
+  retrieval.py        Rank, FITB accuracy, MRR e Recall@K per CIR
   README.md           descrizione e utilizzo delle metriche
 ```
