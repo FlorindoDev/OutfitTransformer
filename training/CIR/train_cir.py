@@ -134,7 +134,7 @@ def parse_args(
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--early-stopping-patience", type=int)
     parser.add_argument("--early-stopping-min-delta", type=float, default=0.0)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--pin-memory", action="store_true")
     parser.add_argument(
         "--mixed-precision",

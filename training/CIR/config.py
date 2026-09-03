@@ -60,7 +60,7 @@ class CIRTrainingConfig:
     seed: int = 42
     early_stopping_patience: int | None = None
     early_stopping_min_delta: float = 0.0
-    num_workers: int = 4
+    num_workers: int = 0
     pin_memory: bool = False
     mixed_precision: bool = False
     ddp: bool = False

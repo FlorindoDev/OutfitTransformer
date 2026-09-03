@@ -139,7 +139,7 @@ testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 | Early stopping | Disabilitato; attivabile con patience |
 | Mixed precision | Disabilitata; opzionale su CUDA |
 | DDP | Disabilitato; opzionale tramite `torchrun` |
-| Worker | 4 per processo, configurabili |
+| Worker | 0 per processo, configurabili |
 | Resume | Carica soltanto pesi CIR; optimizer, scheduler e history nuovi |
 
 ## Flag CLI
@@ -169,7 +169,7 @@ testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 | `--seed` | `42` | Imposta seed riproducibile; ogni rank DDP usa offset del proprio rank. |
 | `--early-stopping-patience` | `None` | Ferma dopo N epoche senza miglioramento FITB. |
 | `--early-stopping-min-delta` | `0.0` | Miglioramento minimo FITB per aggiornare best e azzerare patience. |
-| `--num-workers` | `4` | Processi DataLoader per processo di training. |
+| `--num-workers` | `0` | Processi DataLoader per processo di training. Con `0`, il caricamento avviene nel processo principale. |
 | `--pin-memory` | disabilitato | Abilita pinned memory, utile con CUDA. |
 | `--mixed-precision` | disabilitato | Abilita autocast FP16 e GradScaler; richiede CUDA. |
 | `--ddp` | disabilitato | Usa DistributedDataParallel; avvio richiesto con `torchrun`. |
