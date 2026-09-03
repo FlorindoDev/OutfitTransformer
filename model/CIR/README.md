@@ -350,5 +350,5 @@ Per condividere davvero `task_emb`, CP e CIR devono usare lo stesso parametro.
 In questo caso entrambi i compiti lo aggiornano durante l'allenamento. Altrimenti
 CIR usa un parametro proprio e non condiviso.
 
-Il caricamento dei checkpoint e l'eventuale inizializzazione del Transformer
-CIR appartengono al futuro training runner, non a questo modulo.
+Il runner [`training/CIR`](../../training/CIR/README.md) compone common e CIR,
+gestisce category flag, loss, metriche FITB, checkpoint e resume dei soli pesi.

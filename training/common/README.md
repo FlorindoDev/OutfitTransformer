@@ -12,8 +12,6 @@ atomica degli artefatti, metriche binarie, riproducibilità e scelta del device.
 - [Cache degli embedding](#cache-degli-embedding)
 - [Checkpoint e configurazioni](#checkpoint-e-configurazioni)
 - [Metriche](#metriche)
-- [Riproducibilità e device](#riproducibilità-e-device)
-- [API pubblica](#api-pubblica)
 
 ## Scopo
 
@@ -92,28 +90,3 @@ dell'epoca produce `EpochMetrics` con:
 
 Questo accumulatore è destinato alla classificazione binaria CP. Il training
 CIR calcola separatamente le proprie metriche di retrieval FITB.
-
-## Riproducibilità e device
-
-`seed_everything()` applica lo stesso seed a Python, NumPy, PyTorch e a tutte
-le GPU CUDA disponibili. Con cuDNN abilita inoltre gli algoritmi deterministici
-e disattiva il benchmark automatico.
-
-`resolve_device("auto")` sceglie CUDA, poi MPS e infine CPU. Un device
-esplicito viene convertito in `torch.device`; richieste CUDA o MPS non
-disponibili generano un errore invece di effettuare un fallback silenzioso.
-
-## API pubblica
-
-Importando da `training.common` sono disponibili:
-
-- `FeatureMode`, `default_transformer_config()`, `feature_config()` e
-  `DEFAULT_PRECOMPUTED_EMBEDDING_ROOT`;
-- `EmbeddingCache`;
-- `save_checkpoint()`, `copy_checkpoint()`, `load_model_weights()` e
-  `write_json()`;
-- `BinaryEpochAccumulator` ed `EpochMetrics`;
-- `seed_everything()` e `resolve_device()`.
-
-I nomi interni con prefisso `_` restano dettagli implementativi dei singoli
-moduli e non fanno parte dell'API pubblica.

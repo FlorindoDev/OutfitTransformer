@@ -3,11 +3,14 @@
 Documentazione collegata: [panoramica del modello](../model/README.md),
 [Transformer common](../model/common/README.md),
 [modello Compatibility Prediction](../model/cp/README.md) e
-[guida del training CP](CP/README.md).
+[guida del training CP](CP/README.md),
+[modello Complementary Item Retrieval](../model/CIR/README.md) e
+[guida del training CIR](CIR/README.md).
 
 ## Indice
 
 - [File](#file)
+- [Training CIR](#training-cir)
 - [Cosa aggiorna la backpropagation](#cosa-aggiorna-la-backpropagation)
 - [Modalità CP](#modalità-cp)
 - [Modello e backpropagation](#modello-e-backpropagation)
@@ -25,6 +28,7 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | Common | [`common/metrics.py`](common/metrics.py) | Accumula loss, accuracy e ROC AUC sull’intera epoca. |
 | Common | [`common/checkpointing.py`](common/checkpointing.py) | Salva checkpoint e configurazione in modo atomico; carica solo pesi per resume. |
 | Common | [`common/embeddings.py`](common/embeddings.py) | Legge e valida cache embedding tramite manifest e shard memory-mapped. |
+| Common | [`common/README.md`](common/README.md) | Documenta file, API e responsabilità dei componenti condivisi. |
 | CP | [`CP/config.py`](CP/config.py) | Definisce modalità, architettura e iperparametri validati. |
 | CP | [`CP/data.py`](CP/data.py) | Costruisce pipeline runtime o precomputed per train e validation. |
 | CP | [`CP/model.py`](CP/model.py) | Compone rappresentazione common, Transformer CP e classificatore. |
@@ -32,6 +36,24 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | CP | [`CP/plots.py`](CP/plots.py) | Produce grafici cumulativi dopo ogni epoca. |
 | CP | [`CP/train_cp.py`](CP/train_cp.py) | Avvia run da CLI e collega configurazione, dati, modello e trainer. |
 | CP | [`CP/README.md`](CP/README.md) | Documenta flag, default, preparazione e comandi CP. |
+| CIR | [`CIR/config.py`](CIR/config.py) | Definisce profili, Triplet Loss, categoria opzionale e runtime validato. |
+| CIR | [`CIR/data.py`](CIR/data.py) | Costruisce FITB raw/precomputed e sampler DDP senza duplicati in validation. |
+| CIR | [`CIR/model.py`](CIR/model.py) | Compone rappresentazione common, Transformer CIR e testa retrieval. |
+| CIR | [`CIR/trainer.py`](CIR/trainer.py) | Coordina loss in-batch, ranking FITB, AMP, DDP e checkpoint. |
+| CIR | [`CIR/plots.py`](CIR/plots.py) | Produce grafici loss, FITB accuracy, MRR e Recall@2. |
+| CIR | [`CIR/train_cir.py`](CIR/train_cir.py) | Avvia run CIR da CLI. |
+| CIR | [`CIR/README.md`](CIR/README.md) | Documenta flag, metriche, categoria, DDP e comandi CIR. |
+
+## Training CIR
+
+CIR mantiene profili feature e funzioni operative comuni al CP, ma sostituisce
+Focal Loss e metriche binarie con In-batch Triplet Margin Loss e ranking FITB.
+Il best checkpoint è fisso sulla massima `val_fitb_accuracy`; validation registra
+anche `val_mrr` e `val_recall@2`.
+
+Flag `--category-emb` abilita token
+`[task_emb | embed_emb + category_emb]`. AMP CUDA e DDP tramite `torchrun` sono
+opzionali. Dettagli completi sono nella [guida CIR](CIR/README.md).
 
 ## Cosa aggiorna la backpropagation
 
@@ -150,4 +172,5 @@ optimizer e scheduler non viene quindi salvato nei checkpoint.
 ## Avvio
 
 Dettagli su preparazione embedding, comandi, flag e relativi default sono in
-[Training Compatibility Prediction](CP/README.md).
+[Training Compatibility Prediction](CP/README.md) e
+[Training Complementary Item Retrieval](CIR/README.md).

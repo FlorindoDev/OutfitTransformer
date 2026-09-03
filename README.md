@@ -14,6 +14,7 @@ apprendere embedding per il retrieval di articoli complementari.
 - [Dataset locale](#dataset-locale)
 - [Precomputazione degli embedding](#precomputazione-degli-embedding)
 - [Addestramento CP](#addestramento-cp)
+- [Addestramento CIR](#addestramento-cir)
 - [Valutazione CP](#valutazione-cp)
 
 ## Panoramica
@@ -22,7 +23,8 @@ Il progetto legge immagini e descrizioni di articoli fashion, crea embedding
 multimodali e usa un Transformer senza positional embedding per rappresentare
 outfit di lunghezza variabile. Il task CP assegna uno score di compatibilità;
 il modulo CIR produce embedding per outfit parziali e item positivi e include
-la loss di retrieval. Training ed evaluation CIR non sono ancora implementati.
+Triplet Loss, training, metriche FITB, checkpoint e grafici. Evaluation CIR su
+catalogo completo non è ancora implementata.
 
 Per approfondire componenti e responsabilità: [panoramica del modello](model/README.md)
 e [pipeline dei dati](data/README.md).
@@ -39,7 +41,7 @@ e [pipeline dei dati](data/README.md).
 | `model/common` | Crea embedding multimodali e li contestualizza con il Transformer. | [README](model/common/README.md) |
 | `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
 | `model/CIR` | Produce embedding di outfit parziali e item e definisce la loss CIR. | [README](model/CIR/README.md) |
-| `training` | Allena CP con input runtime o embedding precomputati e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
+| `training` | Allena CP e CIR con input runtime o embedding precomputati e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
 | `metrics` | Calcola metriche riutilizzabili per training e valutazione. | [README](metrics/README.md) |
 
 
@@ -69,13 +71,14 @@ flowchart TD
     L --> M["Stato CP token → Dropout + Linear + Sigmoid"]
     M --> N["Compatibility probability<br/>Binary Focal Loss e metriche"]
 
-    J --> O["CIR<br/>task_emb + embed_emb"]
+    J --> O["CIR<br/>task_emb + embed_emb<br/>+ category_emb opzionale"]
     O --> Q["Target item embedding"]
-    Q --> R["Set-wise Ranking Loss<br/>o ricerca KNN"]
+    Q --> R["In-batch Triplet Margin Loss<br/>e ranking FITB"]
 ```
 
 Per approfondire il flusso interno: [Transformer common](model/common/README.md),
-[modello CP](model/cp/README.md) e [metriche](metrics/README.md).
+[modello CP](model/cp/README.md), [modello CIR](model/CIR/README.md) e
+[metriche](metrics/README.md).
 
 ## Creazione dell'ambiente
 
@@ -168,8 +171,9 @@ output vengono creati sotto `precomputed_embeddings/`. Una cache esistente non
 viene sostituita senza l'opzione esplicita `--overwrite`.
 
 Per approfondire: [precomputazione multimodale](scripts/README.md#precomputazione-multimodale),
-[formato degli embedding](scripts/README.md#contenuto-degli-shard) e [uso nel
-training CP](training/CP/README.md#preparazione-embedding).
+[formato degli embedding](scripts/README.md#contenuto-degli-shard), [uso nel
+training CP](training/CP/README.md#preparazione-embedding) e [uso nel training
+CIR](training/CIR/README.md#preparazione-embedding).
 
 ## Addestramento CP
 
@@ -193,6 +197,27 @@ Il training salva configurazione, checkpoint, best model e grafici sotto
 configurare iperparametri o riprendere pesi esistenti: [panoramica training](training/README.md)
 e [guida completa CP](training/CP/README.md). Architettura della testa:
 [modello CP](model/cp/README.md).
+
+## Addestramento CIR
+
+Dopo aver preparato embedding `train` e `validation`, avviare CIR precomputed:
+
+PowerShell:
+
+```powershell
+python -m training.CIR.train_cir --precomputed
+```
+
+Linux e macOS:
+
+```bash
+python -m training.CIR.train_cir --precomputed
+```
+
+Per condizionare query sulla categoria del capo mancante, aggiungere
+`--category-emb`. Best checkpoint usa sempre `val_fitb_accuracy`; validation
+registra anche `val_mrr` e `val_recall@2`. Flag, DDP, mixed precision e
+artefatti: [guida completa CIR](training/CIR/README.md).
 
 ## Valutazione CP
 
