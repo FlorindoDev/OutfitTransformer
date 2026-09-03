@@ -40,7 +40,7 @@ flowchart TD
     J --> K["Composizione su sfondo bianco"]
     K --> L["Canvas quadrato"]
     L --> M["Resize e normalizzazione modello"]
-    M --> N["OutfitTransformer"]
+    M --> N["Encoder multimodale common"]
 ```
 
 ### Cosa fa ogni passaggio
@@ -59,8 +59,8 @@ flowchart TD
 | Margine controllato | Aggiunge un po' di spazio attorno al capo per non farlo toccare ai bordi. | Capo ritagliato con padding/margine. |
 | Composizione su sfondo bianco | Incolla il capo sopra un fondo bianco, usando la maschera/alpha. | Immagine con capo su sfondo bianco. |
 | Canvas quadrato | Inserisce l'immagine in un quadrato, centrando il capo senza deformarlo. | Immagine quadrata pronta per le transform del modello. |
-| Resize e normalizzazione modello | Applica dimensione, tensorizzazione e normalizzazione attese dal modello. | Tensore immagine nel formato usato da `OutfitTransformer`. |
-| OutfitTransformer | Usa l'immagine preprocessata come input del modello. | Output del modello: score, classe o risposta dipendente dal task. |
+| Resize e normalizzazione modello | Applica dimensione, tensorizzazione e normalizzazione attese dal modello. | Tensore immagine nel formato usato da `MultimodalOutfitEncoder`. |
+| Encoder multimodale common | Usa l'immagine preprocessata insieme al testo. | Embedding item destinato al modello CP o CIR. |
 
 ### Chi toglie davvero lo sfondo?
 

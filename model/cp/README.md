@@ -44,7 +44,7 @@ oggetto, usato da modello, CLI e training CP.
 
 ```mermaid
 flowchart TD
-    COMMON["Output del Transformer common<br/>item contestualizzati: B × L × 1024<br/>padding mask: B × L"]
+    COMMON["Embedding common normalizzati<br/>item: B × L × 1024<br/>padding mask: B × L"]
     TASK["task_emb<br/>512 valori<br/>condivisibile e allenabile"]
     PREDICT["predict_emb<br/>512 valori<br/>specifico CP e allenabile"]
     TOKEN["Concatenazione<br/>token CP: B × 1 × 1024"]
@@ -74,18 +74,18 @@ flowchart TD
 ## Scopo
 
 Il modulo CP stima se gli item di un outfit sono compatibili tra loro. Non
-codifica immagini o testi direttamente: usa le rappresentazioni già
-contestualizzate prodotte da `model.common` e aggiunge un secondo livello di
-ragionamento specifico per la classificazione.
+codifica immagini o testi direttamente: usa gli embedding multimodali prodotti
+da `model.common`. Il Transformer CP esegue l'unica contestualizzazione
+specifica per la classificazione.
 
 Lo score finale appartiene all'intervallo `[0, 1]`: valori vicini a `1`
 indicano maggiore compatibilità, valori vicini a `0` minore compatibilità.
 
 ## Input e output
 
-L'input è l'output strutturato del Transformer common. CP utilizza due parti:
+L'input è un `OutfitEmbeddingBatch` prodotto dalla parte common. CP utilizza:
 
-- gli embedding contestualizzati degli item, con forma predefinita
+- gli embedding normalizzati degli item, con forma predefinita
   `[B, 16, 1024]`;
 - la padding mask, che distingue gli item reali dalle posizioni vuote.
 
@@ -111,7 +111,7 @@ outfit dal punto di vista della compatibilità.
 
 ## Transformer CP
 
-Il Transformer CP usa la stessa configurazione del Transformer common:
+Il Transformer CP usa questa configurazione predefinita:
 
 | Parametro | Valore predefinito |
 |---|---:|

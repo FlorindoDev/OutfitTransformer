@@ -27,7 +27,7 @@ positivo e i tre distrattori ufficiali. Il best checkpoint usa sempre
 | [`config.py`](config.py) | Definisce profili, iperparametri e configurazione CIR, ne valida le combinazioni e determina le directory predefinite. |
 | [`data.py`](data.py) | Costruisce dataset e DataLoader FITB per input raw o precomputed, prepara i batch e gestisce i sampler DDP. |
 | [`distributed.py`](distributed.py) | Inizializza e chiude il runtime DDP, assegnando rank, world size, backend e device a ogni processo. |
-| [`model.py`](model.py) | Compone Transformer common e modello CIR e produce gli embedding dei rami query e item. |
+| [`model.py`](model.py) | Compone embedding common e modello CIR e produce gli embedding dei rami query e item. |
 | [`trainer.py`](trainer.py) | Gestisce forward, Triplet Loss, backpropagation, accumulo, AMP, DDP, validation, early stopping e checkpoint. |
 | [`plots.py`](plots.py) | Genera dopo ogni epoca i grafici cumulativi di loss e metriche FITB. |
 | [`pretraining.py`](pretraining.py) | Trasferisce nel CIR i pesi `common.*` e la parte del token condivisa con CP. |
@@ -51,9 +51,9 @@ positivo e i tre distrattori ufficiali. Il best checkpoint usa sempre
 
 | Flag | Feature degli item | Dimensione | Parti allenabili | Precomputazione |
 |---|---|---:|---|---|
-| `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer common e CIR; backbone SentenceBERT congelato | Non richiesta |
-| `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer common e CIR; backbone SentenceBERT congelato | Non richiesta |
-| `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer common, Transformer CIR, token e testa retrieval | Richiesta per train e validation |
+| `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer CIR, token e testa; backbone SentenceBERT congelato | Non richiesta |
+| `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer CIR, token e testa; backbone SentenceBERT congelato | Non richiesta |
+| `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer CIR, token e testa retrieval | Richiesta per train e validation |
 
 Default è `new_classic`. Profili e dimensioni coincidono con training CP.
 `--classic`, `--new-classic` e `--precomputed` sono mutuamente esclusivi.
@@ -66,8 +66,8 @@ flowchart TD
     TARGET["Categoria target opzionale"]
     ITEM["Item candidato<br/>positivo o distrattore"]
 
-    COMMON_QUERY["Transformer common<br/>item contestualizzati + padding mask"]
-    COMMON_ITEM["Stesso Transformer common<br/>un item contestualizzato"]
+    COMMON_QUERY["Pipeline common<br/>item normalizzati + padding mask"]
+    COMMON_ITEM["Stessa pipeline common<br/>un item normalizzato"]
 
     TASK["task_emb"]
     EMBED["embed_emb"]
@@ -118,7 +118,7 @@ flowchart TD
 ```
 
 Il ramo query aggiunge il token CIR, mentre il ramo item elabora ogni candidato
-senza quel token. I due rami condividono Transformer common, Transformer CIR e
+senza quel token. I due rami condividono pipeline common, Transformer CIR e
 testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 
 ## Configurazione predefinita
@@ -189,19 +189,46 @@ resta `val_fitb_accuracy`.
 
 ## Inizializzazione da CP e resume
 
-`--pretrained-cp <checkpoint-CP>` avvia un nuovo training CIR trasferendo
-`common.*`, senza rinomina, e la parte condivisa del token:
-`cp.task_embedding.embedding` diventa `cir.task_embedding.embedding`.
-Mantengono la nuova inizializzazione Transformer CIR, `cir.embed_emb`, eventuale
-category embedding e `cir.head.*`. `cp.encoder.*`, `cp.predict_emb` e la testa
-CP non vengono caricati. Il caricamento fallisce subito se mancano pesi comuni
-richiesti o le forme non coincidono.
-Il checkpoint CP deve quindi usare lo stesso profilo (`classic`, `new_classic`
-o `precomputed`) e la stessa configurazione Transformer del run CIR.
+I due flag hanno comportamenti diversi.
 
-`--resume <checkpoint-CIR>` esegue invece un caricamento esatto di tutti i pesi
-CIR. Entrambi riavviano optimizer, scheduler, epoche e history; i due flag sono
-mutuamente esclusivi.
+### `--pretrained-cp`: inizializzazione da CP
+
+`--pretrained-cp <checkpoint-CP>` avvia un nuovo training CIR e trasferisce
+soltanto tensori condivisi:
+
+| Sorgente nel checkpoint CP | Destinazione CIR | Modalità |
+|---|---|---|
+| `common.padding_embedding` | stessa chiave | Tutte |
+| `common.visual_encoder.*` | stesse chiavi | `classic`, `new_classic` |
+| `common.text_encoder.*` | stesse chiavi | `classic`, `new_classic` |
+| `common.visual_projection.*` | stesse chiavi, quando presenti | `classic`, `new_classic` |
+| `common.text_projection.*` | stesse chiavi, quando presenti | `classic`, `new_classic` |
+| `cp.task_embedding.embedding` | `cir.task_embedding.embedding` | Tutte |
+
+`common.*` comprende parametri e buffer degli encoder, incluse statistiche
+BatchNorm. In `precomputed` non esistono encoder runtime o proiezioni: vengono
+quindi trasferiti solo `common.padding_embedding` e task embedding condiviso.
+
+Non vengono caricati:
+
+- `cp.encoder.*`, cioè Transformer CP;
+- `cp.predict_emb`;
+- `cp.head.*`;
+- optimizer, scheduler, numero epoca e history CP.
+
+Transformer CIR (`cir.encoder.*`), `cir.embed_emb`, eventuale
+`cir.category_embedding.*` e `cir.head.*` mantengono nuova inizializzazione.
+Il caricamento richiede stesso profilo (`classic`, `new_classic` o
+`precomputed`), stessa configurazione e insieme esatto di chiavi `common.*`.
+Pesi mancanti, aggiuntivi o con forma diversa causano errore; checkpoint
+precedenti non vengono convertiti.
+
+### `--resume`: ripresa da CIR
+
+`--resume <checkpoint-CIR>` non accetta checkpoint CP. Carica invece tutti i
+pesi `common.*` e `cir.*` di un modello CIR compatibile. Anche in questo caso
+optimizer, scheduler, contatore epoche e history ripartono da zero.
+`--pretrained-cp` e `--resume` sono mutuamente esclusivi.
 
 ## Categoria target
 

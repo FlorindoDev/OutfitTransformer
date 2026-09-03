@@ -10,17 +10,18 @@ from .config import (
     ModelConfig,
     TransformerConfig,
 )
+from .embeddings import (
+    MultimodalOutfitEncoder,
+    OutfitEmbeddingBatch,
+    OutfitEmbeddingBatcher,
+    OutfitItem,
+)
 from .task_embedding import TaskEmbedding
 from .text_encoder import (
     FashionCLIPTextEncoder,
     OpenRouterTextEncoder,
     SentenceTransformerTextEncoder,
     TextEncoder,
-)
-from .transformer import (
-    OutfitItem,
-    OutfitTransformer,
-    OutfitTransformerOutput,
 )
 from .visual_encoder import (
     FashionCLIPVisualEncoder,
@@ -39,11 +40,12 @@ __all__ = [
     "FashionCLIPTextEncoder",
     "FashionCLIPVisualEncoder",
     "ModelConfig",
+    "MultimodalOutfitEncoder",
     "OpenRouterTextEncoder",
     "OpenRouterVisualEncoder",
+    "OutfitEmbeddingBatch",
+    "OutfitEmbeddingBatcher",
     "OutfitItem",
-    "OutfitTransformer",
-    "OutfitTransformerOutput",
     "ResNet18VisualEncoder",
     "SentenceTransformerTextEncoder",
     "TaskEmbedding",

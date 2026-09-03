@@ -36,7 +36,7 @@ corretto e lo allontana dai completamenti sbagliati.
 
 Il flusso CIR è composto da questi passaggi:
 
-1. il modello common produce gli embedding contestualizzati dell'outfit parziale;
+1. il modello common produce gli embedding normalizzati dell'outfit parziale;
 2. CIR aggiunge all'inizio il token che rappresenta l'item mancante;
 3. il Transformer CIR aggiorna quel token usando gli item presenti nell'outfit;
 4. la testa di retrieval trasforma lo stato del token nell'embedding della query;
@@ -46,7 +46,7 @@ Il flusso CIR è composto da questi passaggi:
 ```mermaid
 flowchart TD
     PARTIAL["Outfit parziale dal dataset<br/>più item: B × L"]
-    COMMON_QUERY["Transformer common<br/>item contestualizzati: B × L × 1024<br/>padding mask: B × L"]
+    COMMON_QUERY["Embedding common normalizzati<br/>item: B × L × 1024<br/>padding mask: B × L"]
     TASK["task_emb<br/>512 valori<br/>condivisibile e allenabile"]
     EMBED["embed_emb<br/>512 valori<br/>specifico CIR e allenabile"]
     CATEGORY["category_emb opzionale<br/>512 valori per categoria target<br/>allenabile"]
@@ -59,7 +59,7 @@ flowchart TD
     QUERY_VECTOR["Vettore query di retrieval<br/>B × 128"]
 
     POSITIVE["Item positivo dal dataset<br/>un item per esempio"]
-    COMMON_ITEM["Stesso Transformer common<br/>item contestualizzato: B × 1 × 1024"]
+    COMMON_ITEM["Stessa pipeline common<br/>item normalizzato: B × 1 × 1024"]
     ITEM_TRANSFORMER["Stesso Transformer CIR<br/>senza aggiungere il token CIR"]
     ITEM_STATE["Stato dell'item in uscita<br/>B × 1024"]
     ITEM_HEAD["Stessa testa di retrieval<br/>stessi pesi: 1024 → 128"]
@@ -98,7 +98,7 @@ Il modulo riceve gli embedding prodotti dalla parte common del modello.
 
 Per una query CIR:
 
-- gli embedding contestualizzati descrivono gli item dell'outfit parziale;
+- gli embedding normalizzati descrivono gli item dell'outfit parziale;
 - la maschera distingue gli item reali dal padding;
 - il risultato è un vettore per ogni outfit.
 
@@ -161,7 +161,7 @@ categorie ammesse sono
 
 ## Transformer CIR
 
-Il Transformer usa la stessa configurazione architetturale dei moduli common e CP:
+Il Transformer CIR usa la stessa configurazione architetturale del Transformer CP:
 
 | Parametro | Valore predefinito |
 |---|---:|
@@ -174,7 +174,7 @@ Il Transformer usa la stessa configurazione architetturale dei moduli common e C
 | Dropout | 0,3 |
 | Positional embedding | Assente |
 
-Per la query, il token CIR viene aggiunto prima degli item contestualizzati. La
+Per la query, il token CIR viene aggiunto prima degli item normalizzati. La
 mask riceve una nuova posizione sempre valida. Lo stato finale del primo token
 riassume l'outfit parziale e la richiesta di trovare il capo mancante.
 
@@ -200,7 +200,7 @@ di **vettori di retrieval**, uno per la query e uno per gli item.
 ### Da dove deriva il vettore query
 
 Il dataset fornisce un outfit parziale, per esempio «maglia + scarpe». Il
-Transformer common produce un embedding separato da 1024 valori per ciascun
+La pipeline common produce un embedding separato da 1024 valori per ciascun
 capo. CIR non concatena questi capi in un unico vettore: aggiunge davanti a essi
 il token CIR e passa l'intera sequenza al Transformer CIR.
 
@@ -220,7 +220,7 @@ outfit parziale → common → token CIR + embedding dei capi
 ### Da dove deriva il vettore item
 
 Il dataset fornisce anche l'item positivo, cioè il capo che era stato rimosso
-dall'outfit. Immagine e descrizione dell'item vengono elaborate dal Transformer
+dall'outfit. Immagine e descrizione dell'item vengono elaborate dalla pipeline
 common come un outfit formato da un solo capo. La rappresentazione ottenuta
 passa poi nello stesso Transformer CIR, questa volta **senza aggiungere il token
 CIR**, e infine nella stessa testa `1024 → 128`.

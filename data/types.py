@@ -126,7 +126,7 @@ class ItemBatch:
     model_items: tuple[OutfitItem, ...]
 
     def as_single_item_outfits(self) -> tuple[tuple[OutfitItem, ...], ...]:
-        """Return the shape expected by ``OutfitTransformer.forward``."""
+        """Return the shape expected by ``MultimodalOutfitEncoder.forward``."""
         return tuple((item,) for item in self.model_items)
 
     def pin_memory(self) -> ItemBatch:

@@ -1,4 +1,4 @@
-"""Composition of common and CP Transformers for both feature modes."""
+"""Composition of common embeddings and CP Transformer."""
 
 from __future__ import annotations
 
@@ -8,13 +8,12 @@ from torch import Tensor, nn
 
 from model import (
     CompatibilityTransformer,
-    OutfitTransformer,
+    MultimodalOutfitEncoder,
+    OutfitEmbeddingBatcher,
     TextEncoder,
     TransformerConfig,
     VisualEncoder,
 )
-from model.common.transformer import OutfitContextTransformer
-
 from .config import FeatureMode, default_transformer_config
 
 
@@ -36,7 +35,7 @@ class CPTrainingModel(nn.Module):
         self.config.validate()
         self.feature_mode = feature_mode
         if feature_mode.uses_raw_inputs:
-            self.common: nn.Module = OutfitTransformer(
+            self.common: nn.Module = MultimodalOutfitEncoder(
                 visual_encoder=visual_encoder,
                 text_encoder=text_encoder,
                 config=self.config,
@@ -46,7 +45,7 @@ class CPTrainingModel(nn.Module):
                 raise ValueError(
                     "precomputed mode cannot receive runtime encoders"
                 )
-            self.common = OutfitContextTransformer(self.config)
+            self.common = OutfitEmbeddingBatcher(self.config)
         self.cp = CompatibilityTransformer(self.config)
 
     def forward(self, outfits: Any) -> Tensor:

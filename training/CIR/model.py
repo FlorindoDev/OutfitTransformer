@@ -1,4 +1,4 @@
-"""Composition of common and CIR Transformers for all feature modes."""
+"""Composition of common embeddings and CIR Transformer."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from torch import Tensor, nn
 from model import (
     ComplementaryItemConfig,
     ComplementaryItemTransformer,
-    OutfitTransformer,
+    MultimodalOutfitEncoder,
+    OutfitEmbeddingBatcher,
     TextEncoder,
     TransformerConfig,
     VisualEncoder,
 )
-from model.common.transformer import OutfitContextTransformer
 from training.common.features import FeatureMode, default_transformer_config
 
 
@@ -41,7 +41,7 @@ class CIRTrainingModel(nn.Module):
         self.use_category_embedding = use_category_embedding
 
         if feature_mode.uses_raw_inputs:
-            self.common: nn.Module = OutfitTransformer(
+            self.common: nn.Module = MultimodalOutfitEncoder(
                 visual_encoder=visual_encoder,
                 text_encoder=text_encoder,
                 config=self.config,
@@ -51,7 +51,7 @@ class CIRTrainingModel(nn.Module):
                 raise ValueError(
                     "precomputed mode cannot receive runtime encoders"
                 )
-            self.common = OutfitContextTransformer(self.config)
+            self.common = OutfitEmbeddingBatcher(self.config)
         self.cir = ComplementaryItemTransformer(
             self.config,
             cir_config,

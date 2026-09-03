@@ -9,7 +9,6 @@
 - [API del modello](#api-del-modello)
 - [Encoder visuale e testuale](#encoder-visuale-e-testuale)
 - [Fusione multimodale](#fusione-multimodale)
-- [Transformer](#transformer)
 - [Padding e troncamento](#padding-e-troncamento)
 - [Output](#output)
 - [Modularità e limiti](#modularità-e-limiti)
@@ -19,13 +18,14 @@
 
 | File | Cosa fa |
 |---|---|
-| `config.py` | Centralizza e valida Transformer, encoder e configurazioni specifiche di CP e CIR. |
+| `config.py` | Centralizza e valida dimensioni degli embedding, Transformer dei task, encoder e configurazioni specifiche di CP e CIR. |
 | `visual_encoder.py` | Definisce gli encoder visuali ResNet-18, FashionCLIP ViT e OpenRouter. |
 | `text_encoder.py` | Definisce gli encoder testuali SentenceTransformer, FashionCLIP e OpenRouter. |
 | `openrouter.py` | Gestisce batching, retry e validazione delle risposte dell'API embedding OpenRouter. |
-| `transformer.py` | Gestisce API Pydantic, fusione, padding, Transformer e output. |
-| `output_validation.py` | Valida output common prima dell'uso nei Transformer specifici dei task. |
+| `embeddings.py` | Gestisce API Pydantic, fusione, normalizzazione, padding e output common. |
+| `output_validation.py` | Valida i batch di embedding prima dell'uso nei Transformer specifici dei task. |
 | `task_embedding.py` | Definisce l'embedding allenabile condiviso dai moduli specifici CP e CIR. |
+| `transformer_encoder.py` | Costruisce gli encoder Transformer usati esclusivamente da CP e CIR. |
 | `__init__.py` | Espone i componenti pubblici di `model.common`. |
 | `README.md` | Documenta concetti, comportamento e limiti del modulo. |
 
@@ -51,17 +51,17 @@ flowchart TD
     PN --> ITEM
 
     ITEM --> PAD["Padding appreso / troncamento<br/>massimo 16 item"]
-    PAD --> L2["L2(normalizzazione) prima del Transformer"]
-    L2 --> TR["Transformer encoder<br/>senza positional embedding"]
-    TR --> OUT["Embedding contestualizzati<br/>mask, lunghezze, troncamenti"]
+    PAD --> L2["L2(normalizzazione) finale"]
+    L2 --> OUT["OutfitEmbeddingBatch<br/>embedding, mask, lunghezze, troncamenti"]
 ```
 
 ## Scopo
 
 `model.common` crea la rappresentazione condivisa per i futuri task
 Compatibility Prediction (CP) e Complementary Item Retrieval (CIR). Ogni capo
-diventa un vettore che combina aspetto visuale e descrizione testuale; il
-Transformer lo aggiorna considerando tutti gli altri capi dell'outfit.
+diventa un vettore che combina aspetto visuale e descrizione testuale. La parte
+common non contestualizza gli item: passa gli embedding direttamente al
+Transformer specifico di CP o CIR.
 
 Il modulo produce rappresentazioni comuni. Teste, loss e logica specifica di CP
 e CIR restano intenzionalmente nei rispettivi package.
@@ -110,7 +110,7 @@ output = model([[item]])
 ```
 
 La lista interna `[item]` è l'outfit. La lista esterna `[[item]]` è il batch.
-Il risultato è un normale `OutfitTransformerOutput`, non un oggetto Pydantic.
+Il risultato è un normale `OutfitEmbeddingBatch`, non un oggetto Pydantic.
 
 Se viene usato un embedding già calcolato, i primi 512 valori sono visuali e i
 successivi 512 testuali. Le immagini devono essere già preparate per l'encoder
@@ -147,47 +147,27 @@ una API key valida.
 
 Feature visuali e testuali vengono normalizzate L2 separatamente, così nessuna
 modalità domina solo per una norma maggiore. I due vettori da 512 feature sono
-concatenati in un item embedding da 1024 feature. Prima del Transformer,
+concatenati in un item embedding da 1024 feature. Prima dell'invio al task,
 l'intero vettore viene normalizzato L2 di nuovo.
 
 Embedding con valori non finiti o norma nulla vengono rifiutati.
 
-## Transformer
-
-Il Transformer contestualizza ogni item rispetto all'intero outfit.
-
-| Parametro | Valore |
-|---|---:|
-| Input/output | 1024 feature |
-| Layer | 6 |
-| Teste | 16 |
-| Feed-forward network | 1024 → 2024 → 1024 |
-| Attivazione | Mish |
-| LayerNorm | Pre-norm |
-| Dropout | 0.3 |
-| Positional embedding | Assente |
-
-Senza positional embedding, l'outfit è trattato come insieme. Cambiare ordine
-agli item cambia nello stesso modo l'ordine degli output, senza alterare le
-relazioni apprese.
-
 ## Padding e troncamento
 
 Ogni outfit viene portato a 16 posizioni tramite un padding vector appreso. Una
-padding mask impedisce alle posizioni vuote di influenzare i capi reali.
+padding mask permette al Transformer del task di ignorare le posizioni vuote.
 
 Outfit oltre 16 item vengono troncati ai primi 16. Il modello conserva lunghezza
 effettiva e indicatore di troncamento per ogni outfit.
 
 ## Output
 
-Il modello restituisce un `OutfitTransformerOutput`, cioè un contenitore con
-cinque tensori:
+Il modello restituisce un `OutfitEmbeddingBatch`, cioè un contenitore con
+quattro tensori:
 
 | Campo | Forma predefinita | Significato |
 |---|---|---|
-| `item_embeddings` | `[B, 16, 1024]` | Item embedding normalizzati usati come input del Transformer. |
-| `contextual_embeddings` | `[B, 16, 1024]` | Item embedding aggiornati usando il contesto dell'intero outfit. |
+| `item_embeddings` | `[B, 16, 1024]` | Item embedding normalizzati passati direttamente al Transformer CP o CIR. |
 | `padding_mask` | `[B, 16]` booleana | `False` per item reali, `True` per padding. |
 | `lengths` | `[B]` intera | Numero di item realmente elaborati, massimo 16. |
 | `truncated` | `[B]` booleana | `True` quando l'outfit originale superava 16 item. |
@@ -219,10 +199,9 @@ Mask B:   False, True,  True,  True
 ```
 
 `PAD` è lo stesso vettore allenabile in tutte le posizioni vuote. La mask indica
-al Transformer quali posizioni non rappresentano capi reali. Nel comportamento
-attuale, questa mask impedisce al padding di influenzare gli item reali: il
-parametro è allenabile, ma riceve gradiente utile solo se una loss utilizza
-anche gli output padded.
+al Transformer CP o CIR quali posizioni non rappresentano capi reali. Nel
+comportamento attuale il parametro riceve gradiente utile solo se una loss usa
+anche posizioni padded.
 
 ### L2 (normalizzazione)
 

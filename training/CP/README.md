@@ -9,9 +9,9 @@ prodotti da qualsiasi modello compatibile. Default è sempre `new_classic`.
 
 | Flag | Feature degli item | Dimensione | Parti allenabili | Precomputazione |
 |---|---|---:|---|---|
-| `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
-| `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer e CP; backbone SentenceBERT congelato | Non richiesta |
-| `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer e CP | Richiesta per train e validation |
+| `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer CP e testa; backbone SentenceBERT congelato | Non richiesta |
+| `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer CP e testa; backbone SentenceBERT congelato | Non richiesta |
+| `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer CP e testa | Richiesta per train e validation |
 
 `classic` e `new_classic` condividono encoder runtime, 6 layer, 16 teste,
 dropout `0.1` e post-norm. `classic` usa 64 feature per modalità e feed-forward

@@ -20,8 +20,8 @@ apprendere embedding per il retrieval di articoli complementari.
 ## Panoramica
 
 Il progetto legge immagini e descrizioni di articoli fashion, crea embedding
-multimodali e usa un Transformer senza positional embedding per rappresentare
-outfit di lunghezza variabile. Il task CP assegna uno score di compatibilità;
+multimodali e usa Transformer specifici senza positional embedding per i task
+su outfit di lunghezza variabile. Il task CP assegna uno score di compatibilità;
 il modulo CIR produce embedding per outfit parziali e item positivi e include
 Triplet Loss, training, metriche FITB, checkpoint e grafici. Evaluation CIR su
 catalogo completo non è ancora implementata.
@@ -38,7 +38,7 @@ e [pipeline dei dati](data/README.md).
 | `data/polyvore` | Scarica e interpreta immagini, metadata e annotazioni Polyvore. | [README](data/polyvore/README.md) |
 | `evaluation` | Valuta checkpoint CP su test o validation e salva metriche globali. | [README](evaluation/README.md) |
 | `model` | Espone architettura comune e moduli specifici dei task. | [README](model/README.md) |
-| `model/common` | Crea embedding multimodali e li contestualizza con il Transformer. | [README](model/common/README.md) |
+| `model/common` | Crea, normalizza e organizza gli embedding multimodali condivisi. | [README](model/common/README.md) |
 | `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
 | `model/CIR` | Produce embedding di outfit parziali e item e definisce la loss CIR. | [README](model/CIR/README.md) |
 | `training` | Allena CP e CIR con input runtime o embedding precomputati e gestisce validazione, checkpoint e grafici. | [README](training/README.md) |
@@ -62,21 +62,19 @@ flowchart TD
 
     F --> G["Item embeddings<br/>B × L × 128 o 1024"]
     P["Embedding precomputato<br/>FashionCLIP o OpenRouter"] --> G
-    G --> H["L2 (normalizzazione) + padding appreso + padding mask<br/>massimo 16 item"]
-    H --> I["Transformer common encoder-only<br/>6 layer · 16 teste · nessuna posizione"]
-    I --> J["Item embeddings contestualizzati<br/>B × 16 × 128 o 1024"]
+    G --> H["L2 (normalizzazione) + padding appreso + padding mask<br/>B × 16 × 128 o 1024"]
 
     K["CP token<br/>task_emb + predict_emb"] --> L["Transformer CP encoder-only<br/>6 layer · 16 teste"]
-    J --> L
+    H --> L
     L --> M["Stato CP token → Dropout + Linear + Sigmoid"]
     M --> N["Compatibility probability<br/>Binary Focal Loss e metriche"]
 
-    J --> O["CIR<br/>task_emb + embed_emb<br/>+ category_emb opzionale"]
-    O --> Q["Target item embedding"]
-    Q --> R["In-batch Triplet Margin Loss<br/>e ranking FITB"]
+    O["CIR token<br/>task_emb + embed_emb<br/>+ category_emb opzionale"] --> Q["Transformer CIR encoder-only<br/>6 layer · 16 teste"]
+    H --> Q
+    Q --> R["Query/item embedding → In-batch Triplet Margin Loss<br/>e ranking FITB"]
 ```
 
-Per approfondire il flusso interno: [Transformer common](model/common/README.md),
+Per approfondire il flusso interno: [embedding common](model/common/README.md),
 [modello CP](model/cp/README.md), [modello CIR](model/CIR/README.md) e
 [metriche](metrics/README.md).
 
@@ -222,11 +220,15 @@ python -m training.CIR.train_cir \
 
 > [!NOTE]
 > Il file passato a `--pretrained-cp` deve essere un checkpoint CP con lo
-> stesso profilo di feature. Vengono caricati `common.*` e la parte condivisa
-> del token (`cp.task_embedding.embedding` in `cir.task_embedding.embedding`).
+> stesso profilo di feature. Carica `common.padding_embedding`, encoder e
+> proiezioni `common.*` presenti nei profili raw, più
+> `cp.task_embedding.embedding` in `cir.task_embedding.embedding`. Con
+> `--precomputed` carica soltanto padding e task embedding condiviso.
+> `cp.encoder.*`, `cp.predict_emb` e `cp.head.*` non vengono caricati;
 > Transformer CIR, `embed_emb`, category embedding e testa retrieval mantengono
-> la nuova inizializzazione. `--resume` accetta invece
-> soltanto un checkpoint CIR compatibile.
+> nuova inizializzazione. `--resume` non accetta checkpoint CP: richiede tutti i
+> pesi di un checkpoint CIR compatibile. Checkpoint con architettura common
+> precedente non sono supportati né convertiti.
 
 Per condizionare query sulla categoria del capo mancante, aggiungere
 `--category-emb`. Best checkpoint usa sempre `val_fitb_accuracy`; validation

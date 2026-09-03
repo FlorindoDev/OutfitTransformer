@@ -10,7 +10,7 @@ Reduction = Literal["none", "mean", "sum"]
 
 @dataclass(frozen=True)
 class TransformerConfig:
-    """Architecture shared by common and task-specific Transformers."""
+    """Embedding dimensions and task-specific Transformer architecture."""
 
     modality_embedding_dim: int = 512
     layers: int = 6

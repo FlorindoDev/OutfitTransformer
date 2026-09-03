@@ -4,12 +4,12 @@
 
 | Modulo | Responsabilità | Documentazione |
 |---|---|---|
-| `common` | Trasforma immagini e testi degli item in rappresentazioni multimodali contestualizzate e contiene i componenti condivisi. | [README common](common/README.md) |
+| `common` | Trasforma immagini e testi in embedding multimodali normalizzati e contiene i componenti condivisi. | [README common](common/README.md) |
 | `cp` | Usa le rappresentazioni common per stimare la compatibilità complessiva di un outfit. | [README CP](cp/README.md) |
 | `CIR` | Usa le rappresentazioni common per creare embedding confrontabili di outfit parziali e item complementari. | [README CIR](CIR/README.md) |
 
 Tutta la configurazione del modello è centralizzata in `common/config.py`:
-Transformer, encoder, focal loss CP, spazio di retrieval e triplet loss CIR
+Transformer dei task, encoder, focal loss CP, spazio di retrieval e triplet loss CIR
 condividono così un unico punto di accesso e validazione.
 
 ## Embedding dei task

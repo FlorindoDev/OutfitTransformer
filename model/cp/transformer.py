@@ -4,18 +4,16 @@ import torch
 from torch import Tensor, nn
 
 from ..common.config import DEFAULT_MODEL_CONFIG, TransformerConfig
-from ..common.output_validation import validate_common_output
+from ..common.embeddings import OutfitEmbeddingBatch
+from ..common.output_validation import validate_outfit_batch
 from ..common.task_embedding import TaskEmbedding
-from ..common.transformer import (
-    OutfitTransformerOutput,
-    build_transformer_encoder,
-)
+from ..common.transformer_encoder import build_transformer_encoder
 
 from .head import CompatibilityHead
 
 
 class CompatibilityTransformer(nn.Module):
-    """Predict compatibility from contextual embeddings produced by common."""
+    """Predict compatibility from common multimodal item embeddings."""
 
     def __init__(
         self,
@@ -54,15 +52,15 @@ class CompatibilityTransformer(nn.Module):
             dropout=self.config.dropout,
         )
 
-    def forward(self, common_output: OutfitTransformerOutput) -> Tensor:
+    def forward(self, outfit_batch: OutfitEmbeddingBatch) -> Tensor:
         """Return compatibility probabilities with shape ``[batch, 1]``."""
-        outfit_embedding = self.encode(common_output)
+        outfit_embedding = self.encode(outfit_batch)
         return self.head(outfit_embedding)
 
-    def encode(self, common_output: OutfitTransformerOutput) -> Tensor:
+    def encode(self, outfit_batch: OutfitEmbeddingBatch) -> Tensor:
         """Return CP token state after attending to every real outfit item."""
-        item_embeddings, padding_mask = validate_common_output(
-            common_output,
+        item_embeddings, padding_mask = validate_outfit_batch(
+            outfit_batch,
             expected_dim=self.config.model_dim,
         )
         batch_size = item_embeddings.size(0)

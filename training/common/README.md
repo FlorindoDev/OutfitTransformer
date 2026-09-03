@@ -24,7 +24,7 @@ queste responsabilità rimangono rispettivamente nei moduli `data.py`,
 
 | File | Cosa fa |
 |---|---|
-| [`features.py`](features.py) | Definisce i profili `classic`, `new_classic` e `precomputed`, seleziona la configurazione del Transformer e serializza le informazioni sugli encoder. |
+| [`features.py`](features.py) | Definisce i profili `classic`, `new_classic` e `precomputed`, seleziona dimensioni e configurazione del Transformer del task e serializza le informazioni sugli encoder. |
 | [`embeddings.py`](embeddings.py) | Espone una cache read-only indicizzata per `item_id`, caricata da manifest e shard PyTorch memory-mapped. |
 | [`checkpointing.py`](checkpointing.py) | Salva e copia checkpoint, legge state dict validati, carica i pesi del modello e scrive configurazioni JSON con operazioni atomiche. |
 | [`metrics.py`](metrics.py) | Accumula loss, accuracy e ROC AUC sull'intera epoca per i task di classificazione binaria. |
@@ -40,7 +40,7 @@ queste responsabilità rimangono rispettivamente nei moduli `data.py`,
 |---|---|---|
 | `classic` | Immagini e descrizioni originali | ResNet-18 e SentenceTransformer, proiettati a `64 + 64` feature |
 | `new_classic` | Immagini e descrizioni originali | ResNet-18 e SentenceTransformer, proiettati a `512 + 512` feature |
-| `precomputed` | Embedding letti dalla cache | Transformer per rappresentazioni combinate da 1024 feature |
+| `precomputed` | Embedding letti dalla cache | Rappresentazioni combinate da 1024 feature per il Transformer del task |
 
 `default_transformer_config()` associa ogni modalità alle dimensioni corrette.
 `feature_config()` produce invece i metadati serializzabili salvati nella

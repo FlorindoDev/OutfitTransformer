@@ -68,6 +68,7 @@ def _build_transfer_state(
         raise ValueError(
             "CIR model does not expose weights shared with CP"
         )
+    _validate_common_architecture(cp_state, required_targets)
 
     transferred: dict[str, Tensor] = {}
     missing_sources: list[str] = []
@@ -102,6 +103,27 @@ def _build_transfer_state(
             f"{details}"
         )
     return transferred
+
+
+def _validate_common_architecture(
+    cp_state: dict[str, Tensor],
+    required_targets: set[str],
+) -> None:
+    expected_names = {
+        name for name in required_targets if name.startswith(COMMON_PREFIX)
+    }
+    source_names = {
+        name.removeprefix("module.")
+        for name in cp_state
+        if name.removeprefix("module.").startswith(COMMON_PREFIX)
+    }
+    unexpected_names = sorted(source_names - expected_names)
+    if unexpected_names:
+        names = ", ".join(unexpected_names)
+        raise ValueError(
+            "CP checkpoint common architecture does not match the CIR model; "
+            f"unexpected weights: {names}"
+        )
 
 
 def _source_name(target_name: str) -> str:

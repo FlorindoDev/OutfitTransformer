@@ -40,7 +40,7 @@ flowchart TD
     COLLATE["collate.py<br/>unisce Example in Batch"]
     BATCH["ItemBatch, CompatibilityBatch<br/>o RetrievalBatch"]
     TRAINING["Training o precomputazione"]
-    MODEL["OutfitTransformer"]
+    MODEL["Modello CP o CIR"]
 
     RAW --> SOURCE
     TRANSFORM --> SOURCE
@@ -233,9 +233,9 @@ La collate impila soltanto dati uniformi, come le label. Non combina le immagini
 in un unico tensore rettangolare e non crea padding: outfit e negativi rimangono
 sequenze variabili.
 
-`OutfitTransformer` conosce il proprio limite `max_items`, quindi resta l’unico
-componente che tronca gli outfit, aggiunge il padding appreso, costruisce la
-padding mask e conserva le lunghezze effettive. Così non esistono due
+`OutfitEmbeddingBatcher` conosce il proprio limite `max_items`, quindi resta
+l’unico componente che tronca gli outfit, aggiunge il padding appreso,
+costruisce la padding mask e conserva le lunghezze effettive. Così non esistono due
 implementazioni concorrenti del padding.
 
 ## `loaders.py`: configurazione dei DataLoader

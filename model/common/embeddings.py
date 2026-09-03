@@ -1,4 +1,4 @@
-"""Multimodal fusion and position-free outfit Transformer."""
+"""Multimodal item embedding, normalization and outfit batching."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -44,58 +44,37 @@ class OutfitItem(BaseModel):
 
 
 @dataclass(frozen=True)
-class OutfitTransformerOutput:
-    """Padded inputs and contextual item representations."""
+class OutfitEmbeddingBatch:
+    """Padded multimodal item embeddings and their batch metadata."""
 
     item_embeddings: Tensor
-    contextual_embeddings: Tensor
     padding_mask: Tensor
     lengths: Tensor
     truncated: Tensor
 
 
-class OutfitContextTransformer(nn.Module):
-    """Pre-norm Transformer encoder without positional embeddings."""
+class OutfitEmbeddingBatcher(nn.Module):
+    """Normalize, pad and truncate variable-length embedding sequences."""
 
-    def __init__(self, config: TransformerConfig) -> None:
+    def __init__(self, config: TransformerConfig | None = None) -> None:
         super().__init__()
-        self.config = config
-        self.padding_embedding = nn.Parameter(torch.empty(config.model_dim))
+        self.config = config or DEFAULT_MODEL_CONFIG.transformer
+        self.config.validate()
+        self.padding_embedding = nn.Parameter(torch.empty(self.config.model_dim))
         nn.init.normal_(
             self.padding_embedding,
-            std=config.embedding_initialization_std,
+            std=self.config.embedding_initialization_std,
         )
 
-        self.encoder = build_transformer_encoder(config)
-
-    def forward(
-        self,
-        outfits: Sequence[Tensor],
-    ) -> OutfitTransformerOutput:
+    def forward(self, outfits: Sequence[Tensor]) -> OutfitEmbeddingBatch:
         item_embeddings, padding_mask, lengths, truncated = self._pad(outfits)
         normalized_embeddings = _l2_normalize(
             item_embeddings,
-            name="Transformer input",
+            name="item embeddings",
             epsilon=self.config.normalization_epsilon,
         )
-        contextual_embeddings = self.encoder(
-            normalized_embeddings,
-            src_key_padding_mask=padding_mask,
-        )
-
-        normalized_padding = _l2_normalize(
-            self.padding_embedding,
-            name="padding embedding",
-            epsilon=self.config.normalization_epsilon,
-        )
-        contextual_embeddings = torch.where(
-            padding_mask.unsqueeze(-1),
-            normalized_padding.view(1, 1, -1),
-            contextual_embeddings,
-        )
-        return OutfitTransformerOutput(
+        return OutfitEmbeddingBatch(
             item_embeddings=normalized_embeddings,
-            contextual_embeddings=contextual_embeddings,
             padding_mask=padding_mask,
             lengths=lengths,
             truncated=truncated,
@@ -149,8 +128,8 @@ class OutfitContextTransformer(nn.Module):
         )
 
 
-class OutfitTransformer(nn.Module):
-    """Encode image/text items, fuse them, then contextualize each outfit."""
+class MultimodalOutfitEncoder(OutfitEmbeddingBatcher):
+    """Encode image/text items and create normalized outfit embedding batches."""
 
     def __init__(
         self,
@@ -158,10 +137,7 @@ class OutfitTransformer(nn.Module):
         text_encoder: TextEncoder | None = None,
         config: TransformerConfig | None = None,
     ) -> None:
-        super().__init__()
-        self.config = config or DEFAULT_MODEL_CONFIG.transformer
-        self.config.validate()
-
+        super().__init__(config)
         self.visual_encoder = visual_encoder or ResNet18VisualEncoder()
         self.text_encoder = text_encoder or SentenceTransformerTextEncoder(
             output_dim=self.config.modality_embedding_dim
@@ -174,15 +150,13 @@ class OutfitTransformer(nn.Module):
             self.text_encoder.output_dim,
             self.config.modality_embedding_dim,
         )
-        self.context_transformer = OutfitContextTransformer(self.config)
 
     def forward(
         self,
         outfits: Sequence[Sequence[OutfitItem]],
-    ) -> OutfitTransformerOutput:
-        """Encode a batch of non-empty outfits."""
-        item_embeddings = self.encode_items(outfits)
-        return self.context_transformer(item_embeddings)
+    ) -> OutfitEmbeddingBatch:
+        """Encode and batch a sequence of non-empty outfits."""
+        return super().forward(self.encode_items(outfits))
 
     def encode_items(
         self,
@@ -190,8 +164,8 @@ class OutfitTransformer(nn.Module):
     ) -> list[Tensor]:
         """Return one unpadded multimodal embedding matrix per outfit."""
         flat_items, outfit_lengths = _flatten_outfits(outfits)
-        device = self.context_transformer.padding_embedding.device
-        dtype = self.context_transformer.padding_embedding.dtype
+        device = self.padding_embedding.device
+        dtype = self.padding_embedding.dtype
         raw_positions = [
             index for index, item in enumerate(flat_items) if item.embedding is None
         ]
@@ -286,41 +260,6 @@ def _projection(input_dim: int, output_dim: int) -> nn.Module:
     if input_dim == output_dim:
         return nn.Identity()
     return nn.Linear(input_dim, output_dim)
-
-
-def build_transformer_encoder(config: TransformerConfig) -> nn.TransformerEncoder:
-    """Build one Transformer encoder from the shared validated config."""
-    config.validate()
-    layer = nn.TransformerEncoderLayer(
-        d_model=config.model_dim,
-        nhead=config.attention_heads,
-        dim_feedforward=config.feedforward_dim,
-        dropout=config.dropout,
-        activation=_activation(config.activation),
-        batch_first=True,
-        norm_first=config.norm_first,
-    )
-    return nn.TransformerEncoder(
-        encoder_layer=layer,
-        num_layers=config.layers,
-        norm=nn.LayerNorm(
-            config.model_dim,
-            eps=config.layer_norm_epsilon,
-        ),
-        enable_nested_tensor=False,
-    )
-
-
-def _activation(name: str) -> nn.Module:
-    activations: dict[str, type[nn.Module]] = {
-        "relu": nn.ReLU,
-        "gelu": nn.GELU,
-        "mish": nn.Mish,
-    }
-    try:
-        return activations[name]()
-    except KeyError as error:
-        raise ValueError(f"unsupported activation: {name}") from error
 
 
 def _flatten_outfits(

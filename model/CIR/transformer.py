@@ -11,12 +11,10 @@ from ..common.config import (
     ComplementaryItemConfig,
     TransformerConfig,
 )
-from ..common.output_validation import validate_common_output
+from ..common.embeddings import OutfitEmbeddingBatch
+from ..common.output_validation import validate_outfit_batch
 from ..common.task_embedding import TaskEmbedding
-from ..common.transformer import (
-    OutfitTransformerOutput,
-    build_transformer_encoder,
-)
+from ..common.transformer_encoder import build_transformer_encoder
 from .category_embedding import PolyvoreCategoryEmbedding
 from .head import RetrievalEmbeddingHead
 
@@ -81,32 +79,32 @@ class ComplementaryItemTransformer(nn.Module):
 
     def forward(
         self,
-        common_output: OutfitTransformerOutput,
+        outfit_batch: OutfitEmbeddingBatch,
         target_categories: Sequence[str] | None = None,
     ) -> Tensor:
         """Return retrieval embeddings for a batch of partial outfits."""
-        return self.embed_query(common_output, target_categories)
+        return self.embed_query(outfit_batch, target_categories)
 
     def embed_query(
         self,
-        common_output: OutfitTransformerOutput,
+        outfit_batch: OutfitEmbeddingBatch,
         target_categories: Sequence[str] | None = None,
     ) -> Tensor:
         """Return missing-item embeddings conditioned on partial outfits."""
         query_representations = self.encode_query(
-            common_output,
+            outfit_batch,
             target_categories,
         )
         return self.head(query_representations)
 
     def encode_query(
         self,
-        common_output: OutfitTransformerOutput,
+        outfit_batch: OutfitEmbeddingBatch,
         target_categories: Sequence[str] | None = None,
     ) -> Tensor:
         """Return missing-item token states after outfit self-attention."""
-        item_embeddings, padding_mask = validate_common_output(
-            common_output,
+        item_embeddings, padding_mask = validate_outfit_batch(
+            outfit_batch,
             expected_dim=self.config.model_dim,
         )
         batch_size = item_embeddings.size(0)
@@ -154,7 +152,7 @@ class ComplementaryItemTransformer(nn.Module):
             category_embeddings = self.category_embedding(target_categories)
             if category_embeddings.size(0) != batch_size:
                 raise ValueError(
-                    "target_categories length must equal the common output batch size"
+                    "target_categories length must equal the outfit batch size"
                 )
             retrieval_embeddings = retrieval_embeddings + category_embeddings
 
@@ -163,21 +161,21 @@ class ComplementaryItemTransformer(nn.Module):
             dim=-1,
         ).unsqueeze(1)
 
-    def embed_items(self, common_output: OutfitTransformerOutput) -> Tensor:
+    def embed_items(self, outfit_batch: OutfitEmbeddingBatch) -> Tensor:
         """Embed batches whose elements contain exactly one target item."""
-        item_representations = self.encode_items(common_output)
+        item_representations = self.encode_items(outfit_batch)
         return self.head(item_representations)
 
-    def encode_items(self, common_output: OutfitTransformerOutput) -> Tensor:
+    def encode_items(self, outfit_batch: OutfitEmbeddingBatch) -> Tensor:
         """Return CIR states for independent catalog or positive items."""
-        item_embeddings, padding_mask = validate_common_output(
-            common_output,
+        item_embeddings, padding_mask = validate_outfit_batch(
+            outfit_batch,
             expected_dim=self.config.model_dim,
         )
         real_item_counts = (~padding_mask).sum(dim=1)
         if not bool((real_item_counts == 1).all()):
             raise ValueError(
-                "item common_output must contain exactly one real item "
+                "item outfit_batch must contain exactly one real item "
                 "per batch element"
             )
 

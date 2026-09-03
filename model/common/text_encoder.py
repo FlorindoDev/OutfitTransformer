@@ -11,7 +11,7 @@ from .openrouter import OpenRouterEmbeddingClient
 
 
 class TextEncoder(nn.Module, ABC):
-    """Contract required by the multimodal OutfitTransformer."""
+    """Contract required by the multimodal outfit encoder."""
 
     @property
     @abstractmethod
