@@ -16,8 +16,10 @@ validation e test senza creare dipendenze tra questi moduli.
   - [`binary_roc_auc`](#binary_roc_auc)
   - [`binary_classification_metrics`](#binary_classification_metrics)
 - [Metriche di retrieval CIR](#metriche-di-retrieval-cir)
-  - [Rank e `retrieval_rank`](#rank-e-retrieval_rank)
-  - [Metriche calcolate dal CIR](#metriche-calcolate-dal-cir)
+  - [Dalla distanza al rank](#dalla-distanza-al-rank)
+  - [Loss di training e validation](#loss-di-training-e-validation)
+  - [Metriche di ranking in validation](#metriche-di-ranking-in-validation)
+  - [Esempio completo](#esempio-completo)
 - [Accuracy, AUC e loss](#accuracy-auc-e-loss)
 - [Struttura](#struttura)
 
@@ -120,42 +122,140 @@ quattro candidati: l'item corretto e tre distrattori. Il modello calcola la
 distanza euclidea tra i rispettivi embedding; una distanza minore indica una
 corrispondenza migliore.
 
-### Rank e `retrieval_rank`
+### Dalla distanza al rank
+
+Indicando con $q$ l'embedding della query e con $c$ quello di un candidato, la
+distanza euclidea è:
+
+$$
+d(q,c) = \sqrt{\sum_j (q_j-c_j)^2}
+$$
+
+La distanza vale $0$ per embedding identici e cresce quanto più i due embedding
+sono lontani. Non è limitata all'intervallo $[0,1]$.
 
 Il **rank** è la posizione dell'item corretto dopo aver ordinato i candidati
 dalla distanza più piccola alla più grande:
 
-- rank 1: il positivo è il candidato più vicino;
-- rank 2: un distrattore è più vicino del positivo;
-- rank 4: il positivo è l'ultimo dei quattro candidati.
+- rank $1$: il positivo è il candidato più vicino;
+- rank $2$: un distrattore è più vicino del positivo;
+- rank $4$: il positivo è l'ultimo dei quattro candidati.
 
-Per esempio, se le distanze ordinate sono `distrattore=0.4`, `positivo=0.7`,
-`distrattore=1.1`, `distrattore=1.8`, il positivo ha rank 2. La funzione
-`retrieval_rank(candidate_distances, positive_index=0)` calcola questa posizione
-a partire dalle distanze. In caso di parità, il concorrente viene considerato
-prima del positivo: così embedding tutti uguali non producono risultati
-artificialmente ottimistici.
+Operativamente, il rank del positivo si calcola così:
 
-### Metriche calcolate dal CIR
+$$
+\operatorname{rank}(c^+)
+= 1 + \#\left\{c^- : d(q,c^-) \leq d(q,c^+)\right\}
+$$
 
-| Valore | Concetto | Lettura |
-|---|---|---|
-| `train_loss` | Triplet Margin Loss tra il positivo e il negativo più difficile trovato tra gli altri positivi del microbatch. | Più bassa è meglio; è l'unico valore che guida la backpropagation. |
-| `val_loss` | Stessa penalità di margine, ma il negativo più difficile è scelto tra i tre distrattori FITB ufficiali. | Più bassa è meglio; serve per diagnosi e non seleziona il checkpoint. |
-| `val_fitb_accuracy` | Frazione di query nelle quali il positivo ha rank 1. | Misura quante domande hanno una risposta esatta; più alta è meglio. |
-| `val_mrr` | Media di `1 / rank`: rank 1 vale `1`, rank 2 vale `0.5`, rank 4 vale `0.25`. | Premia anche i miglioramenti che non portano ancora il positivo al primo posto. |
-| `val_recall@2` | Frazione di query nelle quali il positivo ha rank 1 o 2. | Misura quanto spesso la risposta corretta compare tra i primi due candidati. |
+dove $c^+$ è il candidato positivo e $c^-$ indica un distrattore.
 
-Con i rank `[1, 3, 2]`, FITB accuracy vale `1/3`, MRR vale
-`(1 + 1/3 + 1/2) / 3` e Recall@2 vale `2/3`.
+Per esempio, con le distanze $d^+=0.7$ per il positivo e $0.4$, $1.1$, $1.8$
+per i distrattori, un solo distrattore precede il positivo e quindi il rank è
+$2$. In caso di parità, il distrattore viene considerato prima del positivo. Se
+le quattro
+distanze fossero tutte uguali, il positivo avrebbe quindi rank $4$, evitando
+un risultato artificialmente ottimistico.
 
-`retrieval_metrics(ranks)` restituisce insieme questi tre riepiloghi di ranking
-e il numero di esempi nella struttura `RetrievalMetrics`. Le funzioni
-`fitb_accuracy()`, `mean_reciprocal_rank()` e `recall_at_k()` permettono di
-calcolarli separatamente. Nessuna di queste metriche genera gradienti.
+### Loss di training e validation
+
+Per ogni query viene usato il negativo più difficile, cioè quello scorretto con
+la distanza minore. Indicando con $d^+$ la distanza dal positivo, con $d^-$ la
+distanza dal negativo più difficile e con $m$ il margine configurato, la
+penalità è:
+
+$$
+\mathcal{L} = \max\left(0, d^+ - d^- + m\right)
+$$
+
+La loss è zero quando il negativo è più lontano del positivo di almeno $m$.
+Altrimenti misura quanto manca per rispettare questo margine. Per esempio, con
+$d^+=1.2$, $d^-=2.5$ e $m=2.0$, la loss è
+$\max(0, 1.2-2.5+2.0)=0.7$.
+
+Il CIR riporta due loss medie per epoca:
+
+- `train_loss`: durante il training, il negativo più difficile è scelto tra i
+  positivi delle altre righe dello stesso microbatch. È l'obiettivo che guida
+  la backpropagation; più è bassa, meglio il modello separa le coppie di
+  training;
+- `val_loss`: durante la validation, il negativo più difficile è scelto tra i
+  tre distrattori ufficiali associati alla query. Serve a controllare la
+  generalizzazione; non aggiorna i pesi e non decide quale checkpoint salvare
+  come migliore.
+
+Le due loss usano insiemi di negativi diversi, quindi è più utile osservare il
+loro andamento nel tempo che confrontarne direttamente i valori assoluti.
+
+### Metriche di ranking in validation
+
+Siano $N$ il numero di query di validation e $r_i$ il rank del positivo per la
+query $i$. Il CIR calcola le metriche seguenti.
+
+#### FITB accuracy
+
+$$
+\text{FITB accuracy}
+= \frac{\left|\left\{i : r_i=1\right\}\right|}{N}
+$$
+
+Misura la percentuale di domande **Fill In The Blank** per le quali il modello
+sceglie subito l'item corretto. Varia tra $0$ e $1$; più è alta, meglio è. Con
+quattro candidati, una scelta casuale ha in media accuracy $0.25$. È la metrica
+usata per scegliere `best.pt` e per l'early stopping.
+
+#### Mean Reciprocal Rank (MRR)
+
+$$
+\operatorname{MRR} = \frac{1}{N}\sum_{i=1}^{N}\frac{1}{r_i}
+$$
+
+Assegna a ogni query un punteggio che diminuisce con la posizione del positivo:
+rank $1$ vale $1$, rank $2$ vale $0.5$, rank $3$ vale circa $0.333$ e rank $4$
+vale $0.25$. È utile perché rileva miglioramenti anche quando il positivo non ha
+ancora raggiunto il primo posto. Con quattro candidati varia tra $0.25$ e $1$;
+più è alta, meglio è.
+
+#### Recall@2
+
+$$
+\operatorname{Recall@2}
+= \frac{\left|\left\{i : r_i \leq 2\right\}\right|}{N}
+$$
+
+Misura quanto spesso l'item corretto compare tra i primi due candidati. Ogni
+query vale $1$ se il positivo è al rank $1$ o $2$ e $0$ negli altri casi. Varia
+tra $0$ e $1$; più è alta, meglio è. È meno severa della FITB accuracy e mostra
+se il modello riesce almeno a restringere la scelta ai due candidati migliori.
+
+#### Numero di esempi
+
+Insieme ai valori precedenti viene registrato anche il numero di esempi
+elaborati. Nel training conta le coppie query-positivo usate; nella validation
+conta le query FITB valutate. Non è una misura di qualità, ma serve a verificare
+che le medie siano state calcolate sul numero atteso di dati, anche in training
+distribuito.
+
+### Esempio completo
+
+Supponiamo che quattro query producano i rank $[1,3,2,4]$:
+
+$$
+\begin{aligned}
+\text{FITB accuracy} &= \frac{1}{4} = 0.25 \\
+\operatorname{MRR} &= \frac{1+\frac{1}{3}+\frac{1}{2}+\frac{1}{4}}{4}
+\approx 0.521 \\
+\operatorname{Recall@2} &= \frac{2}{4} = 0.50
+\end{aligned}
+$$
+
+Il modello trova subito un positivo su quattro, colloca due positivi su quattro
+nei primi due posti e ottiene un MRR superiore alla FITB accuracy perché questa
+metrica riconosce anche i piazzamenti al secondo, terzo e quarto posto.
 
 Il checkpoint `best.pt` e l'early stopping dipendono soltanto dalla massima
-`val_fitb_accuracy`; MRR, Recall@2 e le loss aiutano a interpretare il training.
+FITB accuracy di validation; MRR, Recall@2 e le loss aiutano a interpretare il
+training. Le metriche di ranking non generano gradienti e non aggiornano i pesi.
 
 ## Accuracy, AUC e loss
 

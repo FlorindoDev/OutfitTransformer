@@ -20,6 +20,7 @@ from .config import CIRTrainingConfig
 from .data import build_retrieval_loaders
 from .distributed import close_distributed, initialize_distributed
 from .model import CIRTrainingModel
+from .pretraining import load_cp_pretrained_weights
 from .trainer import TrainingResult, train
 
 LOGGER = logging.getLogger("training.CIR")
@@ -49,7 +50,20 @@ def run(
             feature_mode=config.feature_mode,
             use_category_embedding=config.use_category_embedding,
         )
-        if config.resume is not None:
+        if config.pretrained_cp is not None:
+            report = load_cp_pretrained_weights(
+                model,
+                config.pretrained_cp,
+                map_location="cpu",
+            )
+            if runtime.is_main_process:
+                LOGGER.info(
+                    "loaded_cp_pretraining=%s transferred_tensors=%d "
+                    "cir_weights=fresh",
+                    report.checkpoint,
+                    report.loaded_tensor_count,
+                )
+        elif config.resume is not None:
             load_model_weights(model, config.resume, map_location="cpu")
             if runtime.is_main_process:
                 LOGGER.info(
@@ -148,7 +162,17 @@ def parse_args(
     )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--log-every", type=int, default=10)
-    parser.add_argument("--resume", type=Path)
+    initialization = parser.add_mutually_exclusive_group()
+    initialization.add_argument(
+        "--pretrained-cp",
+        type=Path,
+        help="initialize CP/CIR shared weights from a CP checkpoint",
+    )
+    initialization.add_argument(
+        "--resume",
+        type=Path,
+        help="initialize every model weight from a compatible CIR checkpoint",
+    )
     authentication = parser.add_mutually_exclusive_group()
     authentication.add_argument("--token")
     authentication.add_argument("--no-token", action="store_true")
@@ -193,6 +217,7 @@ def parse_args(
         ddp=arguments.ddp,
         device=arguments.device,
         log_every=arguments.log_every,
+        pretrained_cp=arguments.pretrained_cp,
         resume=arguments.resume,
     )
     config.validate()

@@ -66,6 +66,7 @@ class CIRTrainingConfig:
     ddp: bool = False
     device: str = "auto"
     log_every: int = 10
+    pretrained_cp: Path | None = None
     resume: Path | None = None
     model: TransformerConfig | None = None
 
@@ -115,6 +116,8 @@ class CIRTrainingConfig:
             raise TypeError("ddp must be boolean")
         if self.log_every <= 0:
             raise ValueError("log_every must be positive")
+        if self.pretrained_cp is not None and self.resume is not None:
+            raise ValueError("pretrained_cp and resume are mutually exclusive")
         self.model_config.validate()
         self.cir_config.validate()
 
@@ -202,6 +205,9 @@ class CIRTrainingConfig:
                 "early_stopping_patience": self.early_stopping_patience,
                 "early_stopping_min_delta": self.early_stopping_min_delta,
                 "seed": self.seed,
+                "pretrained_cp_weights": (
+                    str(self.pretrained_cp) if self.pretrained_cp else None
+                ),
                 "resume_weights": str(self.resume) if self.resume else None,
             },
             "runtime": {

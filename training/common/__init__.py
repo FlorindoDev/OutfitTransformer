@@ -2,6 +2,7 @@
 
 from .checkpointing import (
     copy_checkpoint,
+    load_checkpoint_state_dict,
     load_model_weights,
     save_checkpoint,
     write_json,
@@ -25,6 +26,7 @@ __all__ = [
     "copy_checkpoint",
     "default_transformer_config",
     "feature_config",
+    "load_checkpoint_state_dict",
     "load_model_weights",
     "resolve_device",
     "save_checkpoint",

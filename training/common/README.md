@@ -26,7 +26,7 @@ queste responsabilità rimangono rispettivamente nei moduli `data.py`,
 |---|---|
 | [`features.py`](features.py) | Definisce i profili `classic`, `new_classic` e `precomputed`, seleziona la configurazione del Transformer e serializza le informazioni sugli encoder. |
 | [`embeddings.py`](embeddings.py) | Espone una cache read-only indicizzata per `item_id`, caricata da manifest e shard PyTorch memory-mapped. |
-| [`checkpointing.py`](checkpointing.py) | Salva e copia checkpoint, carica i soli pesi del modello e scrive configurazioni JSON con operazioni atomiche. |
+| [`checkpointing.py`](checkpointing.py) | Salva e copia checkpoint, legge state dict validati, carica i pesi del modello e scrive configurazioni JSON con operazioni atomiche. |
 | [`metrics.py`](metrics.py) | Accumula loss, accuracy e ROC AUC sull'intera epoca per i task di classificazione binaria. |
 | [`runtime.py`](runtime.py) | Imposta i seed riproducibili e risolve automaticamente o valida il device PyTorch. |
 | [`__init__.py`](__init__.py) | Riunisce ed espone l'API pubblica di `training.common`. |
@@ -76,6 +76,10 @@ best model e file JSON.
 controllo `strict=True`. Accetta sia un checkpoint completo contenente
 `model_state_dict`, sia uno state dict salvato direttamente; optimizer,
 scheduler e history non vengono ripristinati.
+
+`load_checkpoint_state_dict()` espone la stessa lettura e validazione senza
+applicare i pesi a un modello. Permette ai task di implementare trasferimenti
+selettivi, come l'inizializzazione CIR da CP.
 
 ## Metriche
 

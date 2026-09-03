@@ -205,14 +205,28 @@ Dopo aver preparato embedding `train` e `validation`, avviare CIR precomputed:
 PowerShell:
 
 ```powershell
-python -m training.CIR.train_cir --precomputed
+python -m training.CIR.train_cir `
+  --precomputed `
+  --checkpoint-dir checkpoints/nondisjoint/cir_precomputed `
+  --pretrained-cp checkpoints/nondisjoint/cp_precomputed/best.pt
 ```
 
 Linux e macOS:
 
 ```bash
-python -m training.CIR.train_cir --precomputed
+python -m training.CIR.train_cir \
+  --precomputed \
+  --checkpoint-dir checkpoints/nondisjoint/cir_precomputed \
+  --pretrained-cp checkpoints/nondisjoint/cp_precomputed/best.pt
 ```
+
+> [!NOTE]
+> Il file passato a `--pretrained-cp` deve essere un checkpoint CP con lo
+> stesso profilo di feature. Vengono caricati `common.*` e la parte condivisa
+> del token (`cp.task_embedding.embedding` in `cir.task_embedding.embedding`).
+> Transformer CIR, `embed_emb`, category embedding e testa retrieval mantengono
+> la nuova inizializzazione. `--resume` accetta invece
+> soltanto un checkpoint CIR compatibile.
 
 Per condizionare query sulla categoria del capo mancante, aggiungere
 `--category-emb`. Best checkpoint usa sempre `val_fitb_accuracy`; validation

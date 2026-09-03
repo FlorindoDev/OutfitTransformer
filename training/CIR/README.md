@@ -8,6 +8,7 @@
 - [Architettura](#architettura)
 - [Configurazione predefinita](#configurazione-predefinita)
 - [Flag CLI](#flag-cli)
+- [Inizializzazione da CP e resume](#inizializzazione-da-cp-e-resume)
 - [Categoria target](#categoria-target)
 - [Loss, metriche e best model](#loss-metriche-e-best-model)
 - [Preparazione embedding](#preparazione-embedding)
@@ -29,8 +30,9 @@ positivo e i tre distrattori ufficiali. Il best checkpoint usa sempre
 | [`model.py`](model.py) | Compone Transformer common e modello CIR e produce gli embedding dei rami query e item. |
 | [`trainer.py`](trainer.py) | Gestisce forward, Triplet Loss, backpropagation, accumulo, AMP, DDP, validation, early stopping e checkpoint. |
 | [`plots.py`](plots.py) | Genera dopo ogni epoca i grafici cumulativi di loss e metriche FITB. |
-| [`train_cir.py`](train_cir.py) | Espone la CLI e collega configurazione, dati, modello, resume e ciclo di training. |
-| [`__init__.py`](__init__.py) | Espone `CIRTrainingConfig` e `CIRTrainingModel` come API pubblica del package. |
+| [`pretraining.py`](pretraining.py) | Trasferisce nel CIR i pesi `common.*` e la parte del token condivisa con CP. |
+| [`train_cir.py`](train_cir.py) | Espone la CLI e collega configurazione, dati, modello, inizializzazione e ciclo di training. |
+| [`__init__.py`](__init__.py) | Espone configurazione, modello e caricamento CP come API pubblica del package. |
 
 ### Acronimi usati
 
@@ -140,6 +142,7 @@ testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 | Mixed precision | Disabilitata; opzionale su CUDA |
 | DDP | Disabilitato; opzionale tramite `torchrun` |
 | Worker | 0 per processo, configurabili |
+| Pretraining CP | Disabilitato; trasferisce `common.*` e task embedding condiviso |
 | Resume | Carica soltanto pesi CIR; optimizer, scheduler e history nuovi |
 
 ## Flag CLI
@@ -175,6 +178,7 @@ testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 | `--ddp` | disabilitato | Usa DistributedDataParallel; avvio richiesto con `torchrun`. |
 | `--device` | `auto` | Sceglie CUDA, poi MPS, poi CPU; in DDP CUDA usa `LOCAL_RANK`. |
 | `--log-every` | `10` | Logga loss e LR ogni N microbatch e all'ultimo. |
+| `--pretrained-cp` | `None` | Inizializza i pesi comuni a CP e CIR da un checkpoint CP compatibile. |
 | `--resume` | `None` | Carica soli pesi da checkpoint CIR con stessa architettura e stessi flag modello. |
 | `--token` | token locale Hugging Face | Usa token esplicito per risorse mancanti. |
 | `--no-token` | disabilitato | Forza accesso senza autenticazione. |
@@ -182,6 +186,22 @@ testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 Flag CP esclusivi (`--focal-alpha`, `--focal-gamma`, `--focal-reduction` e
 `--best-metric`) non esistono nel CIR. Best metric CIR non è selezionabile:
 resta `val_fitb_accuracy`.
+
+## Inizializzazione da CP e resume
+
+`--pretrained-cp <checkpoint-CP>` avvia un nuovo training CIR trasferendo
+`common.*`, senza rinomina, e la parte condivisa del token:
+`cp.task_embedding.embedding` diventa `cir.task_embedding.embedding`.
+Mantengono la nuova inizializzazione Transformer CIR, `cir.embed_emb`, eventuale
+category embedding e `cir.head.*`. `cp.encoder.*`, `cp.predict_emb` e la testa
+CP non vengono caricati. Il caricamento fallisce subito se mancano pesi comuni
+richiesti o le forme non coincidono.
+Il checkpoint CP deve quindi usare lo stesso profilo (`classic`, `new_classic`
+o `precomputed`) e la stessa configurazione Transformer del run CIR.
+
+`--resume <checkpoint-CIR>` esegue invece un caricamento esatto di tutti i pesi
+CIR. Entrambi riavviano optimizer, scheduler, epoche e history; i due flag sono
+mutuamente esclusivi.
 
 ## Categoria target
 
@@ -271,6 +291,22 @@ python -m training.CIR.train_cir \
   --checkpoint-dir checkpoints/nondisjoint/cir_precomputed_category_01
 ```
 
+Inizializzazione da checkpoint CP:
+
+```powershell
+python -m training.CIR.train_cir `
+  --precomputed `
+  --checkpoint-dir checkpoints/nondisjoint/cir_precomputed `
+  --pretrained-cp checkpoints/nondisjoint/cp_precomputed/best.pt
+```
+
+```bash
+python -m training.CIR.train_cir \
+  --precomputed \
+  --checkpoint-dir checkpoints/nondisjoint/cir_precomputed \
+  --pretrained-cp checkpoints/nondisjoint/cp_precomputed/best.pt
+```
+
 Early stopping e mixed precision:
 
 ```powershell
@@ -307,7 +343,7 @@ torchrun --standalone --nproc-per-node=2 -m training.CIR.train_cir \
   --pin-memory
 ```
 
-Resume dei soli pesi:
+Nuovo run dai soli pesi di un checkpoint CIR:
 
 ```powershell
 python -m training.CIR.train_cir `

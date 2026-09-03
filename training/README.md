@@ -26,7 +26,7 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 |---|---|---|
 | Common | [`common/runtime.py`](common/runtime.py) | Gestisce seed riproducibile e scelta automatica del device. |
 | Common | [`common/metrics.py`](common/metrics.py) | Accumula loss, accuracy e ROC AUC sull’intera epoca. |
-| Common | [`common/checkpointing.py`](common/checkpointing.py) | Salva checkpoint e configurazione in modo atomico; carica solo pesi per resume. |
+| Common | [`common/checkpointing.py`](common/checkpointing.py) | Salva checkpoint e configurazione in modo atomico; legge e carica state dict validati. |
 | Common | [`common/embeddings.py`](common/embeddings.py) | Legge e valida cache embedding tramite manifest e shard memory-mapped. |
 | Common | [`common/README.md`](common/README.md) | Documenta file, API e responsabilità dei componenti condivisi. |
 | CP | [`CP/config.py`](CP/config.py) | Definisce modalità, architettura e iperparametri validati. |
@@ -39,6 +39,7 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | CIR | [`CIR/config.py`](CIR/config.py) | Definisce profili, Triplet Loss, categoria opzionale e runtime validato. |
 | CIR | [`CIR/data.py`](CIR/data.py) | Costruisce FITB raw/precomputed e sampler DDP senza duplicati in validation. |
 | CIR | [`CIR/model.py`](CIR/model.py) | Compone rappresentazione common, Transformer CIR e testa retrieval. |
+| CIR | [`CIR/pretraining.py`](CIR/pretraining.py) | Trasferisce `common.*` e task embedding condiviso da CP a CIR. |
 | CIR | [`CIR/trainer.py`](CIR/trainer.py) | Coordina loss in-batch, ranking FITB, AMP, DDP e checkpoint. |
 | CIR | [`CIR/plots.py`](CIR/plots.py) | Produce grafici loss, FITB accuracy, MRR e Recall@2. |
 | CIR | [`CIR/train_cir.py`](CIR/train_cir.py) | Avvia run CIR da CLI. |
@@ -53,7 +54,9 @@ anche `val_mrr` e `val_recall@2`.
 
 Flag `--category-emb` abilita token
 `[task_emb | embed_emb + category_emb]`. AMP CUDA e DDP tramite `torchrun` sono
-opzionali. Dettagli completi sono nella [guida CIR](CIR/README.md).
+opzionali. `--pretrained-cp` inizializza `common.*` e la parte condivisa del
+token da un checkpoint CP compatibile. Dettagli completi sono nella
+[guida CIR](CIR/README.md).
 
 ## Cosa aggiorna la backpropagation
 
@@ -168,6 +171,11 @@ un run non viene sovrascritta.
 Resume carica esclusivamente pesi. Optimizer, OneCycleLR, contatore epoche e
 history ripartono da zero; modalità e architettura devono coincidere. Stato di
 optimizer e scheduler non viene quindi salvato nei checkpoint.
+
+Nel CIR, `--pretrained-cp` è distinto da `--resume`: il primo trasferisce solo
+`common.*` e task embedding condiviso, lasciando nuovi encoder e testa CIR; il secondo
+richiede tutti i pesi di un modello CIR compatibile. I flag sono mutuamente
+esclusivi.
 
 ## Avvio
 
