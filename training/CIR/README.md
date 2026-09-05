@@ -61,6 +61,16 @@ Default è `new_classic`. Profili e dimensioni coincidono con training CP.
 
 ## Campionamento del training
 
+Prima il training leggeva tutte le domande già preparate in
+`fill_in_blank_train.json`: una domanda per ogni outfit, con lo stesso capo
+mancante ripetuto a ogni epoca.
+
+Ora le altre varianti vengono create automaticamente dal codice durante il
+training, partendo dagli outfit completi di `train.json`. Non sono domande
+aggiuntive lette dal dataset né vengono salvate nei JSON: a ogni accesso viene
+costruita in memoria una coppia query/positivo. Aumenta la varietà dei
+completamenti tra epoche, non il numero di outfit o di esempi per epoca.
+
 Come nel repository di riferimento, ogni accesso a un outfit di `train.json`
 estrae un item casuale come positivo. La query contiene gli altri item;
 la categoria target viene ricavata dal capo appena estratto. Le estrazioni

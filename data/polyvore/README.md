@@ -326,6 +326,17 @@ compatibile con l’output del modello CP e con la sua loss.
 
 ## Retrieval e Fill In The Blank
 
+`train.json` contiene gli outfit completi; `fill_in_blank_train.json` contiene
+una domanda già preparata per ogni outfit. Il training precedente usava tutte
+quelle domande, ripetendo la stessa rimozione a ogni epoca: non lasciava inutilizzate
+altre domande del file.
+
+Nel training attuale, le altre domande sono varianti generate automaticamente
+in memoria dal codice: sceglie un capo da togliere dall'outfit completo e usa
+quel capo come risposta. Non vengono lette da un elenco di domande aggiuntive
+né scritte nei JSON. Il numero di outfit resta uguale; nel corso delle epoche
+cambiano i completamenti che il modello può imparare.
+
 Per allenare CIR, `sample_target=True` usa outfit completi di `train.json` e
 genera coppie query/positivo a ogni accesso. Non richiede
 `fill_in_blank_train.json`. Il campionamento casuale è ammesso solo su train.
