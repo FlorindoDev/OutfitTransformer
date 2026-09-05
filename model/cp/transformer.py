@@ -2,6 +2,7 @@
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 from ..common.config import DEFAULT_MODEL_CONFIG, TransformerConfig
 from ..common.embeddings import OutfitEmbeddingBatch
@@ -65,6 +66,12 @@ class CompatibilityTransformer(nn.Module):
         )
         batch_size = item_embeddings.size(0)
         cp_token = torch.cat((self.task_embedding(), self.predict_emb), dim=0)
+        cp_token = F.normalize(
+            cp_token,
+            p=2,
+            dim=-1,
+            eps=self.config.normalization_epsilon,
+        )
         cp_tokens = cp_token.view(1, 1, -1).expand(batch_size, -1, -1)
         transformer_input = torch.cat((cp_tokens, item_embeddings), dim=1)
 

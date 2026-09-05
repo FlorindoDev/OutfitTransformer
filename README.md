@@ -64,12 +64,12 @@ flowchart TD
     P["Embedding precomputato<br/>FashionCLIP o OpenRouter"] --> G
     G --> H["L2 (normalizzazione) + padding appreso + padding mask<br/>B × 16 × 128 o 1024"]
 
-    K["CP token<br/>task_emb + predict_emb"] --> L["Transformer CP encoder-only<br/>6 layer · 16 teste"]
+    K["CP token normalizzato L2<br/>[task_emb | predict_emb]"] --> L["Transformer CP encoder-only<br/>6 layer · 16 teste"]
     H --> L
     L --> M["Stato CP token → Dropout + Linear + Sigmoid"]
     M --> N["Compatibility probability<br/>Binary Focal Loss e metriche"]
 
-    O["CIR token<br/>task_emb + embed_emb<br/>+ category_emb opzionale"] --> Q["Transformer CIR encoder-only<br/>6 layer · 16 teste"]
+    O["CIR token normalizzato L2<br/>[task_emb | embed_emb]<br/>+ category_emb opzionale"] --> Q["Transformer CIR encoder-only<br/>6 layer · 16 teste"]
     H --> Q
     Q --> R["Query/item embedding → In-batch Triplet Margin Loss<br/>e ranking FITB"]
 ```
@@ -222,13 +222,15 @@ python -m training.CIR.train_cir \
 > Il file passato a `--pretrained-cp` deve essere un checkpoint CP con lo
 > stesso profilo di feature. Carica `common.padding_embedding`, encoder e
 > proiezioni `common.*` presenti nei profili raw, più
-> `cp.task_embedding.embedding` in `cir.task_embedding.embedding`. Con
-> `--precomputed` carica soltanto padding e task embedding condiviso.
-> `cp.encoder.*`, `cp.predict_emb` e `cp.head.*` non vengono caricati;
-> Transformer CIR, `embed_emb`, category embedding e testa retrieval mantengono
-> nuova inizializzazione. `--resume` non accetta checkpoint CP: richiede tutti i
-> pesi di un checkpoint CIR compatibile. Checkpoint con architettura common
-> precedente non sono supportati né convertiti.
+> `cp.task_embedding.embedding` in `cir.task_embedding.embedding` e tutti i
+> layer `cp.encoder.layers.*` in `cir.encoder.layers.*`. Anche con
+> `--precomputed` trasferisce quindi il Transformer completo.
+> `cp.predict_emb` e `cp.head.*` restano specifici della classificazione;
+> `embed_emb`, category embedding e testa retrieval nascono nel CIR.
+> Dei vecchi checkpoint CP vengono ignorati soltanto i due pesi della LayerNorm
+> finale rimossa (`cp.encoder.norm.*`), con un messaggio in console.
+> `--resume` richiede invece un checkpoint CIR compatibile con la nuova
+> architettura. Dettagli nel [README CIR](training/CIR/README.md#inizializzazione-da-cp-e-resume).
 
 Per condizionare query sulla categoria del capo mancante, aggiungere
 `--category-emb`. Best checkpoint usa sempre `val_fitb_accuracy`; validation

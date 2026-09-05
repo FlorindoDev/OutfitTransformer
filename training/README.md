@@ -44,7 +44,7 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | CIR | [`CIR/config.py`](CIR/config.py) | Definisce profili, Triplet Loss, categoria opzionale e runtime validato. |
 | CIR | [`CIR/data.py`](CIR/data.py) | Costruisce FITB raw/precomputed e sampler DDP senza duplicati in validation. |
 | CIR | [`CIR/model.py`](CIR/model.py) | Compone rappresentazione common, Transformer CIR e testa retrieval. |
-| CIR | [`CIR/pretraining.py`](CIR/pretraining.py) | Trasferisce `common.*` e task embedding condiviso da CP a CIR. |
+| CIR | [`CIR/pretraining.py`](CIR/pretraining.py) | Trasferisce `common.*`, Transformer completo e task embedding da CP a CIR. |
 | CIR | [`CIR/trainer.py`](CIR/trainer.py) | Coordina loss in-batch, ranking FITB, AMP, DDP e checkpoint. |
 | CIR | [`CIR/plots.py`](CIR/plots.py) | Produce grafici loss, FITB accuracy, MRR e Recall@2. |
 | CIR | [`CIR/train_cir.py`](CIR/train_cir.py) | Avvia run CIR da CLI. |
@@ -63,8 +63,8 @@ anche `val_mrr` e `val_recall@2`.
 
 Flag `--category-emb` abilita token
 `[task_emb | embed_emb + category_emb]`. AMP CUDA e DDP tramite `torchrun` sono
-opzionali. `--pretrained-cp` inizializza `common.*` e la parte condivisa del
-token da un checkpoint CP compatibile. Dettagli completi sono nella
+opzionali. `--pretrained-cp` inizializza `common.*`, tutti i layer del Transformer
+e la parte condivisa del token da un checkpoint CP compatibile. Dettagli completi sono nella
 [guida CIR](CIR/README.md).
 
 ## Backpropagation CP
@@ -158,7 +158,8 @@ devono coprire outfit parziali, positivi e distrattori.
 ## Modello CP
 
 Common normalizza gli item, applica padding e costruisce la mask. CP aggiunge un
-token composto da `task_emb` e `predict_emb`; il Transformer CP, senza positional
+token composto da `task_emb` e `predict_emb`, normalizzato L2 dopo la
+concatenazione; il Transformer CP, senza positional
 embedding, esegue la contestualizzazione e ignora il padding. La testa finale
 converte lo stato del token in probabilità tramite sigmoid.
 
@@ -172,7 +173,8 @@ embedding resta fuori dal run.
 
 Common normalizza item, applica padding e costruisce mask. Ramo query aggiunge
 token `[task_emb | embed_emb]`; con `--category-emb` usa
-`[task_emb | embed_emb + category_emb]`. Transformer CIR contestualizza token e
+`[task_emb | embed_emb + category_emb]`. Il token completo viene normalizzato L2.
+Transformer CIR contestualizza token e
 outfit parziale. Ramo item usa stesso Transformer e stessa testa retrieval,
 senza token CIR, così query e candidati arrivano nello stesso spazio vettoriale.
 
@@ -284,17 +286,24 @@ Nel CIR, `--pretrained-cp` è distinto da `--resume`:
 - `--pretrained-cp <checkpoint-CP>` carica `common.padding_embedding`, tutti i
   parametri e buffer `common.visual_encoder.*`, `common.text_encoder.*` e delle
   proiezioni presenti nelle modalità raw, più
-  `cp.task_embedding.embedding` in `cir.task_embedding.embedding`;
-- in modalità `precomputed` carica soltanto `common.padding_embedding` e task
-  embedding condiviso, perché encoder e proiezioni runtime non esistono;
-- non carica `cp.encoder.*`, `cp.predict_emb`, `cp.head.*`, optimizer,
-  scheduler o history; Transformer CIR, `cir.embed_emb`, category embedding e
-  testa retrieval partono da nuova inizializzazione;
+  `cp.task_embedding.embedding` in `cir.task_embedding.embedding` e tutti i
+  layer `cp.encoder.layers.*` in `cir.encoder.layers.*`;
+- in modalità `precomputed` carica padding, task embedding e Transformer
+  completo; encoder e proiezioni runtime non esistono;
+- `cp.predict_emb` e `cp.head.*` sono specifici della classificazione e non
+  vengono trasferiti; `cir.embed_emb`, category embedding e testa retrieval
+  partono da nuova inizializzazione perché assenti nel CP locale;
+- dei vecchi CP ignora soltanto `cp.encoder.norm.weight` e
+  `cp.encoder.norm.bias`, relativi alla LayerNorm finale rimossa, e lo segnala
+  in console; gli altri pesi condivisi devono essere compatibili;
 - `--resume <checkpoint-CIR>` non usa checkpoint CP: carica tutti i pesi
   `common.*` e `cir.*` da un modello CIR compatibile.
 
 Entrambi avviano optimizer, scheduler, contatore epoche e history da zero. I
 flag sono mutuamente esclusivi.
+CP e CIR mantengono le LayerNorm interne dei layer, senza una LayerNorm finale
+aggiuntiva. Il caricamento stretto `--resume` richiede checkpoint della nuova
+architettura; la gestione della vecchia LayerNorm riguarda solo `--pretrained-cp`.
 
 ## Avvio
 

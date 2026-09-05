@@ -59,10 +59,15 @@ def run(
             if runtime.is_main_process:
                 LOGGER.info(
                     "loaded_cp_pretraining=%s transferred_tensors=%d "
-                    "cir_weights=fresh",
+                    "cir_encoder=pretrained retrieval_token_head=fresh",
                     report.checkpoint,
                     report.loaded_tensor_count,
                 )
+                if report.ignored_keys:
+                    LOGGER.info(
+                        "ignored_removed_cp_final_layer_norm=%s",
+                        ", ".join(report.ignored_keys),
+                    )
         elif config.resume is not None:
             load_model_weights(model, config.resume, map_location="cpu")
             if runtime.is_main_process:
@@ -166,7 +171,7 @@ def parse_args(
     initialization.add_argument(
         "--pretrained-cp",
         type=Path,
-        help="initialize CP/CIR shared weights from a CP checkpoint",
+        help="load common encoders, full Transformer and task token from CP",
     )
     initialization.add_argument(
         "--resume",

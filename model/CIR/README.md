@@ -50,7 +50,7 @@ flowchart TD
     TASK["task_emb<br/>512 valori<br/>condivisibile e allenabile"]
     EMBED["embed_emb<br/>512 valori<br/>specifico CIR e allenabile"]
     CATEGORY["category_emb opzionale<br/>512 valori per categoria target<br/>allenabile"]
-    TOKEN["[task_emb | embed_emb + category_emb]<br/>token CIR: B × 1 × 1024"]
+    TOKEN["L2([task_emb | embed_emb + category_emb])<br/>token CIR: B × 1 × 1024"]
     PREPEND["Token CIR aggiunto<br/>prima dell'outfit parziale"]
     MASK["Mask estesa<br/>token CIR sempre valido"]
     QUERY_TRANSFORMER["Transformer CIR"]
@@ -145,8 +145,13 @@ associata alle scarpe. Quel vettore viene sommato a `embed_emb`, mentre
 `task_emb` resta la prima metà del token. Il token completo diventa:
 
 ```text
-[task_emb | embed_emb + category_emb]
+L2([task_emb | embed_emb + category_emb])
 ```
+
+Il token completo viene normalizzato L2 a norma 1 dopo la concatenazione e
+l'eventuale somma della categoria. Senza categoria si usa
+`L2([task_emb | embed_emb])`. L2 agisce sull'intero token, resta differenziabile
+e non sovrascrive i parametri allenabili.
 
 Con il flag attivo, ogni outfit del batch deve avere una categoria target. Nel
 training questa categoria deriva dal capo corretto rimosso dall'outfit; durante
@@ -170,7 +175,7 @@ Il Transformer CIR usa la stessa configurazione architetturale del Transformer C
 | Teste di attenzione | 16 |
 | Dimensione feed-forward | 2024 |
 | Attivazione | Mish |
-| Normalizzazione | Pre-norm e LayerNorm finale |
+| Normalizzazione | Pre-norm nei layer; nessuna LayerNorm finale aggiuntiva |
 | Dropout | 0,3 |
 | Positional embedding | Assente |
 
@@ -352,3 +357,7 @@ CIR usa un parametro proprio e non condiviso.
 
 Il runner [`training/CIR`](../../training/CIR/README.md) compone common e CIR,
 gestisce category flag, loss, metriche FITB, checkpoint e resume dei soli pesi.
+Con `--pretrained-cp` copia pipeline common, task embedding e tutti i layer del
+Transformer CP nel CIR. È un'inizializzazione dei pesi, non una condivisione
+degli oggetti tra due training. Token `embed_emb`, categoria e testa retrieval
+nascono nel CIR perché assenti nel modello CP locale.

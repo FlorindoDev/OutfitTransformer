@@ -11,8 +11,11 @@ from torch import Tensor, nn
 from training.common import load_checkpoint_state_dict
 
 COMMON_PREFIX = "common."
+CP_ENCODER_PREFIX = "cp.encoder."
+CIR_ENCODER_PREFIX = "cir.encoder."
 CP_TASK_EMBEDDING = "cp.task_embedding.embedding"
 CIR_TASK_EMBEDDING = "cir.task_embedding.embedding"
+REMOVED_CP_WEIGHTS = frozenset({"cp.encoder.norm.weight", "cp.encoder.norm.bias"})
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,7 @@ class CPPretrainingReport:
 
     checkpoint: Path
     loaded_keys: tuple[str, ...]
+    ignored_keys: tuple[str, ...] = ()
 
     @property
     def loaded_tensor_count(self) -> int:
@@ -33,10 +37,11 @@ def load_cp_pretrained_weights(
     *,
     map_location: torch.device | str = "cpu",
 ) -> CPPretrainingReport:
-    """Transfer weights structurally shared by CP and CIR.
+    """Transfer common encoders, Transformer layers and task token from CP.
 
-    The CIR encoder, retrieval embedding, category embedding and head keep
-    their fresh initialization.
+    Only the retrieval embedding, category embedding and retrieval head keep
+    their fresh initialization. Legacy final encoder LayerNorm weights are
+    ignored because that layer no longer exists in CIR.
     """
     selected_path = Path(path)
     cp_state = load_checkpoint_state_dict(
@@ -52,6 +57,13 @@ def load_cp_pretrained_weights(
     return CPPretrainingReport(
         checkpoint=selected_path,
         loaded_keys=tuple(sorted(transferred)),
+        ignored_keys=tuple(
+            sorted(
+                name
+                for name in cp_state
+                if name.removeprefix("module.") in REMOVED_CP_WEIGHTS
+            )
+        ),
     )
 
 
@@ -62,13 +74,14 @@ def _build_transfer_state(
     required_targets = {
         name
         for name in cir_state
-        if name.startswith(COMMON_PREFIX) or name == CIR_TASK_EMBEDDING
+        if name.startswith((COMMON_PREFIX, CIR_ENCODER_PREFIX))
+        or name == CIR_TASK_EMBEDDING
     }
     if not required_targets:
         raise ValueError(
             "CIR model does not expose weights shared with CP"
         )
-    _validate_common_architecture(cp_state, required_targets)
+    _validate_shared_architecture(cp_state, required_targets)
 
     transferred: dict[str, Tensor] = {}
     missing_sources: list[str] = []
@@ -105,23 +118,23 @@ def _build_transfer_state(
     return transferred
 
 
-def _validate_common_architecture(
+def _validate_shared_architecture(
     cp_state: dict[str, Tensor],
     required_targets: set[str],
 ) -> None:
-    expected_names = {
-        name for name in required_targets if name.startswith(COMMON_PREFIX)
-    }
+    expected_names = {_source_name(name) for name in required_targets}
     source_names = {
         name.removeprefix("module.")
         for name in cp_state
-        if name.removeprefix("module.").startswith(COMMON_PREFIX)
+        if name.removeprefix("module.").startswith(
+            (COMMON_PREFIX, CP_ENCODER_PREFIX)
+        )
     }
-    unexpected_names = sorted(source_names - expected_names)
+    unexpected_names = sorted(source_names - expected_names - REMOVED_CP_WEIGHTS)
     if unexpected_names:
         names = ", ".join(unexpected_names)
         raise ValueError(
-            "CP checkpoint common architecture does not match the CIR model; "
+            "CP checkpoint shared architecture does not match the CIR model; "
             f"unexpected weights: {names}"
         )
 
@@ -129,6 +142,8 @@ def _validate_common_architecture(
 def _source_name(target_name: str) -> str:
     if target_name.startswith(COMMON_PREFIX):
         return target_name
+    if target_name.startswith(CIR_ENCODER_PREFIX):
+        return CP_ENCODER_PREFIX + target_name.removeprefix(CIR_ENCODER_PREFIX)
     if target_name == CIR_TASK_EMBEDDING:
         return CP_TASK_EMBEDDING
     raise ValueError(f"unsupported shared CIR weight: {target_name}")

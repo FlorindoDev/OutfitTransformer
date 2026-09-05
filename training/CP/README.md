@@ -202,3 +202,10 @@ Ogni profilo usa directory distinta: `cp_classic`,
 cambia nome modalità; usare `--checkpoint-dir` per distinguere esperimenti.
 Struttura e contenuto degli artefatti sono descritti nel
 [README generale del training](../README.md#checkpoint-e-monitoraggio).
+
+Il token CP viene normalizzato L2 dopo la concatenazione e il Transformer non
+ha una LayerNorm finale aggiuntiva. `--resume` richiede un checkpoint della
+nuova architettura: i vecchi `cp.encoder.norm.*` non vengono convertiti da
+questo comando. Per inizializzare CIR da un vecchio CP, `--pretrained-cp`
+gestisce la rimozione di quei due pesi come descritto nel
+[README CIR](../CIR/README.md#inizializzazione-da-cp-e-resume).

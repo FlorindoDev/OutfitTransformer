@@ -14,16 +14,13 @@ def build_transformer_encoder(config: TransformerConfig) -> nn.TransformerEncode
         dim_feedforward=config.feedforward_dim,
         dropout=config.dropout,
         activation=_activation(config.activation),
+        layer_norm_eps=config.layer_norm_epsilon,
         batch_first=True,
         norm_first=config.norm_first,
     )
     return nn.TransformerEncoder(
         encoder_layer=layer,
         num_layers=config.layers,
-        norm=nn.LayerNorm(
-            config.model_dim,
-            eps=config.layer_norm_epsilon,
-        ),
         enable_nested_tensor=False,
     )
 

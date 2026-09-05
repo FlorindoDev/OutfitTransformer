@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 from ..common.config import (
     DEFAULT_CIR_CONFIG,
@@ -156,9 +157,15 @@ class ComplementaryItemTransformer(nn.Module):
                 )
             retrieval_embeddings = retrieval_embeddings + category_embeddings
 
-        return torch.cat(
+        tokens = torch.cat(
             (task_embeddings, retrieval_embeddings),
             dim=-1,
+        )
+        return F.normalize(
+            tokens,
+            p=2,
+            dim=-1,
+            eps=self.config.normalization_epsilon,
         ).unsqueeze(1)
 
     def embed_items(self, outfit_batch: OutfitEmbeddingBatch) -> Tensor:

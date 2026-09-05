@@ -30,7 +30,7 @@ positivo e i tre distrattori ufficiali. Il best checkpoint usa sempre
 | [`model.py`](model.py) | Compone embedding common e modello CIR e produce gli embedding dei rami query e item. |
 | [`trainer.py`](trainer.py) | Gestisce forward, Triplet Loss, backpropagation, accumulo, AMP, DDP, validation, early stopping e checkpoint. |
 | [`plots.py`](plots.py) | Genera dopo ogni epoca i grafici cumulativi di loss e metriche FITB. |
-| [`pretraining.py`](pretraining.py) | Trasferisce nel CIR i pesi `common.*` e la parte del token condivisa con CP. |
+| [`pretraining.py`](pretraining.py) | Trasferisce nel CIR i pesi `common.*`, tutti i layer del Transformer CP e il task embedding. |
 | [`train_cir.py`](train_cir.py) | Espone la CLI e collega configurazione, dati, modello, inizializzazione e ciclo di training. |
 | [`__init__.py`](__init__.py) | Espone configurazione, modello e caricamento CP come API pubblica del package. |
 
@@ -72,7 +72,7 @@ flowchart TD
     TASK["task_emb"]
     EMBED["embed_emb"]
     CATEGORY["category_emb<br/>se --category-emb è attivo"]
-    TOKEN["Token CIR<br/>[task_emb | embed_emb + category_emb]"]
+    TOKEN["Token CIR normalizzato L2<br/>[task_emb | embed_emb + category_emb]"]
     QUERY_INPUT["Token CIR aggiunto<br/>prima dell'outfit parziale"]
     MASK["Padding mask estesa<br/>token CIR sempre valido"]
 
@@ -120,6 +120,9 @@ flowchart TD
 Il ramo query aggiunge il token CIR, mentre il ramo item elabora ogni candidato
 senza quel token. I due rami condividono pipeline common, Transformer CIR e
 testa di retrieval, così query e item vengono proiettati nello stesso spazio.
+Il token completo viene normalizzato L2 dopo la concatenazione e l'eventuale
+somma della categoria. Il Transformer non applica una LayerNorm finale
+aggiuntiva; restano le normalizzazioni interne dei suoi layer.
 
 ## Configurazione predefinita
 
@@ -168,7 +171,7 @@ testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 | `--loss-reduction` | `mean` | Aggrega loss per microbatch con `mean` o `sum`. |
 | `--retrieval-embedding-dim` | `128` | Dimensione finale condivisa da query e item. |
 | `--normalize-embeddings` | disabilitato | Applica normalizzazione L2 agli embedding finali. |
-| `--category-emb` | disabilitato | Usa token `[task_emb \| embed_emb + category_emb]`. |
+| `--category-emb` | disabilitato | Usa token `L2([task_emb \| embed_emb + category_emb])`. |
 | `--seed` | `42` | Imposta seed riproducibile; ogni rank DDP usa offset del proprio rank. |
 | `--early-stopping-patience` | `None` | Ferma dopo N epoche senza miglioramento FITB. |
 | `--early-stopping-min-delta` | `0.0` | Miglioramento minimo FITB per aggiornare best e azzerare patience. |
@@ -178,7 +181,7 @@ testa di retrieval, così query e item vengono proiettati nello stesso spazio.
 | `--ddp` | disabilitato | Usa DistributedDataParallel; avvio richiesto con `torchrun`. |
 | `--device` | `auto` | Sceglie CUDA, poi MPS, poi CPU; in DDP CUDA usa `LOCAL_RANK`. |
 | `--log-every` | `10` | Logga loss e LR ogni N microbatch e all'ultimo. |
-| `--pretrained-cp` | `None` | Inizializza i pesi comuni a CP e CIR da un checkpoint CP compatibile. |
+| `--pretrained-cp` | `None` | Carica pipeline common, Transformer completo e task embedding da un checkpoint CP compatibile. |
 | `--resume` | `None` | Carica soli pesi da checkpoint CIR con stessa architettura e stessi flag modello. |
 | `--token` | token locale Hugging Face | Usa token esplicito per risorse mancanti. |
 | `--no-token` | disabilitato | Forza accesso senza autenticazione. |
@@ -194,7 +197,8 @@ I due flag hanno comportamenti diversi.
 ### `--pretrained-cp`: inizializzazione da CP
 
 `--pretrained-cp <checkpoint-CP>` avvia un nuovo training CIR e trasferisce
-soltanto tensori condivisi:
+tutte le componenti condivise utilizzate dal CIR, incluso il Transformer
+allenato dal CP:
 
 | Sorgente nel checkpoint CP | Destinazione CIR | Modalità |
 |---|---|---|
@@ -204,24 +208,36 @@ soltanto tensori condivisi:
 | `common.visual_projection.*` | stesse chiavi, quando presenti | `classic`, `new_classic` |
 | `common.text_projection.*` | stesse chiavi, quando presenti | `classic`, `new_classic` |
 | `cp.task_embedding.embedding` | `cir.task_embedding.embedding` | Tutte |
+| `cp.encoder.layers.*` | `cir.encoder.layers.*` | Tutte: attenzione, feed-forward e LayerNorm interne di tutti i layer |
 
 `common.*` comprende parametri e buffer degli encoder, incluse statistiche
 BatchNorm. In `precomputed` non esistono encoder runtime o proiezioni: vengono
-quindi trasferiti solo `common.padding_embedding` e task embedding condiviso.
+quindi trasferiti `common.padding_embedding`, task embedding e tutti i layer
+del Transformer. Il Transformer caricato resta allenabile durante il fine-tuning CIR.
 
 Non vengono caricati:
 
-- `cp.encoder.*`, cioè Transformer CP;
 - `cp.predict_emb`;
 - `cp.head.*`;
 - optimizer, scheduler, numero epoca e history CP.
 
-Transformer CIR (`cir.encoder.*`), `cir.embed_emb`, eventuale
-`cir.category_embedding.*` e `cir.head.*` mantengono nuova inizializzazione.
+`cir.embed_emb`, eventuale `cir.category_embedding.*` e `cir.head.*` mantengono
+nuova inizializzazione: non esistono nel modello CP locale. Nel repository di
+riferimento il modello unico conserva anche token e testa retrieval nei
+checkpoint CP, ma la loss CP non li allena. `cp.predict_emb` e `cp.head.*`
+sono specifici della classificazione e non sostituiscono token e testa CIR.
+
 Il caricamento richiede stesso profilo (`classic`, `new_classic` o
-`precomputed`), stessa configurazione e insieme esatto di chiavi `common.*`.
-Pesi mancanti, aggiuntivi o con forma diversa causano errore; checkpoint
-precedenti non vengono convertiti.
+`precomputed`) e architettura compatibile per common e Transformer. Pesi
+condivisi mancanti, layer aggiuntivi o forme diverse causano errore prima del
+trasferimento. Sono supportate anche chiavi con prefisso DDP `module.`.
+
+Per usare i CP precedenti alla rimozione della LayerNorm finale,
+`--pretrained-cp` ignora esclusivamente `cp.encoder.norm.weight` e
+`cp.encoder.norm.bias`, segnalando le chiavi in console. Le LayerNorm interne
+vengono caricate normalmente. Questa inizializzazione non conserva esattamente
+il comportamento del vecchio CP: ora mancano la LayerNorm finale e il token
+viene normalizzato. Nessuna altra architettura precedente viene convertita.
 
 ### `--resume`: ripresa da CIR
 
@@ -229,19 +245,21 @@ precedenti non vengono convertiti.
 pesi `common.*` e `cir.*` di un modello CIR compatibile. Anche in questo caso
 optimizer, scheduler, contatore epoche e history ripartono da zero.
 `--pretrained-cp` e `--resume` sono mutuamente esclusivi.
+`--resume` resta un caricamento stretto: i vecchi checkpoint CIR con
+`cir.encoder.norm.*` non sono compatibili con l'architettura attuale.
 
 ## Categoria target
 
 Senza `--category-emb`, query usa:
 
 ```text
-[task_emb | embed_emb]
+L2([task_emb | embed_emb])
 ```
 
 Con flag attivo usa:
 
 ```text
-[task_emb | embed_emb + category_emb]
+L2([task_emb | embed_emb + category_emb])
 ```
 
 Categoria target deriva sempre dall'item positivo mancante. Con input raw arriva
@@ -250,6 +268,8 @@ da `FashionItem.category`. Con `--precomputed`, loader legge direttamente
 non carica righe immagine. Metadata viene letto solo quando flag categoria è
 attivo.
 
+L2 agisce sull'intero token concatenato, portandone la norma a 1, come per gli
+item della pipeline common. Non normalizza separatamente le due metà.
 Le 11 righe di `category_emb` sono parametri allenabili. Il checkpoint conserva
 flag e matrice; un resume deve usare stessa configurazione categoria.
 

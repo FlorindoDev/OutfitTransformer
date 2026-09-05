@@ -47,7 +47,7 @@ flowchart TD
     COMMON["Embedding common normalizzati<br/>item: B × L × 1024<br/>padding mask: B × L"]
     TASK["task_emb<br/>512 valori<br/>condivisibile e allenabile"]
     PREDICT["predict_emb<br/>512 valori<br/>specifico CP e allenabile"]
-    TOKEN["Concatenazione<br/>token CP: B × 1 × 1024"]
+    TOKEN["Concatenazione + L2<br/>token CP: B × 1 × 1024"]
     PREPEND["Token CP aggiunto<br/>all'inizio dell'outfit"]
     MASK["Mask estesa<br/>token sempre valido"]
     TRANSFORMER["Transformer CP<br/>6 layer, 16 teste<br/>FFN 2024, Mish, pre-norm"]
@@ -105,7 +105,10 @@ La concatenazione produce un token da 1024 valori, compatibile con gli
 embedding degli item. Entrambe le parti sono inizializzate con piccoli valori
 casuali e vengono ottimizzate durante il training.
 
-Il token viene inserito prima degli item. Dopo il Transformer, il suo stato ha
+L'intero token concatenato viene normalizzato L2 a norma 1 prima di essere
+inserito davanti agli item: `L2([task_emb | predict_emb])`. La normalizzazione
+resta differenziabile e non modifica in-place i parametri allenabili.
+Dopo il Transformer, il suo stato ha
 raccolto informazione da tutti gli item reali e rappresenta quindi l'intero
 outfit dal punto di vista della compatibilità.
 
@@ -120,7 +123,7 @@ Il Transformer CP usa questa configurazione predefinita:
 | Teste di attenzione | 16 |
 | Dimensione feed-forward | 2024 |
 | Attivazione | Mish |
-| Normalizzazione | Pre-norm e LayerNorm finale |
+| Normalizzazione | Pre-norm nei layer; nessuna LayerNorm finale aggiuntiva |
 | Dropout | 0.3 |
 | Positional embedding | Assente |
 

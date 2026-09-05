@@ -25,7 +25,7 @@
 | `embeddings.py` | Gestisce API Pydantic, fusione, normalizzazione, padding e output common. |
 | `output_validation.py` | Valida i batch di embedding prima dell'uso nei Transformer specifici dei task. |
 | `task_embedding.py` | Definisce l'embedding allenabile condiviso dai moduli specifici CP e CIR. |
-| `transformer_encoder.py` | Costruisce gli encoder Transformer usati esclusivamente da CP e CIR. |
+| `transformer_encoder.py` | Costruisce gli encoder CP e CIR con LayerNorm interne ai layer, senza LayerNorm finale aggiuntiva. |
 | `__init__.py` | Espone i componenti pubblici di `model.common`. |
 | `README.md` | Documenta concetti, comportamento e limiti del modulo. |
 
