@@ -258,27 +258,24 @@ dipende così dalla direzione dei vettori e non dalla sola grandezza dei valori.
 
 ### Da dove arrivano query, positivo e negativi
 
-Un esempio Polyvore Fill In The Blank nasce da un outfit completo al quale è
-stato tolto un articolo. Il dataset contiene:
-
-- `question`: gli articoli rimasti, cioè l'outfit parziale;
-- `blank_position`: la posizione dell'articolo tolto;
-- `answers`: l'articolo corretto insieme ad alcuni distrattori ufficiali.
-
-Il dataset usa `blank_position` e gli identificatori dell'outfit per separare la
-risposta corretta dalle altre. Restituisce quindi un `partial_outfit`, un
-`positive_item` e una lista di `negative_items`.
+Nel training il dataset legge gli outfit completi di `train.json` e sceglie
+casualmente un articolo da togliere a ogni accesso. Restituisce il resto come
+`partial_outfit`, il capo estratto come `positive_item` e `negative_items=()`.
+La stessa regola vale per immagini raw e feature precomputate.
 
 Per esempio, da «maglia + pantaloni + scarpe» si possono ottenere:
 
 - outfit parziale: «maglia + scarpe»;
 - item positivo: «pantaloni»;
-- negativi ufficiali: altri articoli proposti come risposte sbagliate.
+- in un accesso successivo può essere estratto un altro capo dello stesso outfit.
 
-La loss usa soltanto l'outfit parziale e l'item positivo di ogni esempio. I
-negativi ufficiali vengono conservati dal dataset, ma **non entrano in questa
-loss**. I negativi sono invece ricavati dagli altri esempi presenti nello stesso
-batch.
+La loss usa query e positivo di ogni esempio e ricava i negativi dagli altri
+positivi presenti nel microbatch. Non richiede distrattori espliciti nel training.
+
+In validazione il dataset usa invece le domande FITB fisse: `question` contiene
+la query, `blank_position` identifica il capo corretto e `answers` contiene
+positivo e distrattori ufficiali. Questi candidati servono al ranking e alla
+validation loss; le domande non vengono ricampionate tra epoche.
 
 ```mermaid
 flowchart LR

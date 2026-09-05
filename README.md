@@ -198,7 +198,9 @@ e [guida completa CP](training/CP/README.md). Architettura della testa:
 
 ## Addestramento CIR
 
-Dopo aver preparato embedding `train` e `validation`, avviare CIR precomputed:
+Dopo aver preparato embedding `train` e `validation`, avviare CIR precomputed.
+Il training sceglie un capo casuale da ogni outfit completo a ogni accesso,
+anche con cache di feature; la validation usa domande FITB fisse:
 
 PowerShell:
 

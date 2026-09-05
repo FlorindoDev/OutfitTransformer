@@ -15,6 +15,7 @@ from .source import (
     DatasetRequest,
     DatasetSource,
     IndexedDataset,
+    RetrievalIndexDataset,
     available_dataset_names,
     get_dataset_source,
 )
@@ -53,6 +54,7 @@ __all__ = [
     "RetrievalBatch",
     "RetrievalExample",
     "RetrievalIndexExample",
+    "RetrievalIndexDataset",
     "build_fashion_clip_transform",
     "build_openrouter_transform",
     "build_resnet18_transform",

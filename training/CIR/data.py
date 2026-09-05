@@ -16,8 +16,7 @@ from torch.utils.data.distributed import DistributedSampler
 from data import (
     DataSplit,
     DatasetRequest,
-    IndexedDataset,
-    RetrievalIndexExample,
+    RetrievalIndexDataset,
     build_resnet18_transform,
     collate_retrieval,
     get_dataset_source,
@@ -31,7 +30,7 @@ from .config import CIRTrainingConfig
 
 @dataclass(frozen=True)
 class RetrievalEmbeddingExample:
-    """One FITB example represented only by frozen item embeddings."""
+    """One sampled training pair or fixed FITB query using frozen features."""
 
     example_id: str
     partial_outfit: Tensor
@@ -133,18 +132,16 @@ class RetrievalDataConfig:
 class PrecomputedRetrievalDataset(
     Dataset[RetrievalEmbeddingExample]
 ):
-    """Resolve official FITB annotations through one embedding cache."""
+    """Resolve current index samples through a frozen item embedding cache."""
 
     def __init__(
         self,
-        examples: IndexedDataset[RetrievalIndexExample],
+        examples: RetrievalIndexDataset,
         embeddings: EmbeddingCache,
     ) -> None:
         self._embeddings = embeddings
-        self._examples = tuple(
-            examples[index] for index in range(len(examples))
-        )
-        _validate_embedding_coverage(self._examples, embeddings)
+        self._examples = examples
+        _validate_embedding_coverage(examples.item_ids, embeddings)
 
     def __len__(self) -> int:
         return len(self._examples)
@@ -203,7 +200,7 @@ def build_retrieval_loaders(
     *,
     token: bool | str | None = True,
 ) -> RetrievalLoaders:
-    """Build CIR loaders for raw inputs or precomputed features."""
+    """Build randomly sampled train pairs and fixed FITB validation queries."""
     data_config = RetrievalDataConfig.from_training_config(config)
     data_config.validate()
     if data_config.feature_mode.uses_raw_inputs:
@@ -272,6 +269,7 @@ def _build_classic_loader(
     dataset = source.retrieval_dataset(
         _dataset_request(config, split, token),
         build_resnet18_transform(augment=split is DataSplit.TRAIN),
+        sample_target=split is DataSplit.TRAIN,
     )
     return _create_loader(
         dataset,
@@ -305,6 +303,7 @@ def _build_precomputed_loader(
     examples = source.retrieval_index_dataset(
         _dataset_request(config, split, token),
         include_categories=config.use_category_embedding,
+        sample_target=split is DataSplit.TRAIN,
     )
     dataset = PrecomputedRetrievalDataset(examples, cache)
     return (
@@ -369,21 +368,12 @@ def _create_loader(
 
 
 def _validate_embedding_coverage(
-    examples: tuple[RetrievalIndexExample, ...],
+    item_ids: tuple[str, ...],
     embeddings: EmbeddingCache,
 ) -> None:
-    for example in examples:
-        item_ids = (
-            *example.partial_item_ids,
-            example.positive_item_id,
-            *example.negative_item_ids,
-        )
-        for item_id in item_ids:
-            if item_id not in embeddings:
-                raise ValueError(
-                    f"missing embedding for item {item_id!r} "
-                    f"in {example.example_id}"
-                )
+    for item_id in item_ids:
+        if item_id not in embeddings:
+            raise ValueError(f"missing embedding for retrieval item {item_id!r}")
 
 
 def _dataset_request(

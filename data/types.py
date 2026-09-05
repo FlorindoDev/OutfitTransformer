@@ -74,7 +74,7 @@ class CompatibilityIndexExample:
 
 @dataclass(frozen=True)
 class RetrievalExample:
-    """Partial outfit, positive completion and explicit negative candidates."""
+    """Partial outfit and completion; negatives are empty for in-batch training."""
 
     example_id: str
     partial_outfit: tuple[FashionItem, ...]
@@ -86,13 +86,11 @@ class RetrievalExample:
             raise ValueError("example_id cannot be empty")
         if not self.partial_outfit:
             raise ValueError("partial_outfit cannot be empty")
-        if not self.negative_items:
-            raise ValueError("negative_items cannot be empty")
 
 
 @dataclass(frozen=True)
 class RetrievalIndexExample:
-    """CIR example containing IDs and target category but no loaded features."""
+    """CIR IDs and target category; negatives are optional for in-batch training."""
 
     example_id: str
     partial_item_ids: tuple[str, ...]
@@ -109,8 +107,6 @@ class RetrievalIndexExample:
             raise ValueError("partial_item_ids cannot contain empty values")
         if not self.positive_item_id.strip():
             raise ValueError("positive_item_id cannot be empty")
-        if not self.negative_item_ids:
-            raise ValueError("negative_item_ids cannot be empty")
         if any(not item_id.strip() for item_id in self.negative_item_ids):
             raise ValueError("negative_item_ids cannot contain empty values")
         if not self.target_category.strip():

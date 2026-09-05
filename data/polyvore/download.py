@@ -36,6 +36,7 @@ class PolyvoreTask(str, Enum):
     ITEMS = "items"
     COMPATIBILITY = "compatibility"
     RETRIEVAL = "retrieval"
+    RETRIEVAL_TRAINING = "retrieval_training"
 
 
 @dataclass(frozen=True)

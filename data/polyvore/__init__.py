@@ -16,6 +16,10 @@ from .retrieval_dataset import (
     PolyvoreRetrievalDataset,
     PolyvoreRetrievalIndexDataset,
 )
+from .retrieval_training_dataset import (
+    PolyvoreRetrievalTrainingDataset,
+    PolyvoreRetrievalTrainingIndexDataset,
+)
 
 __all__ = [
     "DEFAULT_DATASET_ROOT",
@@ -26,6 +30,8 @@ __all__ = [
     "PolyvoreResources",
     "PolyvoreRetrievalDataset",
     "PolyvoreRetrievalIndexDataset",
+    "PolyvoreRetrievalTrainingDataset",
+    "PolyvoreRetrievalTrainingIndexDataset",
     "PolyvoreSplit",
     "PolyvoreTask",
     "PolyvoreVariant",

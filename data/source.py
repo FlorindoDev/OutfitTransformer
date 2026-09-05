@@ -30,6 +30,15 @@ class IndexedDataset(Protocol[_Item_co]):
     def __getitem__(self, index: int, /) -> _Item_co: ...
 
 
+class RetrievalIndexDataset(IndexedDataset[RetrievalIndexExample], Protocol):
+    """CIR samples with complete item coverage available without sampling."""
+
+    @property
+    def item_ids(self) -> tuple[str, ...]:
+        """All item IDs that any query, positive or negative can reference."""
+        ...
+
+
 class DataSplit(str, Enum):
     """Task-independent dataset partitions used by project workflows."""
 
@@ -137,6 +146,8 @@ class DatasetSource(Protocol):
         self,
         request: DatasetRequest,
         image_transform: ImageTransform,
+        *,
+        sample_target: bool = False,
     ) -> Dataset[RetrievalExample]: ...
 
     def retrieval_index_dataset(
@@ -144,7 +155,8 @@ class DatasetSource(Protocol):
         request: DatasetRequest,
         *,
         include_categories: bool = True,
-    ) -> IndexedDataset[RetrievalIndexExample]: ...
+        sample_target: bool = False,
+    ) -> RetrievalIndexDataset: ...
 
     def download(self, request: DatasetDownloadRequest) -> Path: ...
 

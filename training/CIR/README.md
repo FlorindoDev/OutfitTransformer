@@ -5,6 +5,7 @@
 - [File](#file)
   - [Acronimi usati](#acronimi-usati)
 - [Modalità](#modalità)
+- [Campionamento del training](#campionamento-del-training)
 - [Architettura](#architettura)
 - [Configurazione predefinita](#configurazione-predefinita)
 - [Flag CLI](#flag-cli)
@@ -15,17 +16,17 @@
 - [Avvio](#avvio)
 - [Artefatti](#artefatti)
 
-Training CIR usa esempi Polyvore Fill In The Blank già preparati. Il train
-ottimizza la Triplet Margin Loss con negativi in-batch; la validation ordina il
-positivo e i tre distrattori ufficiali. Il best checkpoint usa sempre
-`val_fitb_accuracy`.
+Training CIR legge gli outfit completi e sceglie un capo casuale come target a
+ogni accesso. Ottimizza la Triplet Margin Loss con negativi in-batch; la
+validation usa le domande FITB fisse e ordina positivo e tre distrattori
+ufficiali. Il best checkpoint usa sempre `val_fitb_accuracy`.
 
 ## File
 
 | File | Cosa fa |
 |---|---|
 | [`config.py`](config.py) | Definisce profili, iperparametri e configurazione CIR, ne valida le combinazioni e determina le directory predefinite. |
-| [`data.py`](data.py) | Costruisce dataset e DataLoader FITB per input raw o precomputed, prepara i batch e gestisce i sampler DDP. |
+| [`data.py`](data.py) | Costruisce coppie casuali di training e FITB fissi di validation, con input raw/precomputed e sampler DDP. |
 | [`distributed.py`](distributed.py) | Inizializza e chiude il runtime DDP, assegnando rank, world size, backend e device a ogni processo. |
 | [`model.py`](model.py) | Compone embedding common e modello CIR e produce gli embedding dei rami query e item. |
 | [`trainer.py`](trainer.py) | Gestisce forward, Triplet Loss, backpropagation, accumulo, AMP, DDP, validation, early stopping e checkpoint. |
@@ -57,6 +58,25 @@ positivo e i tre distrattori ufficiali. Il best checkpoint usa sempre
 
 Default è `new_classic`. Profili e dimensioni coincidono con training CP.
 `--classic`, `--new-classic` e `--precomputed` sono mutuamente esclusivi.
+
+## Campionamento del training
+
+Come nel repository di riferimento, ogni accesso a un outfit di `train.json`
+estrae un item casuale come positivo. La query contiene gli altri item;
+la categoria target viene ricavata dal capo appena estratto. Le estrazioni
+possono ripetersi: il dataset non impone una rotazione dei target.
+
+```text
+Outfit: maglia + pantaloni + scarpe
+Accesso 1: maglia + pantaloni -> scarpe
+Accesso 2: pantaloni + scarpe -> maglia
+```
+
+Il numero di esempi per epoca resta pari al numero di outfit. Il training non
+legge `fill_in_blank_train.json` e restituisce `negative_items=()` perché la
+loss sceglie i negativi tra i positivi delle altre righe del microbatch.
+Validation e test continuano a usare le annotazioni FITB ufficiali, fisse.
+
 
 ## Architettura
 
@@ -306,9 +326,11 @@ diagnosi, non per scegliere checkpoint.
 <embedding-root>/<subset>/validation
 ```
 
-Manifest devono avere stesso `model_fingerprint`, dataset, subset, split e
-dimensione del Transformer. Loader CIR controlla copertura di outfit parziale,
-positivo e tutti i negativi prima del training.
+Manifest devono avere stesso `model_fingerprint`, dataset, subset e dimensione
+del Transformer, con identità dello split corrispondente alla cartella.
+La cache train deve coprire tutti gli item degli outfit completi; la cache
+validation deve coprire query, positivo e distrattori FITB. Il loader verifica
+la copertura prima del training: cache complete già generate restano valide.
 
 ## Avvio
 

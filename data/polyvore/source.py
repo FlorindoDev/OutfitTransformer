@@ -7,10 +7,12 @@ from pathlib import Path
 from torch.utils.data import Dataset
 
 from ..source import (
+    DataSplit,
     DatasetDescriptor,
     DatasetDownloadRequest,
     DatasetRequest,
     IndexedDataset,
+    RetrievalIndexDataset,
 )
 from ..transforms import ImageTransform
 from ..types import (
@@ -18,7 +20,6 @@ from ..types import (
     CompatibilityIndexExample,
     FashionItem,
     RetrievalExample,
-    RetrievalIndexExample,
 )
 
 from .catalog import PolyvoreCatalog, load_item_categories
@@ -39,6 +40,10 @@ from .item_dataset import PolyvoreItemDataset
 from .retrieval_dataset import (
     PolyvoreRetrievalDataset,
     PolyvoreRetrievalIndexDataset,
+)
+from .retrieval_training_dataset import (
+    PolyvoreRetrievalTrainingDataset,
+    PolyvoreRetrievalTrainingIndexDataset,
 )
 
 
@@ -91,8 +96,17 @@ class PolyvoreSource:
         self,
         request: DatasetRequest,
         image_transform: ImageTransform,
+        *,
+        sample_target: bool = False,
     ) -> Dataset[RetrievalExample]:
-        resources = self._resources(request, PolyvoreTask.RETRIEVAL)
+        resources = self._resources(
+            request, _retrieval_task(request, sample_target)
+        )
+        if sample_target:
+            return PolyvoreRetrievalTrainingDataset(
+                _build_catalog(resources, image_transform),
+                _require_path(resources.outfits_path, "outfits_path"),
+            )
         return PolyvoreRetrievalDataset(
             _build_catalog(resources, image_transform),
             _require_path(resources.retrieval_path, "retrieval_path"),
@@ -104,10 +118,11 @@ class PolyvoreSource:
         request: DatasetRequest,
         *,
         include_categories: bool = True,
-    ) -> IndexedDataset[RetrievalIndexExample]:
+        sample_target: bool = False,
+    ) -> RetrievalIndexDataset:
         resources = self._resources(
             request,
-            PolyvoreTask.RETRIEVAL,
+            _retrieval_task(request, sample_target),
             include_items=False,
             include_metadata=include_categories,
         )
@@ -118,6 +133,11 @@ class PolyvoreSource:
             if include_categories
             else None
         )
+        if sample_target:
+            return PolyvoreRetrievalTrainingIndexDataset(
+                _require_path(resources.outfits_path, "outfits_path"),
+                categories,
+            )
         return PolyvoreRetrievalIndexDataset(
             _require_path(resources.retrieval_path, "retrieval_path"),
             _require_path(resources.outfits_path, "outfits_path"),
@@ -173,6 +193,16 @@ class PolyvoreSource:
             include_items=include_items,
             include_metadata=include_metadata,
         )
+
+
+def _retrieval_task(request: DatasetRequest, sample_target: bool) -> PolyvoreTask:
+    if not isinstance(sample_target, bool):
+        raise TypeError("sample_target must be boolean")
+    if sample_target:
+        if request.split is not DataSplit.TRAIN:
+            raise ValueError("random retrieval targets are only supported for train")
+        return PolyvoreTask.RETRIEVAL_TRAINING
+    return PolyvoreTask.RETRIEVAL
 
 
 def _build_catalog(

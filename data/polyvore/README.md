@@ -27,6 +27,7 @@
 | `item_dataset.py` | Restituisce singoli articoli. |
 | `compatibility_dataset.py` | Interpreta outfit con label binaria. |
 | `retrieval_dataset.py` | Interpreta domande FITB con positivo e distrattori. |
+| `retrieval_training_dataset.py` | Campiona a ogni accesso un target dagli outfit completi; espone varianti raw e indicizzata. |
 
 ## Dettaglio dei file: responsabilità, input e output
 
@@ -167,7 +168,7 @@ negativi presenti nel benchmark ufficiale: queste decisioni appartengono al
 training CIR.
 
 Espone anche `PolyvoreRetrievalIndexDataset`: restituisce ID di query, positivo,
-negativi e categoria target senza decodificare immagini. Training CIR
+negativi e categoria target senza decodificare immagini. La validation CIR
 `--precomputed` usa questa variante e valida copertura nella cache embedding.
 
 #### Esempio di input e output
@@ -187,6 +188,20 @@ Output
 
 Il positivo viene riconosciuto tramite `set_id` e `blank_position`, non tramite
 la posizione occupata nell’elenco `answers`.
+
+### `retrieval_training_dataset.py`
+
+`PolyvoreRetrievalTrainingIndexDataset` riusa il parser degli outfit per leggere
+`train.json`. Ogni `__getitem__` sceglie un item casuale come positivo, ne
+esclude tutte le occorrenze dalla query e aggiorna la categoria del target.
+I negativi espliciti sono vuoti: vengono ricavati dal microbatch nella loss.
+La proprietà `item_ids` elenca tutti gli item possibili senza consumare RNG.
+
+`PolyvoreRetrievalTrainingDataset` usa lo stesso campionamento e risolve query
+e positivo tramite `PolyvoreCatalog`, applicando le transform del profilo raw.
+Entrambe le varianti verificano gli input prima del training: ogni outfit deve
+contenere almeno due item distinti. Numero e ordine degli outfit restano stabili;
+il target può cambiare o ripetersi a ogni accesso.
 
 ## Origine e accesso
 
@@ -311,7 +326,12 @@ compatibile con l’output del modello CP e con la sua loss.
 
 ## Retrieval e Fill In The Blank
 
-Le annotazioni `fill_in_blank_*.json` descrivono un outfit al quale è stato
+Per allenare CIR, `sample_target=True` usa outfit completi di `train.json` e
+genera coppie query/positivo a ogni accesso. Non richiede
+`fill_in_blank_train.json`. Il campionamento casuale è ammesso solo su train.
+
+Per valutazione o `sample_target=False`, le annotazioni `fill_in_blank_*.json`
+descrivono un outfit al quale è stato
 rimosso un articolo:
 
 ```json
@@ -342,6 +362,11 @@ training CIR, non applicata silenziosamente dal dataset.
 | Item | Righe immagine dello split e metadata globali. |
 | Compatibility | Risorse item, struttura degli outfit e file compatibility. |
 | Retrieval | Risorse item, struttura degli outfit e file fill-in-the-blank. |
+| Retrieval training | Risorse item e struttura degli outfit completi; nessun file fill-in-the-blank. |
+
+Le varianti indicizzate non richiedono righe immagine; i metadata vengono
+richiesti solo quando serve la categoria target. La risoluzione mantiene
+l'ordine file locali, cache Hugging Face, download dei soli file mancanti.
 
 Questa selezione evita di caricare o scaricare annotazioni non necessarie.
 Risoluzione e verifica avvengono prima della creazione del dataset; l’accesso a un singolo

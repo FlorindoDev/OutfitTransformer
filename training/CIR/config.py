@@ -174,6 +174,8 @@ class CIRTrainingConfig:
                 "use_category_embedding": self.use_category_embedding,
             },
             "training": {
+                "target_sampling": "random_item_per_outfit_access",
+                "negative_sampling": "in_batch",
                 "epochs": self.epochs,
                 "batch_size_per_process": self.batch_size,
                 "gradient_accumulation_steps": (

@@ -89,8 +89,8 @@ stessi tipi senza richiedere modifiche al modello.
 | `FashionItem` | Un articolo con ID, immagine trasformata, descrizione e categoria. |
 | `CompatibilityExample` | Un singolo outfit completo e la label binaria associata. |
 | `CompatibilityIndexExample` | Un outfit espresso solo tramite `item_id`, usato con feature precomputate. |
-| `RetrievalExample` | Un outfit parziale, il completamento corretto e i negativi. |
-| `RetrievalIndexExample` | Stesso esempio CIR espresso tramite ID e categoria target, senza caricare immagini. |
+| `RetrievalExample` | Un outfit parziale, il completamento corretto e negativi espliciti; negativi vuoti nel training in-batch. |
+| `RetrievalIndexExample` | Stesso esempio CIR espresso tramite ID e categoria del target corrente, senza caricare immagini. |
 | `ItemBatch` | Articoli indipendenti destinati alla precomputazione. |
 | `CompatibilityBatch` | Outfit pronti per CP, ID originali e label `[batch, 1]`. |
 | `RetrievalBatch` | Query, positivi, negativi, categorie e relativi ID. |
@@ -327,8 +327,19 @@ altro dataset basta creare e registrare nuovo adapter dentro `data`.
 |---|---|
 | `DatasetRequest` | Dice quale subset, split e cartella usare. |
 | `DatasetSource` | Interfaccia che stabilisce quali dati ogni adapter deve fornire. |
+| `RetrievalIndexDataset` | Dataset CIR indicizzato con proprietà `item_ids`: copertura completa di ogni possibile campione, leggibile senza campionare. |
 | `get_dataset_source("polyvore")` | Seleziona `PolyvoreSource`. |
 | `PolyvoreSource` | Adapter che legge Polyvore e restituisce tipi comuni. |
+
+`retrieval_dataset` e `retrieval_index_dataset` accettano `sample_target=True`
+per generare completamenti casuali da outfit completi dello split train.
+Il default `False` mantiene le domande FITB ufficiali. Validation e test
+rifiutano `sample_target=True` per preservare il benchmark fisso.
+
+Il runner CIR attiva il campionamento solo nel training. La variante raw passa
+dal catalogo e dalla collate esistenti; quella indicizzata risolve ID e categoria
+senza immagini. La cache embedding conserva il dataset dinamico e valida
+`item_ids` senza congelare le coppie o consumare numeri casuali.
 
 ### Esempio
 

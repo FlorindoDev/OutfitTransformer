@@ -42,7 +42,7 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | CP | [`CP/train_cp.py`](CP/train_cp.py) | Avvia run da CLI e collega configurazione, dati, modello e trainer. |
 | CP | [`CP/README.md`](CP/README.md) | Documenta flag, default, preparazione e comandi CP. |
 | CIR | [`CIR/config.py`](CIR/config.py) | Definisce profili, Triplet Loss, categoria opzionale e runtime validato. |
-| CIR | [`CIR/data.py`](CIR/data.py) | Costruisce FITB raw/precomputed e sampler DDP senza duplicati in validation. |
+| CIR | [`CIR/data.py`](CIR/data.py) | Costruisce coppie casuali di training, FITB fissi raw/precomputed e sampler DDP senza duplicati in validation. |
 | CIR | [`CIR/model.py`](CIR/model.py) | Compone rappresentazione common, Transformer CIR e testa retrieval. |
 | CIR | [`CIR/pretraining.py`](CIR/pretraining.py) | Trasferisce `common.*`, Transformer completo e task embedding da CP a CIR. |
 | CIR | [`CIR/trainer.py`](CIR/trainer.py) | Coordina loss in-batch, ranking FITB, AMP, DDP e checkpoint. |
@@ -150,10 +150,13 @@ duplicati, dataset, subset, split e fingerprint modello devono essere coerenti.
 | Costo encoder | Ogni epoca | Ogni epoca | Solo precomputazione |
 | Backpropagation | ResNet + proiezioni | ResNet + proiezioni | Si ferma alla cache |
 
-Profili feature coincidono con CP. Dataset CIR costruisce per ogni esempio un
-outfit parziale, un item positivo, tre distrattori FITB e categoria target.
-`--category-emb` usa categoria solo nel token query. Cache train e validation
-devono coprire outfit parziali, positivi e distrattori.
+Profili feature coincidono con CP. Nel training CIR, a ogni accesso viene
+estratto un capo casuale da un outfit completo di `train.json`: il resto forma
+la query e i negativi provengono dal microbatch. Validation usa query, positivo
+e tre distrattori dei FITB ufficiali fissi. `--category-emb` usa la categoria
+del target corrente solo nel token query. Cache train deve coprire tutti gli
+item degli outfit; cache validation copre query, positivi e distrattori.
+Il campionamento resta dinamico anche con feature precomputate.
 
 ## Modello CP
 

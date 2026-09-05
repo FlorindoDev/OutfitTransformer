@@ -73,6 +73,19 @@ class PolyvoreRetrievalIndexDataset(Dataset[RetrievalIndexExample]):
     def __len__(self) -> int:
         return len(self._annotations)
 
+    @property
+    def item_ids(self) -> tuple[str, ...]:
+        """Return complete FITB coverage without fetching any examples."""
+        return tuple(dict.fromkeys(
+            item_id
+            for annotation in self._annotations
+            for item_id in (
+                *annotation.query_item_ids,
+                annotation.positive_item_id,
+                *annotation.negative_item_ids,
+            )
+        ))
+
     def __getitem__(self, index: int) -> RetrievalIndexExample:
         annotation = self._annotations[index]
         return RetrievalIndexExample(

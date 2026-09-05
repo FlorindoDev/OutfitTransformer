@@ -431,6 +431,8 @@ def _flatten_candidates(batch: Any) -> tuple[tuple[Any, ...], tuple[int, ...]]:
         batch.negative_items,
         strict=True,
     ):
+        if not negatives:
+            raise ValueError("FITB validation requires explicit negative candidates")
         candidate_items.append(positive)
         candidate_items.extend(negatives)
         candidate_counts.append(1 + len(negatives))
