@@ -16,6 +16,7 @@ apprendere embedding per il retrieval di articoli complementari.
 - [Addestramento CP](#addestramento-cp)
 - [Addestramento CIR](#addestramento-cir)
 - [Valutazione CP](#valutazione-cp)
+- [Valutazione CIR](#valutazione-cir)
 
 ## Panoramica
 
@@ -36,7 +37,7 @@ e [pipeline dei dati](data/README.md).
 | `preprocessing` | Isola il capo, pulisce lo sfondo e prepara immagini utente. | [README](preprocessing/README.md) |
 | `data` | Definisce tipi, transform, collate e DataLoader. | [README](data/README.md) |
 | `data/polyvore` | Scarica e interpreta immagini, metadata e annotazioni Polyvore. | [README](data/polyvore/README.md) |
-| `evaluation` | Valuta checkpoint CP su test o validation e salva metriche globali. | [README](evaluation/README.md) |
+| `evaluation` | Valuta checkpoint CP e CIR (FITB) su test o validation e salva metriche globali. | [README](evaluation/README.md) |
 | `model` | Espone architettura comune e moduli specifici dei task. | [README](model/README.md) |
 | `model/common` | Crea, normalizza e organizza gli embedding multimodali condivisi. | [README](model/common/README.md) |
 | `model/cp` | Predice la compatibilità complessiva di un outfit. | [README](model/cp/README.md) |
@@ -271,3 +272,28 @@ Salva accuracy, precision, recall, F1 e ROC AUC sotto `results/cp/`.
 
 Per approfondire: [panoramica evaluation](evaluation/README.md), [guida
 evaluation CP](evaluation/CP/README.md) e [definizione delle metriche](metrics/README.md).
+
+## Valutazione CIR
+
+Valuta il checkpoint sulle query Fill-in-the-Blank ufficiali dello split
+`test`, usando la cache dello stesso split se il modello è precomputed.
+
+PowerShell:
+
+```powershell
+python -m evaluation.CIR.evaluate_cir `
+  --checkpoint checkpoints/nondisjoint/cir_precomputed/best.pt
+```
+
+Linux (Bash):
+
+```bash
+python -m evaluation.CIR.evaluate_cir \
+  --checkpoint checkpoints/nondisjoint/cir_precomputed/best.pt
+```
+
+Il comando ricava architettura, categorie e modalità feature dal checkpoint.
+Salva FITB accuracy, MRR e Recall@2 sotto `results/cir/`. Per valutare validation,
+passare `--split validation`; per spostare il report, usare `--output`.
+Protocollo, confronto con paper/repo e flag nella
+[guida evaluation CIR](evaluation/CIR/README.md).
