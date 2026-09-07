@@ -161,12 +161,16 @@ class ComplementaryItemTransformer(nn.Module):
             (task_embeddings, retrieval_embeddings),
             dim=-1,
         )
+        return self._normalize_missing_item_tokens(tokens).unsqueeze(1)
+
+    def _normalize_missing_item_tokens(self, tokens: Tensor) -> Tensor:
+        """Normalize the complete CIR token after optional category addition."""
         return F.normalize(
             tokens,
             p=2,
             dim=-1,
             eps=self.config.normalization_epsilon,
-        ).unsqueeze(1)
+        )
 
     def embed_items(self, outfit_batch: OutfitEmbeddingBatch) -> Tensor:
         """Embed batches whose elements contain exactly one target item."""
