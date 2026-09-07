@@ -65,13 +65,7 @@ class CompatibilityTransformer(nn.Module):
             expected_dim=self.config.model_dim,
         )
         batch_size = item_embeddings.size(0)
-        cp_token = torch.cat((self.task_embedding(), self.predict_emb), dim=0)
-        cp_token = F.normalize(
-            cp_token,
-            p=2,
-            dim=-1,
-            eps=self.config.normalization_epsilon,
-        )
+        cp_token = self._build_cp_token()
         cp_tokens = cp_token.view(1, 1, -1).expand(batch_size, -1, -1)
         transformer_input = torch.cat((cp_tokens, item_embeddings), dim=1)
 
@@ -86,6 +80,16 @@ class CompatibilityTransformer(nn.Module):
             src_key_padding_mask=transformer_mask,
         )
         return encoded[:, 0, :]
+
+    def _build_cp_token(self) -> Tensor:
+        """Normalize the concatenated task and prediction embeddings."""
+        cp_token = torch.cat((self.task_embedding(), self.predict_emb), dim=0)
+        return F.normalize(
+            cp_token,
+            p=2,
+            dim=-1,
+            eps=self.config.normalization_epsilon,
+        )
 
     @property
     def task_emb(self) -> nn.Parameter:

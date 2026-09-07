@@ -6,6 +6,7 @@
   - [Accuracy e soglia inclusiva](#accuracy-e-soglia-inclusiva)
   - [ROC AUC tie-aware sull'intero split](#roc-auc-tie-aware-sullintero-split)
 - [Preparazione](#preparazione)
+- [Compatibilita checkpoint](#compatibilita-checkpoint)
 - [Avvio](#avvio)
 - [Flag principali](#flag-principali)
 
@@ -102,6 +103,20 @@ Annotazioni vengono cercate prima in `datasets/polyvore-outfits/`, poi nella
 cache Hugging Face; soltanto file mancanti vengono scaricati. Percorso locale
 diverso si imposta con `--dataset-root`. Con embedding precomputati, evaluation
 non carica parquet immagini né metadata.
+
+## Compatibilita checkpoint
+
+Evaluation riconosce automaticamente i checkpoint schema v2 precedenti alla
+modifica delle normalizzazioni tramite `cp.encoder.norm.weight` e
+`cp.encoder.norm.bias`. Per questi checkpoint ripristina la LayerNorm finale,
+il token CP senza normalizzazione L2 e l'epsilon originale delle LayerNorm
+interne (`1e-5`), segnalando `restored_legacy_cp` nel log.
+
+Questo conserva il comportamento del modello addestrato. I checkpoint attuali
+usano il token CP normalizzato e non hanno LayerNorm finale. Il caricamento
+rimane stretto (`strict=True`): pesi mancanti, inattesi o di forma incompatibile
+producono un errore. Non servono nuovi flag; il comportamento di `--resume`
+nel training resta quello descritto nella [guida CP](../../training/CP/README.md).
 
 ## Avvio
 
