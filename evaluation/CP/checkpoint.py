@@ -2,39 +2,17 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import torch
-from torch import Tensor, nn
+from torch import Tensor
 
 from data import get_dataset_source
-from model import CompatibilityTransformer, TransformerConfig
+from model import TransformerConfig
 from training.CP import CPTrainingModel, FeatureMode
-
-LOGGER = logging.getLogger("evaluation.CP")
-LEGACY_NORM_KEYS = frozenset({"cp.encoder.norm.weight", "cp.encoder.norm.bias"})
-
-
-class _LegacyCompatibilityTransformer(CompatibilityTransformer):
-    """Preserve inference behavior from before the CP normalization change."""
-
-    def __init__(self, config: TransformerConfig) -> None:
-        super().__init__(config)
-        self.encoder.norm = nn.LayerNorm(
-            config.model_dim,
-            eps=config.layer_norm_epsilon,
-        )
-        # Legacy layers used PyTorch's default; only the final norm used config.
-        for layer in self.encoder.layers:
-            layer.norm1.eps = 1e-5
-            layer.norm2.eps = 1e-5
-
-    def _build_cp_token(self) -> Tensor:
-        return torch.cat((self.task_embedding(), self.predict_emb), dim=0)
 
 
 @dataclass(frozen=True)
@@ -121,21 +99,12 @@ def load_cp_checkpoint(path: str | Path) -> CPCheckpoint:
 
 
 def restore_cp_model(checkpoint: CPCheckpoint) -> CPTrainingModel:
-    """Build checkpoint architecture and restore weights strictly."""
+    """Restore weights strictly into the current CP architecture."""
     model = CPTrainingModel(
         checkpoint.model_config,
         feature_mode=checkpoint.feature_mode,
     )
-    legacy_architecture = bool(LEGACY_NORM_KEYS.intersection(checkpoint.state_dict))
-    if legacy_architecture:
-        model.cp = _LegacyCompatibilityTransformer(checkpoint.model_config)
     model.load_state_dict(checkpoint.state_dict, strict=True)
-    if legacy_architecture:
-        LOGGER.info(
-            "restored_legacy_cp checkpoint=%s final_layer_norm=true "
-            "normalize_cp_token=false",
-            checkpoint.path,
-        )
     return model
 
 

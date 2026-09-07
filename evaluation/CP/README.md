@@ -106,17 +106,12 @@ non carica parquet immagini né metadata.
 
 ## Compatibilita checkpoint
 
-Evaluation riconosce automaticamente i checkpoint schema v2 precedenti alla
-modifica delle normalizzazioni tramite `cp.encoder.norm.weight` e
-`cp.encoder.norm.bias`. Per questi checkpoint ripristina la LayerNorm finale,
-il token CP senza normalizzazione L2 e l'epsilon originale delle LayerNorm
-interne (`1e-5`), segnalando `restored_legacy_cp` nel log.
-
-Questo conserva il comportamento del modello addestrato. I checkpoint attuali
-usano il token CP normalizzato e non hanno LayerNorm finale. Il caricamento
-rimane stretto (`strict=True`): pesi mancanti, inattesi o di forma incompatibile
-producono un errore. Non servono nuovi flag; il comportamento di `--resume`
-nel training resta quello descritto nella [guida CP](../../training/CP/README.md).
+Evaluation richiede checkpoint **CP schema v2** allenati con l'architettura
+attuale: token CP normalizzato L2 e nessuna LayerNorm finale aggiuntiva.
+Il caricamento usa `strict=True`: pesi mancanti, inattesi o di forma
+incompatibile producono un errore. I checkpoint precedenti con
+`cp.encoder.norm.weight` e `cp.encoder.norm.bias` non sono supportati e
+non vengono convertiti.
 
 ## Avvio
 
