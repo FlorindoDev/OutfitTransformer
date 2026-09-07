@@ -32,12 +32,11 @@ and learning embeddings for complementary item retrieval.
 
 ### Results
 
-Results from the reports in [`results/`](results/), using Polyvore
-(`mvasil/polyvore-outfits`), the `nondisjoint` subset, the `test` split, and
+Results from  using Polyvore, the `nondisjoint` subset, the `test` split, and
 precomputed embeddings. Metric values are on a 0–1 scale, rounded to four
-decimal places; — means the metric does not apply to that task.
+decimal places; means the metric does not apply to that task.
 
-| Metric / run detail | CP ([report](results/cp.json)) | CIR FITB ([report](results/cir_validation.json)) |
+| Metric / run detail | CP  | CIR FITB  |
 |---|---:|---:|
 | Checkpoint epoch | 76 | 19 |
 | Evaluated examples | 20000 | 10000 |
@@ -50,10 +49,6 @@ decimal places; — means the metric does not apply to that task.
 | MRR | — | 0.8169 |
 | Recall@2 | — | 0.8782 |
 
-CP uses a classification threshold of `0.5`. CIR uses the `polyvore_fitb`
-protocol, Euclidean distance, pessimistic tie handling, and no category embedding.
-Despite its filename, `cir_validation.json` records `"split": "test"`;
-the CIR results above therefore refer to the test split.
 
 ### Overview
 
@@ -366,12 +361,11 @@ apprendere embedding per il retrieval di articoli complementari.
 
 ### Risultati
 
-Risultati dei report nella cartella [`results/`](results/), ottenuti su Polyvore
-(`mvasil/polyvore-outfits`), subset `nondisjoint`, split `test`, con embedding
+Risultati dei report  ottenuti su Polyvore, subset `nondisjoint`, split `test`, con embedding
 precomputati. Le metriche sono espresse su scala 0–1 e arrotondate a quattro
-cifre decimali; — indica una metrica non applicabile al task.
+cifre decimali; indica una metrica non applicabile al task.
 
-| Metrica / dettaglio esecuzione | CP ([report](results/cp.json)) | CIR FITB ([report](results/cir_validation.json)) |
+| Metrica / dettaglio esecuzione | CP | CIR FITB |
 |---|---:|---:|
 | Epoca del checkpoint | 76 | 19 |
 | Esempi valutati | 20000 | 10000 |
@@ -384,10 +378,6 @@ cifre decimali; — indica una metrica non applicabile al task.
 | MRR | — | 0.8169 |
 | Recall@2 | — | 0.8782 |
 
-CP usa una soglia di classificazione di `0.5`. CIR usa il protocollo
-`polyvore_fitb`, distanza euclidea, gestione pessimistica dei pareggi e nessun
-category embedding. Nonostante il nome, `cir_validation.json` riporta
-`"split": "test"`: i risultati CIR in tabella si riferiscono quindi allo split test.
 
 ### Panoramica
 
