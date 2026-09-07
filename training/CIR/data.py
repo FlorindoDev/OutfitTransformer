@@ -116,8 +116,8 @@ class RetrievalDataConfig:
         source.descriptor.validate_subset(self.subset)
         if not isinstance(self.feature_mode, FeatureMode):
             raise TypeError("feature_mode must be a FeatureMode")
-        if self.batch_size < 2:
-            raise ValueError("batch_size must be at least 2")
+        if self.batch_size <= 0:
+            raise ValueError("batch_size must be positive")
         if self.num_workers < 0:
             raise ValueError("num_workers cannot be negative")
         if self.seed < 0:
@@ -201,6 +201,7 @@ def build_retrieval_loaders(
     token: bool | str | None = True,
 ) -> RetrievalLoaders:
     """Build randomly sampled train pairs and fixed FITB validation queries."""
+    config.validate()
     data_config = RetrievalDataConfig.from_training_config(config)
     data_config.validate()
     if data_config.feature_mode.uses_raw_inputs:
@@ -237,6 +238,41 @@ def build_retrieval_loaders(
     )
     _require_matching_fingerprints((train_cache, validation_cache))
     return RetrievalLoaders(train=train_loader, validation=validation_loader)
+
+
+def build_retrieval_loader(
+    config: RetrievalDataConfig,
+    *,
+    split: DataSplit,
+    token: bool | str | None = True,
+) -> DataLoader[Any]:
+    """Build one complete, deterministic FITB evaluation split."""
+    config.validate()
+    if split not in {DataSplit.VALIDATION, DataSplit.TEST}:
+        raise ValueError("evaluation split must be validation or test")
+    if config.feature_mode.uses_raw_inputs:
+        return _build_classic_loader(
+            config, split=split, shuffle=False, drop_last=False, token=token,
+        )
+    loader, _ = _build_precomputed_loader(
+        config, split=split, shuffle=False, drop_last=False, token=token,
+    )
+    return loader
+
+
+def flatten_retrieval_candidates(batch: Any) -> tuple[tuple[Any, ...], tuple[int, ...]]:
+    """Group each positive with its explicit FITB distractors, positive first."""
+    candidate_items: list[Any] = []
+    candidate_counts: list[int] = []
+    for positive, negatives in zip(
+        batch.positive_items, batch.negative_items, strict=True,
+    ):
+        if not negatives:
+            raise ValueError("FITB evaluation requires explicit negative candidates")
+        candidate_items.append(positive)
+        candidate_items.extend(negatives)
+        candidate_counts.append(1 + len(negatives))
+    return tuple(candidate_items), tuple(candidate_counts)
 
 
 def collate_retrieval_embeddings(

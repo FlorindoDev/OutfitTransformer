@@ -35,7 +35,11 @@ from .config import (
     ONE_CYCLE_FINAL_DIV_FACTOR,
     ONE_CYCLE_PCT_START,
 )
-from .data import RetrievalLoaders, as_single_item_outfits
+from .data import (
+    RetrievalLoaders,
+    as_single_item_outfits,
+    flatten_retrieval_candidates,
+)
 from .distributed import DistributedContext
 from .model import CIRTrainingModel
 
@@ -353,7 +357,7 @@ def _evaluate(
     model.eval()
     totals = _EpochTotals()
     for batch in loader:
-        candidate_items, candidate_counts = _flatten_candidates(batch)
+        candidate_items, candidate_counts = flatten_retrieval_candidates(batch)
         with _autocast(config, runtime.device):
             query_embeddings, candidate_embeddings = model(
                 batch.partial_outfits,
@@ -421,22 +425,6 @@ def _optimizer_step(
     optimizer.zero_grad(set_to_none=True)
     if not scaler.is_enabled() or scaler.get_scale() >= previous_scale:
         scheduler.step()
-
-
-def _flatten_candidates(batch: Any) -> tuple[tuple[Any, ...], tuple[int, ...]]:
-    candidate_items: list[Any] = []
-    candidate_counts: list[int] = []
-    for positive, negatives in zip(
-        batch.positive_items,
-        batch.negative_items,
-        strict=True,
-    ):
-        if not negatives:
-            raise ValueError("FITB validation requires explicit negative candidates")
-        candidate_items.append(positive)
-        candidate_items.extend(negatives)
-        candidate_counts.append(1 + len(negatives))
-    return tuple(candidate_items), tuple(candidate_counts)
 
 
 def _autocast(config: CIRTrainingConfig, device: torch.device) -> Any:
