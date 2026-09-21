@@ -34,6 +34,16 @@ corretto e lo allontana dai completamenti sbagliati.
 
 ## Architettura
 
+I diagrammi mostrano `64 / 512 / 768` feature per modalità, parte del token
+e category embedding: rispettivamente `classic`, `new_classic` o FashionCLIP,
+e Marqo FashionSigLIP. Item, token e Transformer hanno larghezza
+`128 / 1024 / 1536`; la testa condivisa proietta ciascuna di queste dimensioni
+a `128` per default. Gli esempi numerici nel testo usano il default `512`/`1024`.
+Il training ricava
+la dimensione dal `manifest.json` dei precomputed; evaluation la legge dal
+checkpoint. Il manifest è il file descrittivo salvato insieme agli embedding
+precomputati (la cache degli embedding).
+
 Il flusso CIR è composto da questi passaggi:
 
 1. il modello common produce gli embedding normalizzati dell'outfit parziale;
@@ -46,23 +56,23 @@ Il flusso CIR è composto da questi passaggi:
 ```mermaid
 flowchart TD
     PARTIAL["Outfit parziale dal dataset<br/>più item: B × L"]
-    COMMON_QUERY["Embedding common normalizzati<br/>item: B × L × 1024<br/>padding mask: B × L"]
-    TASK["task_emb<br/>512 valori<br/>condivisibile e allenabile"]
-    EMBED["embed_emb<br/>512 valori<br/>specifico CIR e allenabile"]
-    CATEGORY["category_emb opzionale<br/>512 valori per categoria target<br/>allenabile"]
-    TOKEN["L2([task_emb | embed_emb + category_emb])<br/>token CIR: B × 1 × 1024"]
+    COMMON_QUERY["Embedding common normalizzati<br/>item: B × L × (128 / 1024 / 1536)<br/>padding mask: B × L"]
+    TASK["task_emb<br/>64 / 512 / 768 valori<br/>condivisibile e allenabile"]
+    EMBED["embed_emb<br/>64 / 512 / 768 valori<br/>specifico CIR e allenabile"]
+    CATEGORY["category_emb opzionale<br/>64 / 512 / 768 valori per categoria target<br/>allenabile"]
+    TOKEN["L2([task_emb | embed_emb + category_emb])<br/>token CIR: B × 1 × (128 / 1024 / 1536)"]
     PREPEND["Token CIR aggiunto<br/>prima dell'outfit parziale"]
     MASK["Mask estesa<br/>token CIR sempre valido"]
     QUERY_TRANSFORMER["Transformer CIR"]
-    QUERY_STATE["Primo token in uscita<br/>rappresentazione della query: B × 1024"]
-    QUERY_HEAD["Testa di retrieval condivisa<br/>Linear: 1024 → 128"]
+    QUERY_STATE["Primo token in uscita<br/>rappresentazione della query: B × (128 / 1024 / 1536)"]
+    QUERY_HEAD["Testa di retrieval condivisa<br/>Linear: (128 / 1024 / 1536) → 128"]
     QUERY_VECTOR["Vettore query di retrieval<br/>B × 128"]
 
     POSITIVE["Item positivo dal dataset<br/>un item per esempio"]
-    COMMON_ITEM["Stessa pipeline common<br/>item normalizzato: B × 1 × 1024"]
+    COMMON_ITEM["Stessa pipeline common<br/>item normalizzato: B × 1 × (128 / 1024 / 1536)"]
     ITEM_TRANSFORMER["Stesso Transformer CIR<br/>senza aggiungere il token CIR"]
-    ITEM_STATE["Stato dell'item in uscita<br/>B × 1024"]
-    ITEM_HEAD["Stessa testa di retrieval<br/>stessi pesi: 1024 → 128"]
+    ITEM_STATE["Stato dell'item in uscita<br/>B × (128 / 1024 / 1536)"]
+    ITEM_HEAD["Stessa testa di retrieval<br/>stessi pesi: (128 / 1024 / 1536) → 128"]
     ITEM_VECTOR["Vettore item di retrieval<br/>B × 128"]
 
     DISTANCE["Distanze tra ogni query<br/>e tutti gli item del batch"]
@@ -217,7 +227,7 @@ il vettore query di retrieval.
 ```text
 outfit parziale → common → token CIR + embedding dei capi
                               ↓ Transformer CIR
-                     stato finale del token CIR (1024)
+                     stato finale del token CIR (128 / 1024 / 1536)
                               ↓ stessa testa
                      vettore query di retrieval (128)
 ```
@@ -233,7 +243,7 @@ CIR**, e infine nella stessa testa `1024 → 128`.
 ```text
 item positivo → common → rappresentazione del singolo item
                               ↓ stesso Transformer CIR, senza token CIR
-                     stato finale dell'item (1024)
+                     stato finale dell'item (128 / 1024 / 1536)
                               ↓ stessa testa
                      vettore item di retrieval (128)
 ```

@@ -26,6 +26,7 @@ from data import (
     ItemBatch,
     LoaderConfig,
     build_fashion_clip_transform,
+    build_marqo_fashion_siglip_transform,
     build_openrouter_transform,
     create_item_loader,
     get_dataset_source,
@@ -34,6 +35,8 @@ from model import (
     DEFAULT_MODEL_CONFIG,
     FashionCLIPTextEncoder,
     FashionCLIPVisualEncoder,
+    MarqoFashionSigLIPTextEncoder,
+    MarqoFashionSigLIPVisualEncoder,
     OpenRouterTextEncoder,
     OpenRouterVisualEncoder,
 )
@@ -43,6 +46,7 @@ OutputDType = Literal["float32", "float16"]
 
 LOGGER = logging.getLogger("precompute_embeddings")
 DEFAULT_MODEL_NAME = DEFAULT_MODEL_CONFIG.encoders.fashion_clip_model_name
+DEFAULT_MARQO_MODEL_NAME = DEFAULT_MODEL_CONFIG.encoders.marqo_fashion_siglip_model_name
 DEFAULT_OPENROUTER_MODEL_NAME = (
     DEFAULT_MODEL_CONFIG.encoders.openrouter_model_name
 )
@@ -73,6 +77,7 @@ class PrecomputeConfig:
     overwrite: bool
     log_every: int
     use_openrouter: bool = False
+    use_marqo_fashion_siglip: bool = False
     openrouter_api_key: str | None = field(
         default=None,
         repr=False,
@@ -90,6 +95,8 @@ class PrecomputeConfig:
     )
 
     def validate(self) -> None:
+        if self.use_openrouter and self.use_marqo_fashion_siglip:
+            raise ValueError("OpenRouter and Marqo FashionSigLIP are mutually exclusive")
         source = get_dataset_source(self.dataset_name)
         source.descriptor.validate_subset(self.subset)
         if not self.model_name.strip():
@@ -119,6 +126,13 @@ class PrecomputeConfig:
                 raise ValueError("openrouter_image_size must be positive")
             if self.openrouter_timeout <= 0.0:
                 raise ValueError("openrouter_timeout must be positive")
+
+    @property
+    def uses_marqo_fashion_siglip(self) -> bool:
+        return not self.use_openrouter and (
+            self.use_marqo_fashion_siglip
+            or self.model_name.casefold() == DEFAULT_MARQO_MODEL_NAME.casefold()
+        )
 
     @property
     def target_dir(self) -> Path:
@@ -424,6 +438,8 @@ def _build_image_transform(config: PrecomputeConfig) -> ImageTransform:
         return build_openrouter_transform(
             image_size=config.openrouter_image_size,
         )
+    if config.uses_marqo_fashion_siglip:
+        return build_marqo_fashion_siglip_transform(config.model_name)
     return build_fashion_clip_transform(config.model_name)
 
 
@@ -448,6 +464,12 @@ def _build_encoders(
             output_dim=config.openrouter_dimensions,
             request_batch_size=config.openrouter_request_batch_size,
             timeout_seconds=config.openrouter_timeout,
+        )
+    elif config.uses_marqo_fashion_siglip:
+        marqo_visual = MarqoFashionSigLIPVisualEncoder(config.model_name)
+        visual_encoder = marqo_visual
+        text_encoder = MarqoFashionSigLIPTextEncoder(
+            config.model_name, backbone=marqo_visual.backbone
         )
     else:
         visual_encoder = FashionCLIPVisualEncoder(
@@ -485,7 +507,8 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     parser = argparse.ArgumentParser(
         description=(
             "Precompute concatenated visual/text embeddings for fashion "
-            "dataset items. FashionCLIP is used unless --openrouter is set."
+            "dataset items with FashionCLIP (default), Marqo FashionSigLIP "
+            "or OpenRouter."
         )
     )
     parser.add_argument("--dataset", default=DEFAULT_DATASET_NAME)
@@ -502,14 +525,21 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     parser.add_argument(
         "--model-name",
         help=(
-            "encoder model; defaults to FashionCLIP locally or "
+            "encoder model; defaults to FashionCLIP, "
+            f"{DEFAULT_MARQO_MODEL_NAME} with --marqo-fashion-siglip, or "
             f"{DEFAULT_OPENROUTER_MODEL_NAME} with --openrouter"
         ),
     )
-    parser.add_argument(
+    backend = parser.add_mutually_exclusive_group()
+    backend.add_argument(
         "--openrouter",
         action="store_true",
         help="use OpenRouter embedding API instead of local FashionCLIP",
+    )
+    backend.add_argument(
+        "--marqo-fashion-siglip",
+        action="store_true",
+        help="use local Marqo FashionSigLIP with trust_remote_code=True",
     )
     parser.add_argument(
         "--openrouter-dimensions",
@@ -567,6 +597,8 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
     model_name = arguments.model_name or (
         DEFAULT_OPENROUTER_MODEL_NAME
         if arguments.openrouter
+        else DEFAULT_MARQO_MODEL_NAME
+        if arguments.marqo_fashion_siglip
         else DEFAULT_MODEL_NAME
     )
     openrouter_api_key = (
@@ -591,6 +623,7 @@ def parse_args(argv: Sequence[str] | None = None) -> PrecomputeConfig:
         overwrite=arguments.overwrite,
         log_every=arguments.log_every,
         use_openrouter=arguments.openrouter,
+        use_marqo_fashion_siglip=arguments.marqo_fashion_siglip,
         openrouter_api_key=openrouter_api_key,
         openrouter_dimensions=arguments.openrouter_dimensions,
         openrouter_request_batch_size=arguments.openrouter_request_batch_size,
@@ -636,7 +669,7 @@ def _validate_encoder_pair(
     expected_items: int,
 ) -> None:
     if visual_embeddings.ndim != 2 or text_embeddings.ndim != 2:
-        raise ValueError("CLIP encoders must return [items, features]")
+        raise ValueError("encoders must return [items, features]")
     if visual_embeddings.size(0) != expected_items:
         raise ValueError("visual encoder returned the wrong item count")
     if text_embeddings.size(0) != expected_items:

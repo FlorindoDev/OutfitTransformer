@@ -32,7 +32,7 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | Common | [`common/runtime.py`](common/runtime.py) | Gestisce seed riproducibile e scelta automatica del device. |
 | Common | [`common/metrics.py`](common/metrics.py) | Accumula loss, accuracy e ROC AUC sull’intera epoca. |
 | Common | [`common/checkpointing.py`](common/checkpointing.py) | Salva checkpoint e configurazione in modo atomico; legge e carica state dict validati. |
-| Common | [`common/embeddings.py`](common/embeddings.py) | Legge e valida cache embedding tramite manifest e shard memory-mapped. |
+| Common | [`common/embeddings.py`](common/embeddings.py) | Legge e valida gli embedding precomputati salvati (cache), tramite il loro manifest e gli shard memory-mapped. |
 | Common | [`common/README.md`](common/README.md) | Documenta file, API e responsabilità dei componenti condivisi. |
 | CP | [`CP/config.py`](CP/config.py) | Definisce modalità, architettura e iperparametri validati. |
 | CP | [`CP/data.py`](CP/data.py) | Costruisce pipeline runtime o precomputed per train e validation. |
@@ -71,9 +71,9 @@ e la parte condivisa del token da un checkpoint CP compatibile. Dettagli complet
 
 ```mermaid
 flowchart LR
-    LOSS["Focal Loss"] --> HEAD["Testa CP"]
-    HEAD --> CP["Token + Transformer CP"]
-    CP --> COMMON["Normalizzazione + padding common"]
+    LOSS["Focal Loss"] --> HEAD["Testa CP<br/>(128 / 1024 / 1536) → 1"]
+    HEAD --> CP["Token + Transformer CP<br/>128 / 1024 / 1536 feature<br/>64 / 512 / 768 per parte del token"]
+    CP --> COMMON["Normalizzazione + padding common<br/>128 / 1024 / 1536 feature per item"]
 
     COMMON -->|classic / new_classic| RAW["ResNet-18 + proiezioni"]
     RAW -.->|stop| SBERT["Backbone SentenceBERT"]
@@ -98,10 +98,10 @@ ferma: backbone SentenceBERT in `classic` e `new_classic`; cache in
 
 ```mermaid
 flowchart LR
-    LOSS["In-batch Triplet Margin Loss"] --> HEAD["Testa retrieval condivisa"]
-    HEAD --> CIR["Token + Transformer CIR"]
-    CIR --> TOKEN["task_emb + embed_emb<br/>+ category_emb opzionale"]
-    CIR --> COMMON["Normalizzazione + padding common"]
+    LOSS["In-batch Triplet Margin Loss"] --> HEAD["Testa retrieval condivisa<br/>(128 / 1024 / 1536) → 128"]
+    HEAD --> CIR["Token + Transformer CIR<br/>128 / 1024 / 1536 feature"]
+    CIR --> TOKEN["task_emb + embed_emb<br/>+ category_emb opzionale<br/>64 / 512 / 768 valori per embedding"]
+    CIR --> COMMON["Normalizzazione + padding common<br/>128 / 1024 / 1536 feature per item"]
 
     COMMON -->|classic / new_classic| RAW["ResNet-18 + proiezioni"]
     RAW -.->|stop| SBERT["Backbone SentenceBERT"]
@@ -129,12 +129,15 @@ congelato. In `precomputed` si fermano alla cache.
 | Sorgente | Immagini e testi | Immagini e testi | Cache da modello compatibile |
 | Visuale | ResNet-18 → 64 | ResNet-18 → 512 | Precomputata |
 | Testo | SentenceBERT → 64 | SentenceBERT → 512 | Precomputata |
-| Item embedding | 128 | 1024 | 1024 |
+| Item embedding | 128 | 1024 | Dal manifest dei precomputed: 1024 FashionCLIP / 1536 Marqo FashionSigLIP |
 | Data augmentation | Attiva | Attiva | Assente nel training |
 | Costo encoder | Ogni epoca | Ogni epoca | Solo precomputazione |
 | Backpropagation | ResNet + proiezioni | ResNet + proiezioni | Si ferma alla cache |
 
-Ogni cache è separata per subset e split. Manifest e shard vengono
+La cache degli embedding è l'insieme degli embedding precomputati salvati su
+disco, separati per subset e split. `manifest.json` fa parte dei precomputed:
+è il file descrittivo salvato accanto agli shard `shard-*.pt` con i vettori.
+Manifest e shard vengono
 controllati prima del training: schema, quantità, dimensione, valori finiti,
 duplicati, dataset, subset, split e fingerprint modello devono essere coerenti.
 
@@ -145,7 +148,7 @@ duplicati, dataset, subset, split e fingerprint modello devono essere coerenti.
 | Sorgente | Immagini e testi | Immagini e testi | Cache da modello compatibile |
 | Visuale | ResNet-18 → 64 | ResNet-18 → 512 | Precomputata |
 | Testo | SentenceBERT → 64 | SentenceBERT → 512 | Precomputata |
-| Item embedding | 128 | 1024 | 1024 |
+| Item embedding | 128 | 1024 | Dal manifest dei precomputed: 1024 FashionCLIP / 1536 Marqo FashionSigLIP |
 | Data augmentation | Attiva | Attiva | Assente nel training |
 | Costo encoder | Ogni epoca | Ogni epoca | Solo precomputazione |
 | Backpropagation | ResNet + proiezioni | ResNet + proiezioni | Si ferma alla cache |

@@ -169,7 +169,8 @@ training CIR.
 
 Espone anche `PolyvoreRetrievalIndexDataset`: restituisce ID di query, positivo,
 negativi e categoria target senza decodificare immagini. La validation CIR
-`--precomputed` usa questa variante e valida copertura nella cache embedding.
+`--precomputed` usa questa variante e valida la copertura nella cache degli
+embedding, cioè gli embedding precomputati salvati su disco.
 
 #### Esempio di input e output
 
@@ -391,6 +392,9 @@ allo split selezionato. Label, domande FITB e posizione del positivo vengono
 validate prima del training, così gli errori di struttura emergono subito.
 
 Il catalogo descrive i dati grezzi e trasformati, ma non salva embedding. Il job
-`scripts/precompute_embeddings.py` crea la cache FashionCLIP fuori dal dataset.
+`scripts/precompute_embeddings.py` crea cache FashionCLIP, Marqo FashionSigLIP
+o OpenRouter fuori dal dataset, in directory separate per modello. Queste
+cache sono gli embedding precomputati salvati: comprendono gli shard con i
+vettori e `manifest.json`, il file descrittivo che fa parte dei precomputed.
 Campionamento di nuovi negativi e politiche di bilanciamento restano nei
 training loop dei task.

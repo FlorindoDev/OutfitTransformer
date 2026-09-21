@@ -21,6 +21,7 @@
 | `config.py` | Centralizza e valida dimensioni degli embedding, Transformer dei task, encoder e configurazioni specifiche di CP e CIR. |
 | `visual_encoder.py` | Definisce gli encoder visuali ResNet-18, FashionCLIP ViT e OpenRouter. |
 | `text_encoder.py` | Definisce gli encoder testuali SentenceTransformer, FashionCLIP e OpenRouter. |
+| `marqo_fashion_siglip.py` | Adatta modello e processor Marqo alle interfacce visuale/testuale, condividendo un backbone congelato. |
 | `openrouter.py` | Gestisce batching, retry e validazione delle risposte dell'API embedding OpenRouter. |
 | `embeddings.py` | Gestisce API Pydantic, fusione, normalizzazione, padding e output common. |
 | `output_validation.py` | Valida i batch di embedding prima dell'uso nei Transformer specifici dei task. |
@@ -31,22 +32,29 @@
 
 ## Architettura
 
+Il diagramma mostra tutte le dimensioni per modalità: `64 / 512 / 768`.
+Sono rispettivamente quelle di `classic`, `new_classic` o FashionCLIP,
+e Marqo FashionSigLIP. Le dimensioni concatenate sono `128 / 1024 / 1536`.
+Il training adatta la configurazione dal `manifest.json` dei precomputed,
+mantenendo i vettori nativi. Il manifest è il file descrittivo generato e
+salvato insieme agli embedding precomputati, chiamati anche cache degli embedding.
+
 ```mermaid
 flowchart TD
     API["API Pydantic<br/>batch di outfit"] --> TYPE{"Tipo di input dell'item"}
 
     TYPE -->|"immagine"| IMAGE["Immagine preprocessata"]
     TYPE -->|"testo"| TEXT["Descrizione"]
-    TYPE -->|"embedding"| PRE["Embedding precomputato<br/>1024 feature"]
+    TYPE -->|"embedding"| PRE["Embedding precomputato<br/>128 / 1024 / 1536 feature"]
 
-    IMAGE --> VE["Encoder visuale<br/>ResNet-18 / FashionCLIP / OpenRouter"]
-    TEXT --> TE["Encoder testuale<br/>SentenceTransformer / FashionCLIP / OpenRouter"]
-    VE --> VP["Proiezione a 512 + L2(normalizzazione)"]
-    TE --> TP["Proiezione a 512 + L2(normalizzazione)"]
-    VP --> CAT["Concatenazione<br/>512 + 512"]
+    IMAGE --> VE["Encoder visuale<br/>ResNet-18 / FashionCLIP / Marqo FashionSigLIP / OpenRouter"]
+    TEXT --> TE["Encoder testuale<br/>SentenceTransformer / FashionCLIP / Marqo FashionSigLIP / OpenRouter"]
+    VE --> VP["Proiezione + L2(normalizzazione)<br/>64 / 512 / 768 feature"]
+    TE --> TP["Proiezione + L2(normalizzazione)<br/>64 / 512 / 768 feature"]
+    VP --> CAT["Concatenazione<br/>64 + 64 / 512 + 512 / 768 + 768"]
     TP --> CAT
 
-    CAT --> ITEM["Item embedding<br/>1024 feature"]
+    CAT --> ITEM["Item embedding<br/>128 / 1024 / 1536 feature"]
     PRE --> PN["Separazione modalità + L2(normalizzazione)"]
     PN --> ITEM
 
@@ -96,7 +104,8 @@ L'input è una lista di outfit. Ogni outfit è una lista di capi rappresentati d
 `OutfitItem`. Un capo può contenere:
 
 - immagine e testo, sempre insieme;
-- oppure un embedding di 1024 valori già calcolato.
+- oppure un embedding di `2 * modality_embedding_dim` valori già calcolato
+  (`1024` con FashionCLIP, `1536` con Marqo FashionSigLIP).
 
 Pydantic controlla solo gli `OutfitItem` in input. Per esempio, segnala un
 errore se manca il testo, se manca l'immagine o se vengono forniti sia dati
@@ -112,14 +121,17 @@ output = model([[item]])
 La lista interna `[item]` è l'outfit. La lista esterna `[[item]]` è il batch.
 Il risultato è un normale `OutfitEmbeddingBatch`, non un oggetto Pydantic.
 
-Se viene usato un embedding già calcolato, i primi 512 valori sono visuali e i
-successivi 512 testuali. Le immagini devono essere già preparate per l'encoder
+Se viene usato un embedding già calcolato, la prima metà è visuale e la
+seconda testuale (`512` o `768` valori per metà). Le immagini devono essere già preparate per l'encoder
 visuale scelto e avere forme compatibili nello stesso batch.
 
 ## Encoder visuale e testuale
 
-Ogni encoder dichiara la dimensione del proprio output. Se non è 512, una
-proiezione allenabile la adatta automaticamente.
+Ogni encoder dichiara la dimensione del proprio output. Per input runtime,
+una proiezione allenabile la adatta a `modality_embedding_dim` se necessario.
+Le cache precomputate non passano da proiezioni allenabili.
+
+
 
 Encoder visuali disponibili:
 

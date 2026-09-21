@@ -111,6 +111,12 @@ class EmbeddingCache(Mapping[str, Tensor]):
             self._embeddings[item_id] = embeddings[row]
 
 
+def read_embedding_dimension(directory: str | Path) -> int:
+    """Read the declared width without loading embedding shards."""
+    manifest = _load_manifest(Path(directory) / "manifest.json")
+    return _positive_int(manifest.get("embedding_dim"), "manifest embedding_dim")
+
+
 def _load_manifest(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(f"embedding manifest does not exist: {path}")

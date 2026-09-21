@@ -11,7 +11,7 @@ prodotti da qualsiasi modello compatibile. Default è sempre `new_classic`.
 |---|---|---:|---|---|
 | `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer CP e testa; backbone SentenceBERT congelato | Non richiesta |
 | `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer CP e testa; backbone SentenceBERT congelato | Non richiesta |
-| `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer CP e testa | Richiesta per train e validation |
+| `--precomputed` | Embedding da modello compatibile | Dal manifest dei precomputed: `1024` FashionCLIP, `1536` Marqo FashionSigLIP | Transformer CP e testa | Richiesta per train e validation |
 
 `classic` e `new_classic` condividono encoder runtime, 6 layer, 16 teste,
 dropout `0.1` e post-norm. `classic` usa 64 feature per modalità e feed-forward
@@ -72,9 +72,17 @@ indipendentemente dal modello che ha prodotto la cache.
 
 ## Preparazione embedding
 
+La **cache degli embedding** è l'insieme degli embedding precomputati salvati
+su disco. Il **manifest** è `manifest.json`: fa parte dei precomputed e ne
+descrive modello, dimensioni e shard, nella stessa cartella dei vettori.
+
 `--precomputed` richiede cache separate per train e validation. Generazione,
-flag FashionCLIP/OpenRouter ed esempi PowerShell/Linux stanno solo nella
+flag FashionCLIP/Marqo FashionSigLIP/OpenRouter ed esempi PowerShell/Linux stanno nella
 [guida degli script](../../scripts/README.md#esempi).
+
+La dimensione viene letta dal manifest train: Marqo conserva `768 + 768`
+feature native, senza proiezioni o troncamenti. Validation deve avere stessa
+dimensione e fingerprint. La configurazione risolta viene salvata nel checkpoint.
 
 Per tutte le modalità, risorse Polyvore seguono ordine locale, cache Hugging
 Face, download. Con embedding precomputati vengono cercate soltanto annotazioni
@@ -85,6 +93,17 @@ Training usa soltanto `DatasetSource`, `DatasetRequest` e tipi pubblici di
 `data/polyvore`.
 
 ## Avvio
+
+Marqo FashionSigLIP precomputato, comando valido in PowerShell e Bash:
+
+```bash
+python -m training.CP.train_cp --precomputed --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP --checkpoint-dir checkpoints/nondisjoint/cp_marqo
+```
+
+Prima generare cache `nondisjoint/train` e `nondisjoint/validation`. Usare una
+directory checkpoint distinta per ogni encoder; per resume servono pesi con
+la stessa architettura. I checkpoint FashionCLIP da 1024 feature non sono
+compatibili con il Transformer Marqo da 1536.
 
 Versione classic del paper, senza precomputazione:
 

@@ -102,10 +102,15 @@ numeriche possono dipendere dal device e dai kernel PyTorch.
 
 ## Preparazione
 
+La **cache degli embedding** contiene gli embedding precomputati salvati su
+disco: gli shard con i vettori e il relativo `manifest.json`, file descrittivo
+che fa parte dei precomputed dello split scelto.
+
 `classic` e `new_classic` leggono immagini e descrizioni Polyvore.
 `precomputed` richiede la cache embedding dello split scelto, completa di
-item delle query, positivi e distrattori. Comandi per produrre cache FashionCLIP
-o OpenRouter nella [guida degli script](../../scripts/README.md#esempi).
+item delle query, positivi e distrattori. Comandi per produrre cache FashionCLIP,
+Marqo FashionSigLIP o OpenRouter nella [guida degli script](../../scripts/README.md#esempi).
+
 
 La root cache salvata nel checkpoint viene riusata. Se la cache è stata
 spostata, passare `--embedding-root`. Per gli artefatti nella cartella locale

@@ -54,7 +54,7 @@ ufficiali. Il best checkpoint usa sempre `val_fitb_accuracy`.
 |---|---|---:|---|---|
 | `--classic` | ResNet-18 ImageNet + SentenceBERT | `64 + 64 = 128` | ResNet-18, proiezioni, Transformer CIR, token e testa; backbone SentenceBERT congelato | Non richiesta |
 | `--new-classic` | ResNet-18 ImageNet + SentenceBERT | `512 + 512 = 1024` | ResNet-18, proiezioni, Transformer CIR, token e testa; backbone SentenceBERT congelato | Non richiesta |
-| `--precomputed` | Embedding da modello compatibile | `512 + 512 = 1024` | Transformer CIR, token e testa retrieval | Richiesta per train e validation |
+| `--precomputed` | Embedding da modello compatibile | Dal manifest dei precomputed: `1024` FashionCLIP, `1536` Marqo FashionSigLIP | Transformer CIR, token e testa retrieval | Richiesta per train e validation |
 
 Default è `new_classic`. Profili e dimensioni coincidono con training CP.
 `--classic`, `--new-classic` e `--precomputed` sono mutuamente esclusivi.
@@ -90,28 +90,32 @@ Validation e test continuano a usare le annotazioni FITB ufficiali, fisse.
 
 ## Architettura
 
+Le dimensioni nei diagrammi seguono i tre profili: `64 / 512 / 768` per
+modalità e parte del token, `128 / 1024 / 1536` dopo concatenazione.
+L'output retrieval resta da `128` valori per default in tutti i profili.
+
 ```mermaid
 flowchart TD
     PARTIAL["Outfit parziale<br/>B × L item"]
     TARGET["Categoria target opzionale"]
     ITEM["Item candidato<br/>positivo o distrattore"]
 
-    COMMON_QUERY["Pipeline common<br/>item normalizzati + padding mask"]
-    COMMON_ITEM["Stessa pipeline common<br/>un item normalizzato"]
+    COMMON_QUERY["Pipeline common<br/>item: B × L × (128 / 1024 / 1536)<br/>normalizzazione + padding mask"]
+    COMMON_ITEM["Stessa pipeline common<br/>item: N × 1 × (128 / 1024 / 1536)<br/>normalizzato"]
 
-    TASK["task_emb"]
-    EMBED["embed_emb"]
-    CATEGORY["category_emb<br/>se --category-emb è attivo"]
-    TOKEN["Token CIR normalizzato L2<br/>[task_emb | embed_emb + category_emb]"]
+    TASK["task_emb<br/>64 / 512 / 768 valori"]
+    EMBED["embed_emb<br/>64 / 512 / 768 valori"]
+    CATEGORY["category_emb<br/>64 / 512 / 768 valori<br/>se --category-emb è attivo"]
+    TOKEN["Token CIR normalizzato L2<br/>[task_emb | embed_emb + category_emb]<br/>128 / 1024 / 1536 valori"]
     QUERY_INPUT["Token CIR aggiunto<br/>prima dell'outfit parziale"]
     MASK["Padding mask estesa<br/>token CIR sempre valido"]
 
     CIR_QUERY["Transformer CIR"]
     CIR_ITEM["Stesso Transformer CIR<br/>senza token CIR"]
-    QUERY_STATE["Stato finale del token CIR"]
-    ITEM_STATE["Stato finale dell'item"]
-    QUERY_HEAD["Testa di retrieval condivisa<br/>Linear: 1024 → 128"]
-    ITEM_HEAD["Stessa testa di retrieval<br/>stessi pesi"]
+    QUERY_STATE["Stato finale del token CIR<br/>B × (128 / 1024 / 1536)"]
+    ITEM_STATE["Stato finale dell'item<br/>N × (128 / 1024 / 1536)"]
+    QUERY_HEAD["Testa di retrieval condivisa<br/>Linear: (128 / 1024 / 1536) → 128"]
+    ITEM_HEAD["Stessa testa di retrieval<br/>stessi pesi: (128 / 1024 / 1536) → 128"]
     QUERY_VECTOR["Embedding query q<br/>B × 128"]
     ITEM_VECTOR["Embedding item p<br/>N × 128"]
 
@@ -328,6 +332,33 @@ espliciti; `train_loss` usa hardest negative in-batch. Entrambe servono per
 diagnosi, non per scegliere checkpoint.
 
 ## Preparazione embedding
+
+La **cache degli embedding** è l'insieme degli embedding precomputati salvati
+su disco. Il **manifest** è `manifest.json`: fa parte dei precomputed e ne
+descrive modello, dimensioni e shard, nella stessa cartella dei vettori.
+
+Marqo FashionSigLIP usa cache native da `768 + 768 = 1536` feature.
+CP/CIR inferiscono la dimensione dal manifest train; validation deve avere
+stessa dimensione e fingerprint. Precompute e dipendenze nella
+[guida degli script](../../scripts/README.md#esempi).
+
+Avvio Marqo, comando valido in PowerShell e Bash:
+
+```bash
+python -m training.CIR.train_cir --precomputed --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP --checkpoint-dir checkpoints/nondisjoint/cir_marqo
+```
+
+Per trasferire un CP già addestrato con Marqo:
+
+```bash
+python -m training.CIR.train_cir --precomputed --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP --checkpoint-dir checkpoints/nondisjoint/cir_marqo_from_cp --pretrained-cp checkpoints/nondisjoint/cp_marqo/best.pt
+```
+
+CP sorgente deve usare stesso encoder e architettura compatibile. I checkpoint
+FashionCLIP da 1024 feature non sono compatibili con Marqo da 1536. Anche token
+di task, padding e category embedding si adattano alle dimensioni native;
+l'output retrieval resta da 128 valori per default. Il Transformer più ampio
+richiede più memoria: ridurre `--batch-size` se necessario.
 
 `--precomputed` richiede cache distinte:
 

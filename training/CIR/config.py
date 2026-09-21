@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,6 +18,7 @@ from training.common.features import (
     FeatureMode,
     default_transformer_config,
     feature_config,
+    precomputed_transformer_config,
 )
 
 LossReduction = Literal["mean", "sum"]
@@ -125,9 +127,13 @@ class CIRTrainingConfig:
     def best_metric(self) -> str:
         return BEST_METRIC
 
-    @property
+    @cached_property
     def model_config(self) -> TransformerConfig:
-        return self.model or default_transformer_config(self.feature_mode)
+        if self.model is not None:
+            return self.model
+        if self.feature_mode.uses_precomputed_embeddings:
+            return precomputed_transformer_config(self.embedding_root, self.subset)
+        return default_transformer_config(self.feature_mode)
 
     @property
     def cir_config(self) -> ComplementaryItemConfig:

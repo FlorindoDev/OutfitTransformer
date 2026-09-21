@@ -19,7 +19,7 @@ Questa cartella contiene gli strumenti eseguibili che preparano i dati usati dal
 | File | Funzione concettuale |
 | --- | --- |
 | `download_polyvore.py` | Scarica intero repository Polyvore nella cartella locale usata dal progetto. |
-| `precompute_embeddings.py` | Trasforma immagini e descrizioni Polyvore in embedding FashionCLIP locali o OpenRouter remoti. |
+| `precompute_embeddings.py` | Trasforma immagini e descrizioni Polyvore in embedding FashionCLIP/Marqo FashionSigLIP locali o OpenRouter remoti. |
 
 ## Download Polyvore
 
@@ -59,20 +59,21 @@ training, evaluation e precomputazione trovano subito risorse locali.
 | `--dataset` | `polyvore` | Seleziona source registrata nell'API pubblica `data`. |
 | `--subset` | `disjoint` | Seleziona il subset del dataset. |
 | `--split` | `train` | Seleziona lo split da elaborare: `train`, `validation` oppure `test`. |
-| `--model-name` | dipende dal backend | Sceglie il modello. Senza `--openrouter` usa `patrickjohncyh/fashion-clip`; con OpenRouter usa `google/gemini-embedding-2`. |
-| `--openrouter` | disattivato | Usa API embedding OpenRouter. Senza flag resta sempre attivo FashionCLIP locale. |
+| `--model-name` | dipende dal backend | Default `patrickjohncyh/fashion-clip`, `Marqo/marqo-fashionSigLIP` con flag Marqo, `google/gemini-embedding-2` con OpenRouter. Il nome esatto `Marqo/marqo-fashionSigLIP` seleziona anche automaticamente il backend locale Marqo. |
+| `--marqo-fashion-siglip` | disattivato | Usa Marqo locale con `trust_remote_code=True`; mutuamente esclusivo con `--openrouter`. |
+| `--openrouter` | disattivato | Usa API embedding OpenRouter. Senza selezione backend/modello resta attivo FashionCLIP locale. |
 | `--openrouter-dimensions` | `512` | Dimensione richiesta per ciascuna modalità; `512` produce cache finali da `1024` compatibili col training predefinito. |
 | `--openrouter-request-batch-size` | `8` | Numero massimo di input inviati in una singola richiesta API. |
 | `--openrouter-image-size` | `224` | Lato in pixel delle immagini quadrate inviate come PNG base64. |
 | `--openrouter-timeout` | `60` | Timeout in secondi per ogni tentativo API; gli errori transitori vengono ritentati automaticamente. |
-| `--output-dir` | `precomputed_embeddings` | Imposta la cartella radice in cui salvare cache e manifest. |
+| `--output-dir` | `precomputed_embeddings` | Imposta la cartella radice dei precomputed: shard degli embedding e relativo `manifest.json`. |
 | `--dataset-root` | `datasets/polyvore-outfits` | Cerca qui dataset Polyvore prima di usare cache Hugging Face o download. |
 | `--cache-dir` | non impostato | Indica una cache personalizzata per i file scaricati da Hugging Face. |
 | `--batch-size` | `128` | Numero di articoli codificati insieme; influenza soprattutto memoria e velocità di inferenza. |
 | `--num-workers` | `0` | Numero di processi usati per caricare i dati. `0` mantiene il caricamento nel processo principale. |
 | `--shard-size` | `10000` | Numero massimo di articoli in ogni file di output; non modifica il batch di inferenza. |
 | `--output-dtype` | `float32` | Precisione degli embedding salvati: `float32` o `float16`. |
-| `--device` | `auto` | Sceglie il dispositivo. FashionCLIP prova CUDA, poi MPS e CPU; OpenRouter usa CPU in automatico perché inferenza è remota. Accetta anche un dispositivo esplicito. |
+| `--device` | `auto` | Sceglie il dispositivo. FashionCLIP e Marqo provano CUDA, poi MPS e CPU; OpenRouter usa CPU in automatico perché inferenza è remota. Accetta anche un dispositivo esplicito. |
 | `--limit` | non impostato | Limita il numero totale di articoli, utile per prove rapide; senza valore elabora tutto lo split. |
 | `--overwrite` | disattivato | Sostituisce una cache già esistente, eliminando esclusivamente gli artefatti gestiti dallo script. |
 | `--log-every` | `25` | Mostra l'avanzamento ogni N batch. |
@@ -81,21 +82,37 @@ training, evaluation e precomputazione trovano subito risorse locali.
 
 ## Precomputazione multimodale
 
+La **cache degli embedding** indica gli **embedding precomputati salvati su
+disco**. Comprende gli shard `shard-*.pt` con i vettori e `manifest.json`, il
+file descrittivo e indice che fa parte dei precomputed. Il comando genera
+automaticamente entrambi per ogni split.
+
 `precompute_embeddings.py` prepara una rappresentazione multimodale per ogni articolo Polyvore:
 
 1. chiede alla source pubblica item dello split e subset richiesti;
-2. codifica l'immagine con FashionCLIP oppure con un modello embedding
+2. codifica l'immagine con FashionCLIP, Marqo FashionSigLIP oppure con un modello embedding
    multimodale OpenRouter;
 3. codifica la descrizione con lo stesso backend e modello;
 4. normalizza separatamente le due rappresentazioni;
-5. concatena `D` valori visivi e `D` testuali; con default `D=512` ottiene un vettore da `1024` valori;
+5. concatena `D` valori visivi e `D` testuali; FashionCLIP usa `D=512` (`1024` valori), Marqo `D=768` (`1536` valori);
 6. salva progressivamente i risultati in shard, senza calcolare gradienti o aggiornare encoder.
 
 Risoluzione dati segue ordine: `--dataset-root`, cache Hugging Face, download.
 Se parquet e metadata sono già locali, precomputazione non contatta repository
 Polyvore.
 
-FashionCLIP resta backend predefinito e non richiede flag. OpenRouter è opt-in,
+FashionCLIP resta backend predefinito e non richiede flag.
+Marqo usa `AutoModel.from_pretrained(..., trust_remote_code=True,
+low_cpu_mem_usage=False)` e `AutoProcessor` ufficiali, con un solo backbone
+congelato condiviso tra immagini e testo. Il processor applica pulizia del
+testo Marqo, padding e troncamento a 64 token. Le immagini vengono preparate
+a `224 × 224`. La normalizzazione L2 e il formato shard restano identici.
+Dipendenze: `open_clip_torch`, `sentencepiece`, `ftfy` e
+`transformers>=4.41,<4.50`, incluse in `requirements.txt`. Il vincolo Transformers
+mantiene il caricamento eager compatibile con il codice remoto Marqo.
+Riferimento: [modello e processor ufficiali](https://huggingface.co/Marqo/marqo-fashionSigLIP).
+
+OpenRouter è opt-in,
 legge la chiave solo dalla variabile `OPENROUTER_API_KEY` e non la salva nel
 manifest. Immagini e descrizioni vengono inviate al provider remoto; richieste
 possono avere costi. Modello scelto deve accettare input immagine e testo e
@@ -122,7 +139,7 @@ precomputed_embeddings/<modello>/<subset>/<split>/
 | Artefatto | Contenuto concettuale |
 | --- | --- |
 | `shard-*.pt` | Identificativi degli articoli e relativi embedding multimodali. |
-| `manifest.json` | Configurazione, modello, fingerprint, dimensioni, precisione, conteggi e ordine degli shard. |
+| `manifest.json` | File descrittivo dei precomputed, salvato accanto agli shard: configurazione, modello, fingerprint, dimensioni, precisione, conteggi e ordine degli shard. |
 | Console | Dispositivo selezionato, avanzamento, prestazioni e riepilogo finale. |
 
 Il manifest rende la cache verificabile: consente al training di controllare che dati, modello e struttura degli embedding siano quelli attesi.
@@ -144,9 +161,11 @@ Ogni riga di `embeddings` è composta da due parti concatenate:
 | `0:D` | Rappresentazione dell'immagine | Prodotta dall'encoder visuale e normalizzata L2. |
 | `D:2D` | Rappresentazione della descrizione | Prodotta dall'encoder testuale e normalizzata L2. |
 
-`D` vale `512` per default, quindi ogni riga contiene `1024` valori. Cambiare
-`--openrouter-dimensions` richiede una configurazione Transformer con dimensioni
-coerenti.
+`D` vale `512` per FashionCLIP e `768` per Marqo FashionSigLIP. CP/CIR leggono
+automaticamente la dimensione dal manifest `train`, senza caricare gli shard
+per determinarla. La dimensione totale deve essere pari e divisibile per le
+16 teste di attenzione predefinite. Una configurazione modello esplicita
+fornita via Python mantiene precedenza e deve essere coerente con la cache.
 
 `N` è al massimo pari a `--shard-size`: gli shard intermedi sono normalmente pieni, mentre l'ultimo può essere più piccolo. Gli shard non contengono immagini, descrizioni, categorie, pesi o API key; conservano soltanto identificativi e rappresentazioni numeriche necessarie al training.
 
@@ -154,13 +173,30 @@ coerenti.
 
 La modalità `precomputed` del training CP richiede almeno cache `train` e
 `validation` dello stesso dataset, subset e modello. Split `test` è facoltativo
-e serve per evaluation. Cache FashionCLIP e OpenRouter si selezionano nello
+e serve per evaluation. Cache FashionCLIP, Marqo e OpenRouter si selezionano nello
 stesso modo tramite loro directory. `classic` e `new_classic` ricavano
 invece feature da immagini e descrizioni durante training.
 
 `float16` riduce spazio su disco e memoria, con minore precisione; `float32` è la scelta predefinita. Il training converte comunque gli embedding nel tipo richiesto dal modello.
 
 ## Esempi
+
+Marqo FashionSigLIP, comandi identici in PowerShell e Bash:
+
+```bash
+python -m pip install -r requirements.txt
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split train
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split validation
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+```
+
+Equivalente: `--model-name Marqo/marqo-fashionSigLIP`. Per una prova breve,
+aggiungere `--limit 100 --output-dir precomputed_embeddings_smoke`: la cache
+parziale resta separata dalle cache complete richieste per training/evaluation.
+La cache completa viene salvata in
+`precomputed_embeddings/Marqo-marqo-fashionSigLIP/<subset>/<split>/`.
+Per i comandi di training vedere [CP](../training/CP/README.md#avvio) e
+[CIR](../training/CIR/README.md#preparazione-embedding).
 
 Precomputazione completa per il training predefinito `nondisjoint`:
 

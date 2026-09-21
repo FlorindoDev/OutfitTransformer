@@ -91,9 +91,13 @@ AUC valuta l'ordinamento, mentre accuracy valuta le classi dopo il taglio.
 
 ## Preparazione
 
+La **cache degli embedding** contiene gli embedding precomputati salvati su
+disco: gli shard con i vettori e il relativo `manifest.json`, file descrittivo
+che fa parte dei precomputed dello split scelto.
+
 `classic` e `new_classic` leggono immagini e descrizioni Polyvore.
 `precomputed` richiede cache embedding dello split scelto. Comandi per produrre
-cache FashionCLIP o OpenRouter stanno solo nella
+cache FashionCLIP, Marqo FashionSigLIP o OpenRouter stanno nella
 [guida degli script](../../scripts/README.md#esempi).
 
 Root cache salvata nel checkpoint viene riusata. Se cache spostata, passare

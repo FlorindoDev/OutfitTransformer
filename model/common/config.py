@@ -65,6 +65,7 @@ class EncoderConfig:
     sentence_transformer_trainable: bool = False
     fashion_clip_model_name: str = "patrickjohncyh/fashion-clip"
     fashion_clip_trainable: bool = True
+    marqo_fashion_siglip_model_name: str = "Marqo/marqo-fashionSigLIP"
     resnet18_pretrained: bool = True
     resnet18_trainable: bool = True
     openrouter_model_name: str = "google/gemini-embedding-2"
@@ -90,6 +91,9 @@ class EncoderConfig:
             "sentence_transformer_model_name",
         )
         _validate_text(self.fashion_clip_model_name, "fashion_clip_model_name")
+        _validate_text(
+            self.marqo_fashion_siglip_model_name, "marqo_fashion_siglip_model_name"
+        )
         _validate_text(self.openrouter_model_name, "openrouter_model_name")
         _validate_text(self.openrouter_api_base, "openrouter_api_base")
         if self.openrouter_output_dim <= 0:

@@ -79,22 +79,26 @@ and [data pipeline](data/README.md).
 
 ### Architecture
 
+Per-modality dimensions are `64 / 512 / 768`: `classic`, `new_classic` or
+FashionCLIP, and Marqo FashionSigLIP, respectively. Concatenated item and task
+token dimensions are `128 / 1024 / 1536`.
+
 ```mermaid
 flowchart TD
     A["OutfitBatch<br/>images, descriptions, variable-length outfits"]
 
-    A --> B["Visual encoder<br/>ResNet-18 / FashionCLIP / OpenRouter"]
-    A --> C["Text encoder<br/>SentenceTransformer / FashionCLIP / OpenRouter"]
+    A --> B["Visual encoder<br/>ResNet-18 / FashionCLIP / Marqo FashionSigLIP / OpenRouter"]
+    A --> C["Text encoder<br/>SentenceTransformer / FashionCLIP / Marqo FashionSigLIP / OpenRouter"]
 
-    B --> D["Projection + L2 normalization<br/>64 or 512 visual features"]
-    C --> E["Projection + L2 normalization<br/>64 or 512 text features"]
+    B --> D["Projection + L2 normalization<br/>64 / 512 / 768 visual features"]
+    C --> E["Projection + L2 normalization<br/>64 / 512 / 768 text features"]
 
     D --> F["Visual + text concatenation"]
     E --> F
 
-    F --> G["Item embeddings<br/>B × L × 128 or 1024"]
-    P["Precomputed embeddings<br/>FashionCLIP or OpenRouter"] --> G
-    G --> H["L2 normalization + learned padding + padding mask<br/>B × 16 × 128 or 1024"]
+    F --> G["Item embeddings<br/>B × L × (128 / 1024 / 1536)"]
+    P["Precomputed embeddings<br/>FashionCLIP / Marqo FashionSigLIP / OpenRouter"] --> G
+    G --> H["L2 normalization + learned padding + padding mask<br/>B × 16 × (128 / 1024 / 1536)"]
 
     K["L2-normalized CP token<br/>[task_emb | predict_emb]"] --> L["Encoder-only CP Transformer<br/>6 layers · 16 heads"]
     H --> L
@@ -175,12 +179,39 @@ loading](data/polyvore/README.md), and [downloader flags](scripts/README.md#down
 
 ### Embedding precomputation
 
+The **embedding cache** is the precomputed embeddings saved on disk.
+Each split directory contains `shard-*.pt` with the vectors and `manifest.json`,
+the metadata and index file generated alongside those precomputed embeddings.
+
 Precomputation uses the FashionCLIP visual and text towers by default. With
 `--openrouter`, it can use a remote multimodal embedding model selected through
 `--model-name`; the API key is read from `OPENROUTER_API_KEY`. Both outputs are
 L2-normalized, concatenated, and saved in `.pt` shards associated with `item_id`
-values. During training, both caches use `--precomputed`; select the cache with
+values. During training, all caches use `--precomputed`; select the cache with
 `--embedding-root`.
+
+For [Marqo FashionSigLIP](https://huggingface.co/Marqo/marqo-fashionSigLIP),
+install the updated `requirements.txt` and add `--marqo-fashion-siglip`.
+The official `AutoModel` and `AutoProcessor` load with `trust_remote_code=True`.
+Its native `768 + 768 = 1536` features are preserved; CP/CIR infer the
+Transformer width from the training manifest and save it in checkpoints.
+FashionCLIP remains the default (`512 + 512 = 1024`). The Marqo wrapper uses
+eager loading with `transformers>=4.41,<4.50` to avoid meta-tensor loading errors.
+
+Marqo commands, valid in PowerShell and Bash:
+
+```bash
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split train
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split validation
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+```
+
+Use `--precomputed --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP`
+with either training command. Choose separate checkpoint directories, for example
+`checkpoints/nondisjoint/cp_marqo` and `checkpoints/nondisjoint/cir_marqo`.
+CP-to-CIR transfer requires a CP checkpoint trained with the same encoder and
+architecture; FashionCLIP checkpoints have a different width. Evaluation uses
+the saved architecture and the corresponding Marqo split cache.
 
 PowerShell:
 
@@ -409,22 +440,26 @@ e [pipeline dei dati](data/README.md).
 
 ### Architettura generale
 
+Le dimensioni per modalità sono `64 / 512 / 768`: rispettivamente `classic`,
+`new_classic` o FashionCLIP, e Marqo FashionSigLIP. Item e token di task
+concatenati hanno dimensioni `128 / 1024 / 1536`.
+
 ```mermaid
 flowchart TD
     A["OutfitBatch<br/>immagini, descrizioni, outfit variabili"]
 
-    A --> B["Encoder visuale<br/>ResNet-18 / FashionCLIP / OpenRouter"]
-    A --> C["Encoder testuale<br/>SentenceTransformer / FashionCLIP / OpenRouter"]
+    A --> B["Encoder visuale<br/>ResNet-18 / FashionCLIP / Marqo FashionSigLIP / OpenRouter"]
+    A --> C["Encoder testuale<br/>SentenceTransformer / FashionCLIP / Marqo FashionSigLIP / OpenRouter"]
 
-    B --> D["Proiezione + L2 (normalizzazione)<br/>64 o 512 feature visuali"]
-    C --> E["Proiezione + L2 (normalizzazione)<br/>64 o 512 feature testuali"]
+    B --> D["Proiezione + L2 (normalizzazione)<br/>64 / 512 / 768 feature visuali"]
+    C --> E["Proiezione + L2 (normalizzazione)<br/>64 / 512 / 768 feature testuali"]
 
     D --> F["Concatenazione visuale + testo"]
     E --> F
 
-    F --> G["Item embeddings<br/>B × L × 128 o 1024"]
-    P["Embedding precomputato<br/>FashionCLIP o OpenRouter"] --> G
-    G --> H["L2 (normalizzazione) + padding appreso + padding mask<br/>B × 16 × 128 o 1024"]
+    F --> G["Item embeddings<br/>B × L × (128 / 1024 / 1536)"]
+    P["Embedding precomputato<br/>FashionCLIP / Marqo FashionSigLIP / OpenRouter"] --> G
+    G --> H["L2 (normalizzazione) + padding appreso + padding mask<br/>B × 16 × (128 / 1024 / 1536)"]
 
     K["CP token normalizzato L2<br/>[task_emb | predict_emb]"] --> L["Transformer CP encoder-only<br/>6 layer · 16 teste"]
     H --> L
@@ -505,12 +540,40 @@ Polyvore](data/polyvore/README.md) e [flag del downloader](scripts/README.md#dow
 
 ### Precomputazione degli embedding
 
+La **cache degli embedding** è l'insieme degli embedding precomputati salvati
+su disco. Ogni cartella di split contiene gli shard `shard-*.pt` con i vettori
+e `manifest.json`: il file descrittivo e indice che fa parte dei precomputed,
+generato insieme agli embedding.
+
 La precomputazione usa per default le tower visuale e testuale FashionCLIP. Con
 `--openrouter` può usare un modello embedding multimodale remoto scelto tramite
 `--model-name`; la chiave viene letta da `OPENROUTER_API_KEY`. I due output
 vengono normalizzati L2, concatenati e salvati in shard `.pt` associati agli
-`item_id`. Nel training entrambe le cache usano `--precomputed`; la cache viene
+`item_id`. Nel training tutte le cache usano `--precomputed`; la cache viene
 scelta con `--embedding-root`.
+
+Per [Marqo FashionSigLIP](https://huggingface.co/Marqo/marqo-fashionSigLIP),
+installare `requirements.txt` aggiornato e aggiungere `--marqo-fashion-siglip`.
+`AutoModel` e `AutoProcessor` ufficiali usano `trust_remote_code=True`.
+Le feature native `768 + 768 = 1536` vengono conservate: CP/CIR ricavano la
+dimensione del Transformer dal manifest train e la salvano nei checkpoint.
+FashionCLIP resta predefinito (`512 + 512 = 1024`). Il wrapper Marqo usa
+caricamento eager con `transformers>=4.41,<4.50` per evitare errori sui meta tensor.
+
+Comandi Marqo, validi in PowerShell e Bash:
+
+```bash
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split train
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split validation
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+```
+
+Usare `--precomputed --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP`
+con entrambi i comandi di training. Scegliere directory checkpoint separate, per
+esempio `checkpoints/nondisjoint/cp_marqo` e `checkpoints/nondisjoint/cir_marqo`.
+Il trasferimento CP verso CIR richiede checkpoint CP con stesso encoder e
+architettura; i checkpoint FashionCLIP hanno dimensioni diverse. Evaluation
+usa l'architettura salvata e la cache Marqo dello split scelto.
 
 PowerShell:
 

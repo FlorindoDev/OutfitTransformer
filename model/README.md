@@ -17,7 +17,7 @@ condividono così un unico punto di accesso e validazione.
 `task_emb` è un parametro allenabile condiviso tra CP e CIR. `predict_emb` ed
 `embed_emb` sono invece parametri allenabili interni rispettivamente a CP e
 CIR. Tutti nascono da valori casuali con deviazione standard `0.02`: non
-provengono da immagini, testo, FashionCLIP o dataset. Ogni task replica il
+provengono da immagini, testo, FashionCLIP, Marqo FashionSigLIP o dataset. Ogni task replica il
 proprio token iniziale per gli outfit del batch; la self-attention lo rende poi
 specifico dell'outfit con cui interagisce.
 
@@ -27,11 +27,14 @@ CIR. Se un task non ne riceve una, crea un'istanza privata.
 
 | Embedding | Dimensione | Ruolo |
 |---|---:|---|
-| `task_emb` | 512 | Parte condivisa tra CP e CIR. Apprende conoscenza generale sulle relazioni di compatibilità. |
-| `predict_emb` | 512 | Parte specifica CP. Indica al Transformer di produrre una rappresentazione utile alla classificazione. |
-| `embed_emb` | 512 | Parte specifica CIR. Indica al Transformer di produrre una rappresentazione utile al retrieval. |
+| `task_emb` | 64 / 512 / 768 | Parte condivisa tra CP e CIR. Apprende conoscenza generale sulle relazioni di compatibilità. |
+| `predict_emb` | 64 / 512 / 768 | Parte specifica CP. Indica al Transformer di produrre una rappresentazione utile alla classificazione. |
+| `embed_emb` | 64 / 512 / 768 | Parte specifica CIR. Indica al Transformer di produrre una rappresentazione utile al retrieval. |
 
-I token completi sono concatenazioni da 1024 valori, normalizzate L2 prima
+Le dimensioni della tabella corrispondono a `classic`, `new_classic` o
+FashionCLIP, e Marqo FashionSigLIP.
+
+I token completi sono concatenazioni da `128 / 1024 / 1536` valori, normalizzate L2 prima
 dell'inserimento nella sequenza:
 
 ```text

@@ -21,7 +21,7 @@
 | `__init__.py` | Espone l’API pubblica del package `data`. |
 | `types.py` | Definisce item, esempi dei task e batch condivisi. |
 | `source.py` | Definisce source, split, richieste e registry indipendenti dal dataset concreto. |
-| `transforms.py` | Prepara le immagini per ResNet-18 o FashionCLIP. |
+| `transforms.py` | Prepara le immagini per ResNet-18, FashionCLIP, Marqo FashionSigLIP o OpenRouter. |
 | `collate.py` | Unisce gli esempi e li converte nell’input pubblico del modello. |
 | `loaders.py` | Configura i `DataLoader` per item, compatibility e retrieval. |
 | `polyvore/` | Interpreta risorse, identificatori e annotazioni di Polyvore Outfits. |
@@ -171,6 +171,7 @@ La transform è scelta esplicitamente perché dipende dall’encoder visuale:
 | ResNet-18 | Conversione in tensore, dimensione uniforme e normalizzazione ImageNet. |
 | ResNet-18 in training | Aggiunge crop casuale e ribaltamento orizzontale. |
 | FashionCLIP | Usa l’image processor associato al checkpoint scelto. |
+| Marqo FashionSigLIP | `build_marqo_fashion_siglip_transform()` usa `AutoProcessor` con `trust_remote_code=True`, RGB e immagini `224 × 224`. |
 | Encoder personalizzato | Può ricevere una transform compatibile fornita dall’esterno. |
 
 ### Esempio di input e output
@@ -338,7 +339,8 @@ rifiutano `sample_target=True` per preservare il benchmark fisso.
 
 Il runner CIR attiva il campionamento solo nel training. La variante raw passa
 dal catalogo e dalla collate esistenti; quella indicizzata risolve ID e categoria
-senza immagini. La cache embedding conserva il dataset dinamico e valida
+senza immagini. La cache degli embedding precomputati salvati su disco
+conserva il dataset dinamico e valida
 `item_ids` senza congelare le coppie o consumare numeri casuali.
 
 ### Esempio

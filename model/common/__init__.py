@@ -17,6 +17,10 @@ from .embeddings import (
     OutfitItem,
 )
 from .task_embedding import TaskEmbedding
+from .marqo_fashion_siglip import (
+    MarqoFashionSigLIPTextEncoder,
+    MarqoFashionSigLIPVisualEncoder,
+)
 from .text_encoder import (
     FashionCLIPTextEncoder,
     OpenRouterTextEncoder,
@@ -40,6 +44,8 @@ __all__ = [
     "FashionCLIPTextEncoder",
     "FashionCLIPVisualEncoder",
     "ModelConfig",
+    "MarqoFashionSigLIPTextEncoder",
+    "MarqoFashionSigLIPVisualEncoder",
     "MultimodalOutfitEncoder",
     "OpenRouterTextEncoder",
     "OpenRouterVisualEncoder",

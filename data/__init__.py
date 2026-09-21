@@ -22,6 +22,7 @@ from .source import (
 from .transforms import (
     ImageTransform,
     build_fashion_clip_transform,
+    build_marqo_fashion_siglip_transform,
     build_openrouter_transform,
     build_resnet18_transform,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "RetrievalIndexExample",
     "RetrievalIndexDataset",
     "build_fashion_clip_transform",
+    "build_marqo_fashion_siglip_transform",
     "build_openrouter_transform",
     "build_resnet18_transform",
     "collate_compatibility",

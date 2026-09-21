@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from model.common.config import DEFAULT_MODEL_CONFIG, TransformerConfig
+
+from .embeddings import read_embedding_dimension
 
 
 DEFAULT_PRECOMPUTED_EMBEDDING_ROOT = (
@@ -57,6 +60,21 @@ def default_transformer_config(mode: FeatureMode) -> TransformerConfig:
     if mode is FeatureMode.NEW_CLASSIC:
         return DEFAULT_MODEL_CONFIG.new_classic_transformer
     return DEFAULT_MODEL_CONFIG.transformer
+
+
+def precomputed_transformer_config(
+    embedding_root: Path, subset: str
+) -> TransformerConfig:
+    """Preserve native cache dimensions in the CP/CIR Transformer."""
+    embedding_dim = read_embedding_dimension(embedding_root / subset / "train")
+    if embedding_dim % 2:
+        raise ValueError("embedding_dim must contain equal visual and text halves")
+    config = replace(
+        DEFAULT_MODEL_CONFIG.transformer,
+        modality_embedding_dim=embedding_dim // 2,
+    )
+    config.validate()
+    return config
 
 
 def feature_config(mode: FeatureMode) -> dict[str, Any]:

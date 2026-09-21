@@ -42,17 +42,26 @@ oggetto, usato da modello, CLI e training CP.
 
 ## Architettura
 
+Il diagramma mostra `64 / 512 / 768` valori per modalità e parte del token,
+corrispondenti a `classic`, `new_classic` o FashionCLIP, e Marqo FashionSigLIP.
+Item, token e Transformer hanno larghezza `128 / 1024 / 1536`; la testa CP
+proietta ciascuna di queste dimensioni a un singolo valore.
+Gli esempi numerici nelle sezioni successive usano il default `512`/`1024`.
+Il training ricava la dimensione dal `manifest.json` dei precomputed;
+evaluation la legge dal checkpoint. Il manifest è il file descrittivo salvato
+insieme agli embedding precomputati (la cache degli embedding).
+
 ```mermaid
 flowchart TD
-    COMMON["Embedding common normalizzati<br/>item: B × L × 1024<br/>padding mask: B × L"]
-    TASK["task_emb<br/>512 valori<br/>condivisibile e allenabile"]
-    PREDICT["predict_emb<br/>512 valori<br/>specifico CP e allenabile"]
-    TOKEN["Concatenazione + L2<br/>token CP: B × 1 × 1024"]
+    COMMON["Embedding common normalizzati<br/>item: B × L × (128 / 1024 / 1536)<br/>padding mask: B × L"]
+    TASK["task_emb<br/>64 / 512 / 768 valori<br/>condivisibile e allenabile"]
+    PREDICT["predict_emb<br/>64 / 512 / 768 valori<br/>specifico CP e allenabile"]
+    TOKEN["Concatenazione + L2<br/>token CP: B × 1 × (128 / 1024 / 1536)"]
     PREPEND["Token CP aggiunto<br/>all'inizio dell'outfit"]
     MASK["Mask estesa<br/>token sempre valido"]
-    TRANSFORMER["Transformer CP<br/>6 layer, 16 teste<br/>FFN 2024, Mish, pre-norm"]
-    GLOBAL["Primo token in uscita<br/>rappresentazione globale: B × 1024"]
-    HEAD["Testa di classificazione(sigmoid)"]
+    TRANSFORMER["Transformer CP<br/>6 layer, 16 teste<br/>FFN 512 / 2024, Mish<br/>pre-norm o post-norm secondo il profilo"]
+    GLOBAL["Primo token in uscita<br/>rappresentazione globale: B × (128 / 1024 / 1536)"]
+    HEAD["Testa di classificazione(sigmoid)<br/>Linear: (128 / 1024 / 1536) → 1"]
     SCORE["Compatibilità: valore tra 0 e 1"]
     LABEL["Etichetta binaria<br/>0 o 1"]
     LOSS["Focal loss<br/>"]
@@ -181,7 +190,7 @@ CP.
 Il modulo rifiuta input incompatibili prima della classificazione:
 
 - batch o sequenze vuote;
-- embedding con dimensione diversa da 1024 o valori non finiti;
+- embedding con dimensione diversa da `config.model_dim` o valori non finiti;
 - mask con forma, tipo booleano o dispositivo non coerenti con gli embedding;
 - outfit formati soltanto da padding;
 - probabilità fuori da `[0, 1]` o target diversi da `0` e `1` nella focal loss.

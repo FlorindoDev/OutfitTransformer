@@ -25,7 +25,7 @@ queste responsabilità rimangono rispettivamente nei moduli `data.py`,
 | File | Cosa fa |
 |---|---|
 | [`features.py`](features.py) | Definisce i profili `classic`, `new_classic` e `precomputed`, seleziona dimensioni e configurazione del Transformer del task e serializza le informazioni sugli encoder. |
-| [`embeddings.py`](embeddings.py) | Espone una cache read-only indicizzata per `item_id`, caricata da manifest e shard PyTorch memory-mapped. |
+| [`embeddings.py`](embeddings.py) | Legge gli embedding precomputati salvati (cache), indicizzati per `item_id`, usando il loro `manifest.json` e gli shard PyTorch memory-mapped. |
 | [`checkpointing.py`](checkpointing.py) | Salva e copia checkpoint, legge state dict validati, carica i pesi del modello e scrive configurazioni JSON con operazioni atomiche. |
 | [`metrics.py`](metrics.py) | Accumula loss, accuracy e ROC AUC sull'intera epoca per i task di classificazione binaria. |
 | [`runtime.py`](runtime.py) | Imposta i seed riproducibili e risolve automaticamente o valida il device PyTorch. |
@@ -40,15 +40,17 @@ queste responsabilità rimangono rispettivamente nei moduli `data.py`,
 |---|---|---|
 | `classic` | Immagini e descrizioni originali | ResNet-18 e SentenceTransformer, proiettati a `64 + 64` feature |
 | `new_classic` | Immagini e descrizioni originali | ResNet-18 e SentenceTransformer, proiettati a `512 + 512` feature |
-| `precomputed` | Embedding letti dalla cache | Rappresentazioni combinate da 1024 feature per il Transformer del task |
+| `precomputed` | Embedding già calcolati e salvati nella cache | Dimensioni dal `manifest.json` dei precomputed train: 1024 con FashionCLIP, 1536 con Marqo FashionSigLIP |
 
-`default_transformer_config()` associa ogni modalità alle dimensioni corrette.
-`feature_config()` produce invece i metadati serializzabili salvati nella
-configurazione del run, senza includere credenziali. Il parser accetta anche i
-nomi legacy `fashion_clip_approach`, `clip` e `openrouter` presenti nei vecchi
-checkpoint.
 
 ## Cache degli embedding
+
+La **cache degli embedding** è l'insieme degli **embedding precomputati**
+salvati su disco e riutilizzati con `--precomputed`. Ogni cartella di split
+contiene gli shard `shard-*.pt` con i vettori e `manifest.json`, il file
+descrittivo e indice che fa parte dei precomputed. Entrambi vengono generati
+automaticamente dal comando di precompute.
+
 
 `EmbeddingCache` implementa una mappa read-only da `item_id` a tensore. Legge
 un `manifest.json` con schema 2 e carica gli shard tramite memory mapping,
