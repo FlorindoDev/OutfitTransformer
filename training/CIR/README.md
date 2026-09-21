@@ -342,6 +342,10 @@ CP/CIR inferiscono la dimensione dal manifest train; validation deve avere
 stessa dimensione e fingerprint. Precompute e dipendenze nella
 [guida degli script](../../scripts/README.md#esempi).
 
+Il Transformer usa feed-forward 3072 quando il manifest indica l'encoder
+Marqo FashionSigLIP; FashionCLIP conserva 2024. CP e CIR applicano la stessa
+regola.
+
 Avvio Marqo, comando valido in PowerShell e Bash:
 
 ```bash

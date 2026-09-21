@@ -59,7 +59,7 @@ flowchart TD
     TOKEN["Concatenazione + L2<br/>token CP: B × 1 × (128 / 1024 / 1536)"]
     PREPEND["Token CP aggiunto<br/>all'inizio dell'outfit"]
     MASK["Mask estesa<br/>token sempre valido"]
-    TRANSFORMER["Transformer CP<br/>6 layer, 16 teste<br/>FFN 512 / 2024, Mish<br/>pre-norm o post-norm secondo il profilo"]
+    TRANSFORMER["Transformer CP<br/>6 layer, 16 teste<br/>FFN 512 / 2024 / 3072, Mish<br/>pre-norm o post-norm secondo il profilo"]
     GLOBAL["Primo token in uscita<br/>rappresentazione globale: B × (128 / 1024 / 1536)"]
     HEAD["Testa di classificazione(sigmoid)<br/>Linear: (128 / 1024 / 1536) → 1"]
     SCORE["Compatibilità: valore tra 0 e 1"]
@@ -130,7 +130,7 @@ Il Transformer CP usa questa configurazione predefinita:
 | Dimensione input/output | 1024 |
 | Layer | 6 |
 | Teste di attenzione | 16 |
-| Dimensione feed-forward | 2024 |
+| Dimensione feed-forward | 2024; 512 in `classic`, 3072 con Marqo FashionSigLIP precomputed |
 | Attivazione | Mish |
 | Normalizzazione | Pre-norm nei layer; nessuna LayerNorm finale aggiuntiva |
 | Dropout | 0.3 |

@@ -183,7 +183,7 @@ Il Transformer CIR usa la stessa configurazione architetturale del Transformer C
 | Dimensione input/output | 1024 |
 | Layer | 6 |
 | Teste di attenzione | 16 |
-| Dimensione feed-forward | 2024 |
+| Dimensione feed-forward | 2024; 512 in `classic`, 3072 con Marqo FashionSigLIP precomputed |
 | Attivazione | Mish |
 | Normalizzazione | Pre-norm nei layer; nessuna LayerNorm finale aggiuntiva |
 | Dropout | 0,3 |

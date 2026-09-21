@@ -15,9 +15,10 @@ prodotti da qualsiasi modello compatibile. Default è sempre `new_classic`.
 
 `classic` e `new_classic` condividono encoder runtime, 6 layer, 16 teste,
 dropout `0.1` e post-norm. `classic` usa 64 feature per modalità e feed-forward
-512; `new_classic` usa 512 feature per modalità e feed-forward 2024, come il
-profilo `precomputed`. Quest'ultimo usa però dropout `0.3` e pre-norm,
-indipendentemente dal modello che ha prodotto la cache.
+512; `new_classic` usa 512 feature per modalità e feed-forward 2024.
+`precomputed` usa feed-forward 2024 con FashionCLIP e 3072 con Marqo
+FashionSigLIP, riconosciuto dall'encoder nel manifest. Usa dropout `0.3` e
+pre-norm, indipendentemente dal modello che ha prodotto la cache.
 
 ## Configurazione predefinita
 

@@ -9,7 +9,7 @@ from typing import Any
 
 from model.common.config import DEFAULT_MODEL_CONFIG, TransformerConfig
 
-from .embeddings import read_embedding_dimension
+from .embeddings import read_embedding_profile
 
 
 DEFAULT_PRECOMPUTED_EMBEDDING_ROOT = (
@@ -66,12 +66,20 @@ def precomputed_transformer_config(
     embedding_root: Path, subset: str
 ) -> TransformerConfig:
     """Preserve native cache dimensions in the CP/CIR Transformer."""
-    embedding_dim = read_embedding_dimension(embedding_root / subset / "train")
+    embedding_dim, visual_encoder = read_embedding_profile(
+        embedding_root / subset / "train"
+    )
     if embedding_dim % 2:
         raise ValueError("embedding_dim must contain equal visual and text halves")
+    feedforward_dim = (
+        3072
+        if visual_encoder == "MarqoFashionSigLIPVisualEncoder"
+        else DEFAULT_MODEL_CONFIG.transformer.feedforward_dim
+    )
     config = replace(
         DEFAULT_MODEL_CONFIG.transformer,
         modality_embedding_dim=embedding_dim // 2,
+        feedforward_dim=feedforward_dim,
     )
     config.validate()
     return config

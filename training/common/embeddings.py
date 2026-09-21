@@ -113,8 +113,20 @@ class EmbeddingCache(Mapping[str, Tensor]):
 
 def read_embedding_dimension(directory: str | Path) -> int:
     """Read the declared width without loading embedding shards."""
+    return read_embedding_profile(directory)[0]
+
+
+def read_embedding_profile(directory: str | Path) -> tuple[int, str | None]:
+    """Read cache width and visual encoder type without loading shards."""
     manifest = _load_manifest(Path(directory) / "manifest.json")
-    return _positive_int(manifest.get("embedding_dim"), "manifest embedding_dim")
+    embedding_dim = _positive_int(
+        manifest.get("embedding_dim"), "manifest embedding_dim"
+    )
+    encoder = manifest.get("encoder")
+    visual_encoder = (
+        encoder.get("visual_encoder") if isinstance(encoder, Mapping) else None
+    )
+    return embedding_dim, visual_encoder if isinstance(visual_encoder, str) else None
 
 
 def _load_manifest(path: Path) -> dict[str, Any]:
