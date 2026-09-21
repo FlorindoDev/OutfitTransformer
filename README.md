@@ -332,6 +332,15 @@ python -m evaluation.CP.evaluate_cp \
 The command infers the dataset, subset, feature mode, and architecture from
 the checkpoint. It saves accuracy, precision, recall, F1, and ROC AUC under
 `results/cp/`.
+For Marqo or OpenRouter checkpoints, precompute the matching `test` cache and
+pass its model directory with `--embedding-root` if the saved path has changed.
+
+Marqo CP example (PowerShell and Bash):
+
+```bash
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+python -m evaluation.CP.evaluate_cp --checkpoint checkpoints/nondisjoint/cp_marqo/best.pt --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP
+```
 
 For details, see the [evaluation overview](evaluation/README.md),
 [CP evaluation guide](evaluation/CP/README.md), and [metric definitions](metrics/README.md).
@@ -357,6 +366,15 @@ python -m evaluation.CIR.evaluate_cir \
 
 The command infers the architecture, categories, and feature mode from the
 checkpoint. It saves FITB accuracy, MRR, and Recall@2 under `results/cir/`.
+Marqo and OpenRouter checkpoints use the matching cache selected with
+`--embedding-root` when needed.
+Marqo CIR example (PowerShell and Bash):
+
+```bash
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+python -m evaluation.CIR.evaluate_cir --checkpoint checkpoints/nondisjoint/cir_marqo/best.pt --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP
+```
+
 Use `--split validation` to evaluate the validation split, or `--output` to
 change the report location. For the protocol, comparisons with the paper and
 repository, and flags, see the [CIR evaluation guide](evaluation/CIR/README.md).
@@ -693,6 +711,15 @@ python -m evaluation.CP.evaluate_cp \
 
 Comando ricava dataset, subset, modalità feature e architettura dal checkpoint.
 Salva accuracy, precision, recall, F1 e ROC AUC sotto `results/cp/`.
+Per checkpoint Marqo o OpenRouter, precomputare lo split `test` con lo stesso
+encoder e passare la root del modello con `--embedding-root` se è stata spostata.
+
+Esempio CP con Marqo, valido in PowerShell e Bash:
+
+```bash
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+python -m evaluation.CP.evaluate_cp --checkpoint checkpoints/nondisjoint/cp_marqo/best.pt --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP
+```
 
 Per approfondire: [panoramica evaluation](evaluation/README.md), [guida
 evaluation CP](evaluation/CP/README.md) e [definizione delle metriche](metrics/README.md).
@@ -719,5 +746,14 @@ python -m evaluation.CIR.evaluate_cir \
 Il comando ricava architettura, categorie e modalità feature dal checkpoint.
 Salva FITB accuracy, MRR e Recall@2 sotto `results/cir/`. Per valutare validation,
 passare `--split validation`; per spostare il report, usare `--output`.
+I checkpoint Marqo e OpenRouter usano la cache corrispondente; se serve,
+selezionarla con `--embedding-root`.
+Esempio CIR con Marqo, valido in PowerShell e Bash:
+
+```bash
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+python -m evaluation.CIR.evaluate_cir --checkpoint checkpoints/nondisjoint/cir_marqo/best.pt --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP
+```
+
 Protocollo, confronto con paper/repo e flag nella
 [guida evaluation CIR](evaluation/CIR/README.md).

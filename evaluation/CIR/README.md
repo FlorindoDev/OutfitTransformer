@@ -114,8 +114,25 @@ Marqo FashionSigLIP o OpenRouter nella [guida degli script](../../scripts/README
 
 La root cache salvata nel checkpoint viene riusata. Se la cache è stata
 spostata, passare `--embedding-root`. Per gli artefatti nella cartella locale
-`huggingface/`, usare `--embedding-root huggingface/precomputed_embeddings`
-quando si vuole leggere la cache distribuita insieme ai pesi.
+`huggingface/`, indicare la root del modello, per esempio
+`--embedding-root huggingface/precomputed_embeddings/Marqo-marqo-fashionSigLIP`.
+
+Per Marqo e OpenRouter, generare prima lo split scelto con lo stesso encoder
+usato nel training. Esempi validi in PowerShell e Bash:
+
+```bash
+python -m scripts.precompute_embeddings --marqo-fashion-siglip --subset nondisjoint --split test
+python -m evaluation.CIR.evaluate_cir --checkpoint checkpoints/nondisjoint/cir_marqo/best.pt --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP
+```
+
+```bash
+python -m scripts.precompute_embeddings --openrouter --model-name google/gemini-embedding-2 --subset nondisjoint --split test
+python -m evaluation.CIR.evaluate_cir --checkpoint checkpoints/nondisjoint/cir_openrouter/best.pt --embedding-root precomputed_embeddings/openrouter-google-gemini-embedding-2
+```
+
+La precomputazione OpenRouter richiede `OPENROUTER_API_KEY`; evaluation usa la
+cache locale. Per `validation`, preparare quello split e passare
+`--split validation`.
 
 Le annotazioni vengono cercate prima in `datasets/polyvore-outfits/`, poi nella
 cache Hugging Face; soltanto i file mancanti vengono scaricati. Un percorso
