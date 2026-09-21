@@ -385,6 +385,48 @@ python -m training.CIR.train_cir
 python -m training.CIR.train_cir
 ```
 
+Embedding FashionCLIP precomputati, usando la root predefinita:
+
+```powershell
+python -m training.CIR.train_cir --precomputed
+```
+
+```bash
+python -m training.CIR.train_cir --precomputed
+```
+
+La stessa cache può essere indicata esplicitamente:
+
+```powershell
+python -m training.CIR.train_cir `
+  --precomputed `
+  --embedding-root precomputed_embeddings/patrickjohncyh-fashion-clip `
+  --checkpoint-dir checkpoints/nondisjoint/cir_fashionclip
+```
+
+```bash
+python -m training.CIR.train_cir \
+  --precomputed \
+  --embedding-root precomputed_embeddings/patrickjohncyh-fashion-clip \
+  --checkpoint-dir checkpoints/nondisjoint/cir_fashionclip
+```
+
+Embedding Marqo FashionSigLIP, scegliendo la root della cache:
+
+```powershell
+python -m training.CIR.train_cir `
+  --precomputed `
+  --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP `
+  --checkpoint-dir checkpoints/nondisjoint/cir_marqo
+```
+
+```bash
+python -m training.CIR.train_cir \
+  --precomputed \
+  --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP \
+  --checkpoint-dir checkpoints/nondisjoint/cir_marqo
+```
+
 Embedding precomputati con categoria target:
 
 ```powershell

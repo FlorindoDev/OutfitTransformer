@@ -151,6 +151,38 @@ Linux (Bash):
 python -m training.CP.train_cp --precomputed
 ```
 
+La stessa cache può essere indicata esplicitamente:
+
+```powershell
+python -m training.CP.train_cp `
+  --precomputed `
+  --embedding-root precomputed_embeddings/patrickjohncyh-fashion-clip `
+  --checkpoint-dir checkpoints/nondisjoint/cp_fashionclip
+```
+
+```bash
+python -m training.CP.train_cp \
+  --precomputed \
+  --embedding-root precomputed_embeddings/patrickjohncyh-fashion-clip \
+  --checkpoint-dir checkpoints/nondisjoint/cp_fashionclip
+```
+
+Embedding Marqo FashionSigLIP, scegliendo la root della cache:
+
+```powershell
+python -m training.CP.train_cp `
+  --precomputed `
+  --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP `
+  --checkpoint-dir checkpoints/nondisjoint/cp_marqo
+```
+
+```bash
+python -m training.CP.train_cp \
+  --precomputed \
+  --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP \
+  --checkpoint-dir checkpoints/nondisjoint/cp_marqo
+```
+
 Embedding OpenRouter precomputati, scegliendo relativa root:
 
 PowerShell:
