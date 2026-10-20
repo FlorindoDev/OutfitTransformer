@@ -32,22 +32,28 @@ and learning embeddings for complementary item retrieval.
 
 ### Results
 
-Results from  using Polyvore, the `nondisjoint` subset, the `test` split, and
-precomputed embeddings. Metric values are on a 0–1 scale, rounded to four
-decimal places; means the metric does not apply to that task.
+Results on Polyvore, subset `nondisjoint`, split `test`, with precomputed
+embeddings. Metrics use a 0–1 scale, rounded to four decimal places.
 
-| Metric / run detail | CP  | CIR FITB  |
-|---|---:|---:|
-| Checkpoint epoch | 76 | 19 |
-| Evaluated examples | 20000 | 10000 |
-| Accuracy | 0.8478 | — |
-| Precision | 0.9489 | — |
-| Recall | 0.7352 | — |
-| F1 | 0.8285 | — |
-| ROC AUC | 0.9513 | — |
-| FITB accuracy | — | 0.6807 |
-| MRR | — | 0.8169 |
-| Recall@2 | — | 0.8782 |
+| Metric / run detail | CP |
+|---|---:|
+| Checkpoint epoch | 76 |
+| Evaluated examples | 20000 |
+| Accuracy | 0.8478 |
+| Precision | 0.9489 |
+| Recall | 0.7352 |
+| F1 | 0.8285 |
+| ROC AUC | 0.9513 |
+
+| Metric / run detail | CIR FITB |
+|---|---:|
+| Checkpoint epoch | 19 |
+| Evaluated examples | 10000 |
+| FITB accuracy | 0.6807 |
+| MRR | 0.8169 |
+| Recall@2 | 0.8782 |
+
+CIR tests were run without `category_emb`.
 
 
 ### Overview
@@ -410,22 +416,28 @@ apprendere embedding per il retrieval di articoli complementari.
 
 ### Risultati
 
-Risultati dei report  ottenuti su Polyvore, subset `nondisjoint`, split `test`, con embedding
-precomputati. Le metriche sono espresse su scala 0–1 e arrotondate a quattro
-cifre decimali; indica una metrica non applicabile al task.
+Risultati su Polyvore, subset `nondisjoint`, split `test`, con embedding
+precomputati. Metriche su scala 0–1, arrotondate a quattro cifre decimali.
 
-| Metrica / dettaglio esecuzione | CP | CIR FITB |
-|---|---:|---:|
-| Epoca del checkpoint | 76 | 19 |
-| Esempi valutati | 20000 | 10000 |
-| Accuracy | 0.8478 | — |
-| Precision | 0.9489 | — |
-| Recall | 0.7352 | — |
-| F1 | 0.8285 | — |
-| ROC AUC | 0.9513 | — |
-| FITB accuracy | — | 0.6807 |
-| MRR | — | 0.8169 |
-| Recall@2 | — | 0.8782 |
+| Metrica / dettaglio esecuzione | CP |
+|---|---:|
+| Epoca del checkpoint | 76 |
+| Esempi valutati | 20000 |
+| Accuracy | 0.8478 |
+| Precision | 0.9489 |
+| Recall | 0.7352 |
+| F1 | 0.8285 |
+| ROC AUC | 0.9513 |
+
+| Metrica / dettaglio esecuzione | CIR FITB |
+|---|---:|
+| Epoca del checkpoint | 19 |
+| Esempi valutati | 10000 |
+| FITB accuracy | 0.6807 |
+| MRR | 0.8169 |
+| Recall@2 | 0.8782 |
+
+I test CIR sono stati eseguiti senza `category_emb`.
 
 
 ### Panoramica
