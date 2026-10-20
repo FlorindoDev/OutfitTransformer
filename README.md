@@ -114,6 +114,14 @@ flowchart TD
     O["L2-normalized CIR token<br/>[task_emb | embed_emb]<br/>+ optional category_emb"] --> Q["Encoder-only CIR Transformer<br/>6 layers · 16 heads"]
     H --> Q
     Q --> R["Query/item embedding → In-batch Triplet Margin Loss<br/>and FITB ranking"]
+
+    classDef processing fill:#d5f5e3,stroke:#1e8449,color:#17202a;
+    classDef input fill:#eeeeee,stroke:#616a6b,color:#17202a;
+    classDef loss fill:#f9e79f,stroke:#9a7d0a,color:#17202a;
+
+    class B,C,D,E,F,G,H,K,L,M,O,Q processing;
+    class A,P input;
+    class N,R loss;
 ```
 
 For details on the internal flow, see [shared embeddings](model/common/README.md),
@@ -499,6 +507,14 @@ flowchart TD
     O["CIR token normalizzato L2<br/>[task_emb | embed_emb]<br/>+ category_emb opzionale"] --> Q["Transformer CIR encoder-only<br/>6 layer · 16 teste"]
     H --> Q
     Q --> R["Query/item embedding → In-batch Triplet Margin Loss<br/>e ranking FITB"]
+
+    classDef processing fill:#d5f5e3,stroke:#1e8449,color:#17202a;
+    classDef input fill:#eeeeee,stroke:#616a6b,color:#17202a;
+    classDef loss fill:#f9e79f,stroke:#9a7d0a,color:#17202a;
+
+    class B,C,D,E,F,G,H,K,L,M,O,Q processing;
+    class A,P input;
+    class N,R loss;
 ```
 
 Per approfondire il flusso interno: [embedding common](model/common/README.md),
