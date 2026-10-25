@@ -32,8 +32,11 @@ and learning embeddings for complementary item retrieval.
 
 ### Results
 
-Results on Polyvore, subset `nondisjoint`, split `test`, with precomputed
-embeddings. Metrics use a 0–1 scale, rounded to four decimal places.
+Results on Polyvore, split `test`, with precomputed embeddings, grouped by
+`nondisjoint` and `disjoint` subsets. Metrics use a 0–1 scale, rounded to four
+decimal places.
+
+#### Nondisjoint
 
 | Metric / run detail | CP |
 |---|---:|
@@ -55,6 +58,27 @@ embeddings. Metrics use a 0–1 scale, rounded to four decimal places.
 
 CIR tests were run without `category_emb`.
 
+#### Disjoint
+
+| Metric / run detail | CP |
+|---|---:|
+| Checkpoint epoch | 76 |
+| Evaluated examples | 30290 |
+| Accuracy | 0.6904 |
+| Precision | 0.9816 |
+| Recall | 0.3880 |
+| F1 | 0.5561 |
+| ROC AUC | 0.9202 |
+
+| Metric / run detail | CIR FITB |
+|---|---:|
+| Checkpoint epoch | 22 |
+| Evaluated examples | 15145 |
+| FITB accuracy | 0.6640 |
+| MRR | 0.8063 |
+| Recall@2 | 0.8664 |
+
+CIR tests were run without `category_emb`.
 
 ### Overview
 
@@ -424,8 +448,11 @@ apprendere embedding per il retrieval di articoli complementari.
 
 ### Risultati
 
-Risultati su Polyvore, subset `nondisjoint`, split `test`, con embedding
-precomputati. Metriche su scala 0–1, arrotondate a quattro cifre decimali.
+Risultati su Polyvore, split `test`, con embedding precomputati, suddivisi per
+subset `nondisjoint` e `disjoint`. Metriche su scala 0–1, arrotondate a quattro
+cifre decimali.
+
+#### Nondisjoint
 
 | Metrica / dettaglio esecuzione | CP |
 |---|---:|
@@ -444,6 +471,28 @@ precomputati. Metriche su scala 0–1, arrotondate a quattro cifre decimali.
 | FITB accuracy | 0.6807 |
 | MRR | 0.8169 |
 | Recall@2 | 0.8782 |
+
+I test CIR sono stati eseguiti senza `category_emb`.
+
+#### Disjoint
+
+| Metrica / dettaglio esecuzione | CP |
+|---|---:|
+| Epoca del checkpoint | 76 |
+| Esempi valutati | 30290 |
+| Accuracy | 0.6904 |
+| Precision | 0.9816 |
+| Recall | 0.3880 |
+| F1 | 0.5561 |
+| ROC AUC | 0.9202 |
+
+| Metrica / dettaglio esecuzione | CIR FITB |
+|---|---:|
+| Epoca del checkpoint | 22 |
+| Esempi valutati | 15145 |
+| FITB accuracy | 0.6640 |
+| MRR | 0.8063 |
+| Recall@2 | 0.8664 |
 
 I test CIR sono stati eseguiti senza `category_emb`.
 
