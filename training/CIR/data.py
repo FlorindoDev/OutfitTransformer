@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Sized
 from dataclasses import dataclass
 from pathlib import Path
@@ -436,6 +437,36 @@ def _require_matching_fingerprints(
         raise ValueError(
             "train and validation embedding caches use different models"
         )
+
+
+def build_progressive_query_views(
+    partial_outfits: tuple[Any, ...],
+) -> tuple[tuple[Any, ...], tuple[int, ...]]:
+    """Keep the original query and remove one random item for up to two views.
+
+    Return nested, non-empty contexts and their original batch indices.
+    Raw item tuples and precomputed tensors use the same sampling rule.
+    """
+    if not partial_outfits:
+        raise ValueError("partial_outfits cannot be empty")
+    views: list[Any] = []
+    positive_indices: list[int] = []
+    for positive_index, outfit in enumerate(partial_outfits):
+        if len(outfit) == 0:
+            raise ValueError("partial outfits must contain at least one item")
+        query = outfit
+        for level in range(min(3, len(outfit))):
+            if level:
+                removed_index = random.randrange(len(query))
+                before, after = query[:removed_index], query[removed_index + 1:]
+                query = (
+                    torch.cat((before, after), dim=0)
+                    if isinstance(query, Tensor)
+                    else before + after
+                )
+            views.append(query)
+            positive_indices.append(positive_index)
+    return tuple(views), tuple(positive_indices)
 
 
 def as_single_item_outfits(items: tuple[Any, ...]) -> tuple[Any, ...]:

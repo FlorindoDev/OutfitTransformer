@@ -5,6 +5,7 @@ from .CIR import (
     InBatchTripletMarginLoss,
     POLYVORE_CATEGORIES,
     PolyvoreCategoryEmbedding,
+    ProgressiveInBatchTripletMarginLoss,
     RetrievalEmbeddingHead,
 )
 from .common import (
@@ -63,6 +64,7 @@ __all__ = [
     "OpenRouterVisualEncoder",
     "POLYVORE_CATEGORIES",
     "PolyvoreCategoryEmbedding",
+    "ProgressiveInBatchTripletMarginLoss",
     "ResNet18VisualEncoder",
     "RetrievalEmbeddingHead",
     "SentenceTransformerTextEncoder",

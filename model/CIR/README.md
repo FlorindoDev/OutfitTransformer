@@ -20,6 +20,7 @@
 | `transformer.py` | Costruisce il token CIR e produce gli embedding degli outfit parziali e dei singoli item. |
 | `head.py` | Proietta query e item nello stesso spazio vettoriale. |
 | `in_batch_triplet_margin_loss.py` | Calcola la triplet margin loss usando i negativi presenti nel batch. |
+| `progressive_in_batch_triplet_margin_loss.py` | Media della stessa penalità Triplet su più contesti per outfit, con un unico positivo condiviso. |
 | `__init__.py` | Espone l'API pubblica del package CIR. |
 
 ## Scopo
@@ -355,6 +356,29 @@ negativo. Inoltre, «negativo» significa soltanto «non è la risposta associat
 questa riga»: due prodotti duplicati o due capi comunque compatibili possono
 creare un falso negativo, motivo per cui composizione e pulizia del batch sono
 responsabilità del futuro training CIR.
+
+### Loss progressiva opzionale
+
+`ProgressiveInBatchTripletMarginLoss` usa la stessa distanza euclidea, margine e
+scelta dell'hardest negative di `InBatchTripletMarginLoss`. Riceve:
+
+- `query_embeddings`: `[Q, D]`, tutte le viste valide degli outfit;
+- `positive_embeddings`: `[B, D]`, un solo positivo per outfit;
+- `query_positive_indices`: `[Q]`, tensore `torch.long` sullo stesso device che
+  associa ogni query alla riga del suo positivo.
+
+Per esempio, tre viste del primo outfit e una del secondo usano indici
+`[0, 0, 0, 1]`. Il negativo viene scelto tra i `B - 1` target degli altri outfit,
+senza duplicare i positivi per ogni vista. Servono almeno due target e ogni
+target deve avere almeno una query. La media avviene prima tra le viste dello
+stesso outfit, poi tra gli outfit con `reduction="mean"`; `"sum"` somma le medie
+per outfit e `"none"` restituisce un vettore `[B]`.
+
+La loss lavora sugli embedding; costruzione dei contesti e numero di viste
+restano nel trainer. Il flag `--progressive-triplet-loss` nel
+[training CIR](../../training/CIR/README.md#loss-metriche-e-best-model) genera
+fino a tre contesti annidati mantenendo lo stesso target e la stessa categoria.
+La loss standard rimane il default; il protocollo FITB di valutazione non cambia.
 
 ## Condivisione con CP
 

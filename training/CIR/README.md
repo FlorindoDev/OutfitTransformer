@@ -17,7 +17,8 @@
 - [Artefatti](#artefatti)
 
 Training CIR legge gli outfit completi e sceglie un capo casuale come target a
-ogni accesso. Ottimizza la Triplet Margin Loss con negativi in-batch; la
+ogni accesso. Ottimizza per default la Triplet Margin Loss con negativi in-batch;
+`--progressive-triplet-loss` usa la media su contesti progressivamente ridotti. La
 validation usa le domande FITB fisse e ordina positivo e tre distrattori
 ufficiali. Il best checkpoint usa sempre `val_fitb_accuracy`.
 
@@ -202,6 +203,7 @@ aggiuntiva; restano le normalizzazioni interne dei suoi layer.
 | `--learning-rate` | `2e-5` | LR massimo OneCycleLR e LR AdamW. |
 | `--weight-decay` | `0.01` | Weight decay AdamW esplicito. |
 | `--triplet-margin` | `2.0` | Distanza minima richiesta tra positivo e hardest negative. |
+| `--progressive-triplet-loss` | disabilitato | Media della Triplet su fino a tre contesti dello stesso outfit, togliendo ogni volta un capo e mantenendo fisso il target. |
 | `--loss-reduction` | `mean` | Aggrega loss per microbatch con `mean` o `sum`. |
 | `--retrieval-embedding-dim` | `128` | Dimensione finale condivisa da query e item. |
 | `--normalize-embeddings` | disabilitato | Applica normalizzazione L2 agli embedding finali. |
@@ -314,6 +316,43 @@ righe del microbatch. Hardest negative viene scelto dentro microbatch da 64, non
 nel batch accumulato da 256. Accumulo riduce memoria, ma non amplia pool negativi.
 Ultimo gruppo incompleto di accumulo usa scala corretta; ultimo microbatch train
 con meno di 64 elementi viene scartato per garantire almeno un negativo.
+
+Con `--progressive-triplet-loss`, il trainer mantiene lo stesso target per tutte
+le viste di un esempio. Parte dal contesto restituito dal dataset e toglie un
+capo casuale alla volta, per un massimo di due rimozioni aggiuntive. Le viste
+sono annidate e non contengono mai il target:
+
+```text
+Outfit completo: maglia + pantaloni + borsa + scarpe
+Vista 1: maglia + pantaloni + borsa -> scarpe
+Vista 2: maglia + pantaloni         -> scarpe
+Vista 3: maglia                    -> scarpe
+
+loss_outfit = (Triplet(vista_1) + Triplet(vista_2) + Triplet(vista_3)) / 3
+```
+
+Con `N` capi nell'outfit completo si usano `min(3, N - 1)` viste: rimane sempre
+almeno un capo visibile. Per ogni outfit si fa la media soltanto delle sue viste
+valide, poi `--loss-reduction` applica `mean` o `sum` tra gli outfit. In questo
+modo gli outfit corti hanno lo stesso peso di quelli lunghi.
+
+Il modello elabora tutte le query in un solo forward e calcola ogni positivo
+una sola volta. Le viste condividono la categoria target e confrontano ciascuna
+il proprio positivo con i positivi degli altri outfit del microbatch. Le viste
+dello stesso outfit non diventano negativi reciproci. Il target può cambiare al
+successivo accesso al dataset, come nel training predefinito.
+
+Il flag funziona con input raw e precomputed; le cache esistenti restano valide.
+Il nome della loss e il flag vengono salvati nella configurazione e nei
+checkpoint. Le viste aggiuntive aumentano il lavoro del ramo query e possono
+richiedere un microbatch più piccolo. Esempio con cache FashionCLIP predefinita:
+
+```bash
+python -m training.CIR.train_cir --precomputed --progressive-triplet-loss --checkpoint-dir checkpoints/nondisjoint/cir_precomputed_progressive
+```
+
+Per la loss standard basta omettere il flag. Validation e test mantengono una
+sola query FITB ufficiale per esempio, anche con la loss progressiva attiva.
 
 Validation usa positivo e negativi ufficiali di ogni esempio FITB:
 
@@ -430,6 +469,34 @@ python -m training.CIR.train_cir \
   --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP \
   --checkpoint-dir checkpoints/nondisjoint/cir_marqo
 ```
+
+Embedding Marqo FashionSigLIP precomputati su `nondisjoint`, con categoria target
+e loss progressiva CIR:
+
+```powershell
+python -m training.CIR.train_cir `
+  --precomputed `
+  --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP `
+  --subset nondisjoint `
+  --category-emb `
+  --progressive-triplet-loss `
+  --checkpoint-dir checkpoints/nondisjoint/cir_marqo_category_progressive
+```
+
+```bash
+python -m training.CIR.train_cir \
+  --precomputed \
+  --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP \
+  --subset nondisjoint \
+  --category-emb \
+  --progressive-triplet-loss \
+  --checkpoint-dir checkpoints/nondisjoint/cir_marqo_category_progressive
+```
+
+`--category-emb` indica al CIR la categoria del capo da recuperare;
+`--progressive-triplet-loss` mantiene quel target su fino a tre contesti
+progressivamente ridotti. Sono richieste le cache Marqo `nondisjoint/train` e
+`nondisjoint/validation` sotto la root indicata.
 
 Embedding precomputati con categoria target:
 

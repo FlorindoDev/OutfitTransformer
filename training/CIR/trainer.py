@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from metrics import retrieval_rank
-from model import InBatchTripletMarginLoss
+from model import InBatchTripletMarginLoss, ProgressiveInBatchTripletMarginLoss
 from training.common import (
     copy_checkpoint,
     save_checkpoint,
@@ -38,6 +38,7 @@ from .config import (
 from .data import (
     RetrievalLoaders,
     as_single_item_outfits,
+    build_progressive_query_views,
     flatten_retrieval_candidates,
 )
 from .distributed import DistributedContext
@@ -132,7 +133,12 @@ def train(
     )
     model.to(runtime.device)
     training_model = _wrap_distributed(model, runtime)
-    criterion = InBatchTripletMarginLoss(
+    criterion_type = (
+        ProgressiveInBatchTripletMarginLoss
+        if config.use_progressive_triplet_loss
+        else InBatchTripletMarginLoss
+    )
+    criterion = criterion_type(
         margin=config.triplet_margin,
         reduction=config.loss_reduction,
     )
@@ -298,16 +304,35 @@ def _train_epoch(
             else nullcontext()
         )
         with synchronization:
+            partial_outfits = batch.partial_outfits
+            target_categories = batch.target_categories
+            positive_indices = None
+            if config.use_progressive_triplet_loss:
+                partial_outfits, positive_indices = build_progressive_query_views(
+                    partial_outfits,
+                )
+                target_categories = tuple(
+                    batch.target_categories[index] for index in positive_indices
+                )
             with _autocast(config, runtime.device):
                 query_embeddings, positive_embeddings = model(
-                    batch.partial_outfits,
+                    partial_outfits,
                     as_single_item_outfits(batch.positive_items),
-                    batch.target_categories,
+                    target_categories,
                 )
-            loss = criterion(
-                query_embeddings.float(),
-                positive_embeddings.float(),
-            )
+            if positive_indices is None:
+                loss = criterion(
+                    query_embeddings.float(), positive_embeddings.float(),
+                )
+            else:
+                loss = criterion(
+                    query_embeddings.float(),
+                    positive_embeddings.float(),
+                    torch.tensor(
+                        positive_indices, device=query_embeddings.device,
+                        dtype=torch.long,
+                    ),
+                )
             group_size = _accumulation_group_size(
                 batch_index,
                 batch_count,

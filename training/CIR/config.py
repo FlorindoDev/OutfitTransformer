@@ -56,6 +56,7 @@ class CIRTrainingConfig:
     weight_decay: float = 0.01
     triplet_margin: float = DEFAULT_CIR_CONFIG.triplet_margin
     loss_reduction: LossReduction = "mean"
+    use_progressive_triplet_loss: bool = False
     retrieval_embedding_dim: int = DEFAULT_CIR_CONFIG.embedding_dim
     normalize_embeddings: bool = DEFAULT_CIR_CONFIG.normalize_embeddings
     use_category_embedding: bool = False
@@ -93,6 +94,8 @@ class CIRTrainingConfig:
             raise ValueError("triplet_margin cannot be negative")
         if self.loss_reduction not in {"mean", "sum"}:
             raise ValueError("loss_reduction must be 'mean' or 'sum'")
+        if not isinstance(self.use_progressive_triplet_loss, bool):
+            raise TypeError("use_progressive_triplet_loss must be boolean")
         if self.retrieval_embedding_dim <= 0:
             raise ValueError("retrieval_embedding_dim must be positive")
         if not isinstance(self.normalize_embeddings, bool):
@@ -206,7 +209,12 @@ class CIRTrainingConfig:
                     "final_div_factor": ONE_CYCLE_FINAL_DIV_FACTOR,
                 },
                 "max_grad_norm": MAX_GRAD_NORM,
-                "loss": "InBatchTripletMarginLoss",
+                "loss": (
+                    "ProgressiveInBatchTripletMarginLoss"
+                    if self.use_progressive_triplet_loss
+                    else "InBatchTripletMarginLoss"
+                ),
+                "use_progressive_triplet_loss": self.use_progressive_triplet_loss,
                 "triplet_margin": self.triplet_margin,
                 "loss_reduction": self.loss_reduction,
                 "best_metric": BEST_METRIC,
