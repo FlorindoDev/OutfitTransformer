@@ -1,1 +1,1 @@
-"""Complementary Item Retrieval evaluation on official FITB queries."""
+"""FITB and full-catalog evaluation for Complementary Item Retrieval."""

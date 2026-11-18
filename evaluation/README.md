@@ -12,4 +12,4 @@ viene controllata per dataset, subset, split e dimensione.
 | Task | Modulo | Guida |
 |---|---|---|
 | Compatibility Prediction | `evaluation.CP` | [README CP](CP/README.md) |
-| Complementary Item Retrieval (FITB) | `evaluation.CIR` | [README CIR](CIR/README.md) |
+| Complementary Item Retrieval (FITB e catalogo dello split) | `evaluation.CIR` | [README CIR](CIR/README.md) |

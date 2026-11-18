@@ -5,6 +5,7 @@
 - [Metriche](#metriche)
   - [FITB accuracy e ranking dei candidati](#fitb-accuracy-e-ranking-dei-candidati)
   - [MRR e Recall@2 sull'intero split](#mrr-e-recall2-sullintero-split)
+  - [Recall sull'intero catalogo](#recall-sullintero-catalogo)
 - [Preparazione](#preparazione)
 - [Compatibilita checkpoint](#compatibilita-checkpoint)
 - [Avvio](#avvio)
@@ -30,8 +31,8 @@ restituisce l'accuracy con nome `acc`. Qui la stessa metrica si chiama
 Il [paper OutfitTransformer, sezione 4.3](https://openaccess.thecvf.com/content/WACV2023/papers/Sarkar_OutfitTransformer_Learning_Outfit_Representations_for_Fashion_Recommendation_WACV_2023_paper.pdf)
 riporta anche Recall@10/30/50 per il retrieval su un catalogo di categoria,
 con il protocollo CSA-Net. Servono quel catalogo e quelle query per un confronto
-equivalente. Questo comando valuta FITB: calcolare Recall@10 su quattro
-candidati darebbe sempre 1 e non riprodurrebbe l'esperimento del paper.
+equivalente. La modalità `--full-catalog` usa le query FITB e il catalogo
+Polyvore dello split selezionato.
 
 ### FITB accuracy e ranking dei candidati
 
@@ -99,6 +100,35 @@ I rank vengono raccolti per tutte le query prima di calcolare le metriche.
 Ogni query pesa allo stesso modo, incluso l'ultimo batch incompleto. Cambiare
 dimensione dei batch non cambia la definizione del ranking; piccole differenze
 numeriche possono dipendere dal device e dai kernel PyTorch.
+
+### Recall sull'intero catalogo
+
+Con `--full-catalog` ogni query ufficiale FITB cerca il capo corretto tra
+tutti gli item unici del subset e dello split richiesti, compresi gli item
+dell'outfit parziale. La ricerca usa la distanza euclidea senza filtri di
+categoria. Se il checkpoint usa la categoria target, questa continua a
+condizionare l'embedding della query.
+
+Ogni item del catalogo viene codificato una sola volta. Il report contiene
+Recall@1, Recall@2, Recall@10, Recall@30, Recall@50 e Recall@100. Ogni
+Recall@K misura la frazione di query in cui il capo corretto rientra nei
+primi K risultati. Il report include anche il MRR (`mrr`), la media
+dell'inverso del rank del capo corretto. A parità di distanza, gli altri
+capi precedono il positivo.
+
+Per i checkpoint `precomputed` serve una cache che copra tutti gli item
+dello split. Il controllo di copertura usa gli ID delle annotazioni degli
+outfit, quindi la valutazione può usare la cache locale senza leggere le
+immagini. `--candidate-batch-size` limita la codifica degli item e
+`--batch-size` limita il numero di query confrontate insieme con il catalogo.
+
+```bash
+python -m evaluation.CIR.evaluate_cir --checkpoint checkpoints/nondisjoint/cir_precomputed/best.pt --split test --full-catalog
+```
+
+Il report usa il protocollo `polyvore_full_catalog`, indica il numero di
+query (`examples`) e la dimensione del catalogo (`catalog_items`) in
+`metrics`. Il nome predefinito è `<checkpoint>_<split>_full_catalog.json`.
 
 ## Preparazione
 
@@ -204,6 +234,7 @@ python -m evaluation.CIR.evaluate_cir \
 |---|---|---|
 | `--checkpoint` | richiesto | Checkpoint schema v1 prodotto dal training CIR. |
 | `--split` | `test` | Split `test` o `validation`. |
+| `--full-catalog` | disabilitato | Calcola il recall sul catalogo completo dello split. |
 | `--embedding-root` | valore checkpoint | Sovrascrive root cache embedding. |
 | `--dataset-root` | valore checkpoint o `datasets/polyvore-outfits` | Cerca qui annotazioni e dati prima del fallback Hugging Face. |
 | `--output` | derivato dal checkpoint | Percorso JSON del report. |
@@ -226,7 +257,7 @@ Senza `--output`, il report viene scritto in:
 results/cir/<dataset>/<subset>/<directory-checkpoint>/<checkpoint>_<split>.json
 ```
 
-Il JSON contiene identità checkpoint, epoca, dataset, feature mode, uso delle
+Il JSON FITB contiene identità checkpoint, epoca, dataset, feature mode, uso delle
 categorie, protocollo `polyvore_fitb`, distanza, gestione delle parità e
 `metrics` con `fitb_accuracy`, `mrr`, `recall_at_2`, `examples`.
 Scrittura atomica: il report precedente non resta parziale in caso di errore.

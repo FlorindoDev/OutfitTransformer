@@ -10,7 +10,7 @@ from data import DataSplit
 
 @dataclass(frozen=True)
 class CIREvaluationConfig:
-    """Validated runtime settings for one CIR FITB evaluation."""
+    """Validated runtime settings for one CIR evaluation."""
 
     checkpoint: Path
     split: DataSplit = DataSplit.TEST
@@ -25,6 +25,7 @@ class CIREvaluationConfig:
     pin_memory: bool = False
     device: str = "auto"
     log_every: int = 10
+    full_catalog: bool = False
 
     def validate(self) -> None:
         if not self.checkpoint.is_file():

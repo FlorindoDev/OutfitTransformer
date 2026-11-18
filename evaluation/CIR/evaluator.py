@@ -1,4 +1,4 @@
-"""Inference loop and report model for CIR FITB evaluation."""
+"""Inference loops and report models for CIR evaluation."""
 
 from __future__ import annotations
 
@@ -11,11 +11,19 @@ from typing import Any, Protocol
 import torch
 from torch import Tensor
 
-from data import DataSplit
-from metrics import RetrievalMetrics, retrieval_metrics, retrieval_rank
+from data import DataSplit, ItemBatch
+from metrics import (
+    RetrievalMetrics,
+    mean_reciprocal_rank,
+    recall_at_k,
+    retrieval_metrics,
+    retrieval_rank,
+)
 from training.CIR import CIRTrainingModel
 from training.CIR.data import as_single_item_outfits, flatten_retrieval_candidates
 from training.common.features import FeatureMode
+
+from .catalog_data import CatalogLoaders
 
 LOGGER = logging.getLogger("evaluation.CIR")
 
@@ -29,8 +37,26 @@ class BatchLoader(Protocol):
 
 
 @dataclass(frozen=True)
+class CatalogRetrievalMetrics:
+    """Recall and mean reciprocal rank across the evaluated catalog."""
+
+    recall: dict[int, float]
+    mrr: float
+    examples: int
+    catalog_items: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "examples": self.examples,
+            "catalog_items": self.catalog_items,
+            "mrr": self.mrr,
+            **{f"recall_at_{k}": value for k, value in self.recall.items()},
+        }
+
+
+@dataclass(frozen=True)
 class CIREvaluationResult:
-    """Serializable summary of one checkpoint's FITB evaluation."""
+    """Serializable summary of one checkpoint's CIR evaluation."""
 
     checkpoint: Path
     checkpoint_epoch: int
@@ -41,7 +67,13 @@ class CIREvaluationResult:
     subset: str
     feature_mode: FeatureMode
     use_category_embedding: bool
-    metrics: RetrievalMetrics
+    metrics: RetrievalMetrics | CatalogRetrievalMetrics
+
+    @property
+    def protocol(self) -> str:
+        if isinstance(self.metrics, CatalogRetrievalMetrics):
+            return "polyvore_full_catalog"
+        return "polyvore_fitb"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -53,7 +85,7 @@ class CIREvaluationResult:
             "subset": self.subset,
             "feature_mode": self.feature_mode.value,
             "use_category_embedding": self.use_category_embedding,
-            "protocol": "polyvore_fitb",
+            "protocol": self.protocol,
             "distance": "euclidean",
             "tie_policy": "pessimistic",
             "metrics": self.metrics.as_dict(),
@@ -99,6 +131,72 @@ def evaluate(
             LOGGER.info("batch=%d/%d", batch_index, len(loader))
 
     return retrieval_metrics(torch.tensor(ranks, dtype=torch.long))
+
+
+@torch.inference_mode()
+def evaluate_catalog(
+    model: CIRTrainingModel,
+    loaders: CatalogLoaders,
+    device: torch.device,
+    *,
+    log_every: int = 10,
+) -> CatalogRetrievalMetrics:
+    """Encode each catalog item once and rank the relevant item for every query."""
+    if log_every <= 0:
+        raise ValueError("log_every must be positive")
+    if not len(loaders.candidates) or not len(loaders.queries):
+        raise ValueError("catalog evaluation requires candidates and queries")
+
+    model.to(device)
+    model.eval()
+    candidate_embeddings: list[Tensor] = []
+    for batch_index, batch in enumerate(loaders.candidates, start=1):
+        outfits = (
+            batch.as_single_item_outfits() if isinstance(batch, ItemBatch) else batch
+        )
+        values = model.embed_items(outfits)
+        _validate_embeddings(values, len(outfits))
+        candidate_embeddings.append(values.float())
+        if batch_index % log_every == 0 or batch_index == len(loaders.candidates):
+            LOGGER.info("catalog_batch=%d/%d", batch_index, len(loaders.candidates))
+    catalog = torch.cat(candidate_embeddings)
+    del candidate_embeddings
+    index_by_id = {item_id: index for index, item_id in enumerate(loaders.item_ids)}
+
+    ranks: list[Tensor] = []
+    for batch_index, batch in enumerate(loaders.queries, start=1):
+        outfits = tuple(
+            outfit.model_items if isinstance(outfit, ItemBatch) else outfit
+            for outfit in batch.outfits
+        )
+        queries = model.embed_queries(outfits, batch.target_categories)
+        _validate_embeddings(queries, len(outfits))
+        positive_indices = torch.tensor(
+            [[index_by_id[item_id]] for item_id in batch.positive_item_ids],
+            device=queries.device,
+        )
+        ranks.append(_catalog_ranks(queries.float(), catalog, positive_indices).cpu())
+        if batch_index % log_every == 0 or batch_index == len(loaders.queries):
+            LOGGER.info("query_batch=%d/%d", batch_index, len(loaders.queries))
+
+    all_ranks = torch.cat(ranks)
+    return CatalogRetrievalMetrics(
+        recall={k: recall_at_k(all_ranks, k) for k in (1, 2, 10, 30, 50, 100)},
+        mrr=mean_reciprocal_rank(all_ranks),
+        examples=all_ranks.numel(),
+        catalog_items=len(loaders.item_ids),
+    )
+
+
+def _catalog_ranks(queries: Tensor, catalog: Tensor, positive_indices: Tensor) -> Tensor:
+    if queries.shape[1] != catalog.shape[1]:
+        raise ValueError("query and candidate embedding dimensions must match")
+    distances = torch.cdist(queries, catalog)
+    if not bool(torch.isfinite(distances).all()):
+        raise ValueError("catalog distances must contain only finite values")
+    positive_distances = distances.gather(1, positive_indices)
+    # The count includes the positive itself and puts tied competitors ahead of it.
+    return (distances <= positive_distances).sum(dim=1)
 
 
 def _embed_candidates(

@@ -11,9 +11,10 @@ from data import DataSplit, get_dataset_source
 from training.CIR.data import RetrievalDataConfig, build_retrieval_loader
 from training.common import resolve_device, seed_everything, write_json
 
+from .catalog_data import build_catalog_loaders
 from .checkpoint import load_cir_checkpoint, restore_cir_model
 from .config import CIREvaluationConfig
-from .evaluator import CIREvaluationResult, evaluate
+from .evaluator import CIREvaluationResult, evaluate, evaluate_catalog
 
 LOGGER = logging.getLogger("evaluation.CIR")
 
@@ -23,7 +24,7 @@ def run(
     *,
     token: bool | str | None = True,
 ) -> CIREvaluationResult:
-    """Restore one checkpoint, evaluate one FITB split and save its report."""
+    """Restore one checkpoint, evaluate the chosen protocol and save its report."""
     config.validate()
     seed_everything(config.seed)
     device = resolve_device(config.device)
@@ -49,16 +50,26 @@ def run(
         distributed=False,
         model_config=checkpoint.model_config,
     )
-    loader = build_retrieval_loader(data_config, split=config.split, token=token)
-    metrics = evaluate(
-        model,
-        loader,
-        device,
-        candidate_batch_size=config.candidate_batch_size,
-        log_every=config.log_every,
-    )
+    if config.full_catalog:
+        loaders = build_catalog_loaders(
+            data_config,
+            split=config.split,
+            candidate_batch_size=config.candidate_batch_size,
+            token=token,
+        )
+        metrics = evaluate_catalog(model, loaders, device, log_every=config.log_every)
+    else:
+        loader = build_retrieval_loader(data_config, split=config.split, token=token)
+        metrics = evaluate(
+            model,
+            loader,
+            device,
+            candidate_batch_size=config.candidate_batch_size,
+            log_every=config.log_every,
+        )
     output_path = config.output_path or _default_output_path(
         checkpoint.path, checkpoint.dataset_name, checkpoint.subset, config.split,
+        full_catalog=config.full_catalog,
     )
     result = CIREvaluationResult(
         checkpoint=checkpoint.path,
@@ -80,7 +91,7 @@ def parse_args(
     argv: Sequence[str] | None = None,
 ) -> tuple[CIREvaluationConfig, bool | str | None]:
     parser = argparse.ArgumentParser(
-        description="Evaluate an OutfitTransformer CIR checkpoint on official FITB queries."
+        description="Evaluate a CIR checkpoint on FITB or full-catalog retrieval."
     )
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument(
@@ -94,6 +105,11 @@ def parse_args(
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--batch-size", type=int, default=512)
     parser.add_argument("--candidate-batch-size", type=int, default=512)
+    parser.add_argument(
+        "--full-catalog",
+        action="store_true",
+        help="rank all items in the selected split for each official FITB query",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--pin-memory", action="store_true")
@@ -118,6 +134,7 @@ def parse_args(
         pin_memory=arguments.pin_memory,
         device=arguments.device,
         log_every=arguments.log_every,
+        full_catalog=arguments.full_catalog,
     )
     config.validate()
     token: bool | str | None = (
@@ -131,15 +148,18 @@ def _default_output_path(
     dataset_name: str,
     subset: str,
     split: DataSplit,
+    *,
+    full_catalog: bool = False,
 ) -> Path:
     run_name = (
         checkpoint.parent.parent.name
         if checkpoint.parent.name == "epochs"
         else checkpoint.parent.name
     )
+    protocol_suffix = "_full_catalog" if full_catalog else ""
     return (
         Path("results") / "cir" / dataset_name / subset / run_name
-        / f"{checkpoint.stem}_{split.value}.json"
+        / f"{checkpoint.stem}_{split.value}{protocol_suffix}.json"
     )
 
 
@@ -151,13 +171,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     config, token = parse_args(argv)
     result = run(config, token=token)
     LOGGER.info(
-        "evaluation_complete protocol=polyvore_fitb split=%s examples=%d "
-        "fitb_accuracy=%.4f mrr=%.4f recall_at_2=%.4f output=%s",
+        "evaluation_complete protocol=%s split=%s metrics=%s output=%s",
+        result.protocol,
         result.split.value,
-        result.metrics.examples,
-        result.metrics.fitb_accuracy,
-        result.metrics.mrr,
-        result.metrics.recall_at_2,
+        result.metrics.as_dict(),
         result.output_path,
     )
     return 0
