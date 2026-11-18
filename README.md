@@ -16,6 +16,7 @@ and learning embeddings for complementary item retrieval.
 ### Contents
 
 - [Results](#results)
+  - [CIR with category embeddings and progressive loss](#cir-with-category-embeddings-and-progressive-loss)
 - [Overview](#overview)
 - [Modules](#modules)
 - [Architecture](#architecture)
@@ -40,7 +41,15 @@ decimal places.
 
 | Metric / run detail | CP |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Evaluated split | `test` |
+| Precomputed embeddings | FashionCLIP |
+| CP loss | Binary Focal |
+| Target category (`category_emb`) | Not applicable |
+| Initialized from CP | Not applicable |
 | Checkpoint epoch | 76 |
+| Epoch selection criterion | Highest ROC AUC on validation: 0.9518 |
 | Evaluated examples | 20000 |
 | Accuracy | 0.8478 |
 | Precision | 0.9489 |
@@ -50,19 +59,33 @@ decimal places.
 
 | Metric / run detail | CIR FITB |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Evaluated split | `test` |
+| Precomputed embeddings | FashionCLIP |
+| CIR loss | Triplet |
+| Target category (`category_emb`) | Disabled |
+| Initialized from CP | Yes |
 | Checkpoint epoch | 19 |
+| Epoch selection criterion | Highest FITB accuracy on validation: 0.6830 |
 | Evaluated examples | 10000 |
 | FITB accuracy | 0.6807 |
 | MRR | 0.8169 |
 | Recall@2 | 0.8782 |
 
-CIR tests were run without `category_emb`.
-
 #### Disjoint
 
 | Metric / run detail | CP |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `disjoint` |
+| Evaluated split | `test` |
+| Precomputed embeddings | FashionCLIP |
+| CP loss | Binary Focal |
+| Target category (`category_emb`) | Not applicable |
+| Initialized from CP | Not applicable |
 | Checkpoint epoch | 76 |
+| Epoch selection criterion | Highest ROC AUC on validation: 0.9339 |
 | Evaluated examples | 30290 |
 | Accuracy | 0.6904 |
 | Precision | 0.9816 |
@@ -72,13 +95,44 @@ CIR tests were run without `category_emb`.
 
 | Metric / run detail | CIR FITB |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `disjoint` |
+| Evaluated split | `test` |
+| Precomputed embeddings | FashionCLIP |
+| CIR loss | Triplet |
+| Target category (`category_emb`) | Disabled |
+| Initialized from CP | Yes |
 | Checkpoint epoch | 22 |
+| Epoch selection criterion | Highest FITB accuracy on validation: 0.6723 |
 | Evaluated examples | 15145 |
 | FITB accuracy | 0.6640 |
 | MRR | 0.8063 |
 | Recall@2 | 0.8664 |
 
-CIR tests were run without `category_emb`.
+#### CIR with category embeddings and progressive loss
+
+| Metric / run detail | CIR FITB |
+|---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Evaluated split | `test` |
+| Precomputed embeddings | FashionCLIP |
+| CIR loss | Progressive Triplet |
+| Target category (`category_emb`) | Enabled |
+| Initialized from CP | Yes |
+| Checkpoint epoch | 55 |
+| Epoch selection criterion | Highest Recall@2 on validation: 0.8920 |
+| Evaluated examples | 10000 |
+| FITB accuracy | 0.7046 |
+| MRR | 0.8314 |
+| Recall@2 | 0.8912 |
+
+Progressive Triplet averages the loss over up to three versions of the same
+outfit, removing one context item at a time and always predicting the same
+target item. At least one context item remains visible.
+The FITB test asks the model to choose the missing item among four candidates:
+one correct item and three distractors. FITB accuracy measures first-place
+answers; Recall@2 measures answers in the first two positions.
 
 ### Overview
 
@@ -433,6 +487,7 @@ apprendere embedding per il retrieval di articoli complementari.
 ### Indice
 
 - [Risultati](#risultati)
+  - [CIR con categoria target e loss progressiva](#cir-con-categoria-target-e-loss-progressiva)
 - [Panoramica](#panoramica)
 - [Moduli](#moduli)
 - [Architettura generale](#architettura-generale)
@@ -456,7 +511,15 @@ cifre decimali.
 
 | Metrica / dettaglio esecuzione | CP |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Split valutato | `test` |
+| Embedding precomputati | FashionCLIP |
+| Loss CP | Focal binaria |
+| Categoria del capo cercato (`category_emb`) | Non applicabile |
+| Inizializzazione da CP | Non applicabile |
 | Epoca del checkpoint | 76 |
+| Criterio di scelta dell'epoca | Migliore ROC AUC su validation: 0.9518 |
 | Esempi valutati | 20000 |
 | Accuracy | 0.8478 |
 | Precision | 0.9489 |
@@ -466,19 +529,33 @@ cifre decimali.
 
 | Metrica / dettaglio esecuzione | CIR FITB |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Split valutato | `test` |
+| Embedding precomputati | FashionCLIP |
+| Loss CIR | Triplet |
+| Categoria del capo cercato (`category_emb`) | Disattivata |
+| Inizializzazione da CP | Sì |
 | Epoca del checkpoint | 19 |
+| Criterio di scelta dell'epoca | Migliore FITB accuracy su validation: 0.6830 |
 | Esempi valutati | 10000 |
 | FITB accuracy | 0.6807 |
 | MRR | 0.8169 |
 | Recall@2 | 0.8782 |
 
-I test CIR sono stati eseguiti senza `category_emb`.
-
 #### Disjoint
 
 | Metrica / dettaglio esecuzione | CP |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `disjoint` |
+| Split valutato | `test` |
+| Embedding precomputati | FashionCLIP |
+| Loss CP | Focal binaria |
+| Categoria del capo cercato (`category_emb`) | Non applicabile |
+| Inizializzazione da CP | Non applicabile |
 | Epoca del checkpoint | 76 |
+| Criterio di scelta dell'epoca | Migliore ROC AUC su validation: 0.9339 |
 | Esempi valutati | 30290 |
 | Accuracy | 0.6904 |
 | Precision | 0.9816 |
@@ -488,14 +565,44 @@ I test CIR sono stati eseguiti senza `category_emb`.
 
 | Metrica / dettaglio esecuzione | CIR FITB |
 |---|---:|
+| Dataset | Polyvore |
+| Subset | `disjoint` |
+| Split valutato | `test` |
+| Embedding precomputati | FashionCLIP |
+| Loss CIR | Triplet |
+| Categoria del capo cercato (`category_emb`) | Disattivata |
+| Inizializzazione da CP | Sì |
 | Epoca del checkpoint | 22 |
+| Criterio di scelta dell'epoca | Migliore FITB accuracy su validation: 0.6723 |
 | Esempi valutati | 15145 |
 | FITB accuracy | 0.6640 |
 | MRR | 0.8063 |
 | Recall@2 | 0.8664 |
 
-I test CIR sono stati eseguiti senza `category_emb`.
+#### CIR con categoria target e loss progressiva
 
+| Metrica / dettaglio esecuzione | CIR FITB |
+|---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Split valutato | `test` |
+| Embedding precomputati | FashionCLIP |
+| Loss CIR | Triplet progressiva |
+| Categoria del capo cercato (`category_emb`) | Attiva |
+| Inizializzazione da CP | Sì |
+| Epoca del checkpoint | 55 |
+| Criterio di scelta dell'epoca | Migliore Recall@2 su validation: 0.8920 |
+| Esempi valutati | 10000 |
+| FITB accuracy | 0.7046 |
+| MRR | 0.8314 |
+| Recall@2 | 0.8912 |
+
+La Triplet progressiva fa la media della loss su fino a tre versioni dello
+stesso outfit, togliendo un capo dal contesto alla volta e cercando sempre lo
+stesso capo mancante. Rimane visibile almeno un capo del contesto.
+Il test FITB chiede di scegliere il capo mancante tra quattro candidati:
+uno corretto e tre distrattori. FITB accuracy misura le risposte al primo
+posto; Recall@2 quelle nei primi due posti.
 
 ### Panoramica
 
