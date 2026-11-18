@@ -17,6 +17,7 @@ and learning embeddings for complementary item retrieval.
 
 - [Results](#results)
   - [CIR with category embeddings and progressive loss](#cir-with-category-embeddings-and-progressive-loss)
+  - [CIR with category embeddings and Joint loss](#cir-with-category-embeddings-and-joint-loss)
 - [Overview](#overview)
 - [Modules](#modules)
 - [Architecture](#architecture)
@@ -34,8 +35,8 @@ and learning embeddings for complementary item retrieval.
 ### Results
 
 Results on Polyvore, split `test`, with precomputed embeddings, grouped by
-`nondisjoint` and `disjoint` subsets. Metrics use a 0–1 scale, rounded to four
-decimal places.
+`nondisjoint` and `disjoint` subsets. Metrics use a 0–1 scale. The Joint run's
+test Recall@2 is rounded to two decimal places. Other metrics use four.
 
 #### Nondisjoint
 
@@ -133,6 +134,24 @@ target item. At least one context item remains visible.
 The FITB test asks the model to choose the missing item among four candidates:
 one correct item and three distractors. FITB accuracy measures first-place
 answers; Recall@2 measures answers in the first two positions.
+
+#### CIR with category embeddings and Joint loss
+
+| Metric / run detail | CIR FITB |
+|---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Evaluated split | `test` |
+| Precomputed embeddings | FashionCLIP |
+| CIR loss | Joint (InfoNCE + Progressive Triplet, α = 0.5) |
+| Target category (`category_emb`) | Enabled |
+| Initialized from CP | Yes |
+| Checkpoint epoch | 79 |
+| Epoch selection criterion | Highest Recall@2 on validation (0.9024) |
+| Evaluated examples | 10000 |
+| FITB accuracy | 0.7194 |
+| MRR | 0.8404 |
+| Recall@2 | 0.90 |
 
 ### Overview
 
@@ -492,6 +511,7 @@ apprendere embedding per il retrieval di articoli complementari.
 
 - [Risultati](#risultati)
   - [CIR con categoria target e loss progressiva](#cir-con-categoria-target-e-loss-progressiva)
+  - [CIR con categoria target e loss Joint](#cir-con-categoria-target-e-loss-joint)
 - [Panoramica](#panoramica)
 - [Moduli](#moduli)
 - [Architettura generale](#architettura-generale)
@@ -508,8 +528,9 @@ apprendere embedding per il retrieval di articoli complementari.
 ### Risultati
 
 Risultati su Polyvore, split `test`, con embedding precomputati, suddivisi per
-subset `nondisjoint` e `disjoint`. Metriche su scala 0–1, arrotondate a quattro
-cifre decimali.
+subset `nondisjoint` e `disjoint`. Le metriche sono su scala 0–1. Il Recall@2
+su test della run Joint è arrotondato a due cifre decimali. Le altre metriche
+sono riportate a quattro cifre decimali.
 
 #### Nondisjoint
 
@@ -607,6 +628,24 @@ stesso capo mancante. Rimane visibile almeno un capo del contesto.
 Il test FITB chiede di scegliere il capo mancante tra quattro candidati:
 uno corretto e tre distrattori. FITB accuracy misura le risposte al primo
 posto; Recall@2 quelle nei primi due posti.
+
+#### CIR con categoria target e loss Joint
+
+| Metrica / dettaglio esecuzione | CIR FITB |
+|---|---:|
+| Dataset | Polyvore |
+| Subset | `nondisjoint` |
+| Split valutato | `test` |
+| Embedding precomputati | FashionCLIP |
+| Loss CIR | Joint (InfoNCE + Triplet progressiva, α = 0,5) |
+| Categoria del capo cercato (`category_emb`) | Attiva |
+| Inizializzazione da CP | Sì |
+| Epoca del checkpoint | 79 |
+| Criterio di scelta dell'epoca | Migliore Recall@2 su validation (0.9024) |
+| Esempi valutati | 10000 |
+| FITB accuracy | 0.7194 |
+| MRR | 0.8404 |
+| Recall@2 | 0.90 |
 
 ### Panoramica
 
