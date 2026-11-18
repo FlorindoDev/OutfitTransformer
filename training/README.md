@@ -41,7 +41,7 @@ Documentazione collegata: [panoramica del modello](../model/README.md),
 | CP | [`CP/plots.py`](CP/plots.py) | Produce grafici cumulativi dopo ogni epoca. |
 | CP | [`CP/train_cp.py`](CP/train_cp.py) | Avvia run da CLI e collega configurazione, dati, modello e trainer. |
 | CP | [`CP/README.md`](CP/README.md) | Documenta flag, default, preparazione e comandi CP. |
-| CIR | [`CIR/config.py`](CIR/config.py) | Definisce profili, Triplet Loss, categoria opzionale e runtime validato. |
+| CIR | [`CIR/config.py`](CIR/config.py) | Definisce profili, loss selezionabile, categoria opzionale e runtime validato. |
 | CIR | [`CIR/data.py`](CIR/data.py) | Costruisce coppie casuali di training, FITB fissi raw/precomputed e sampler DDP senza duplicati in validation. |
 | CIR | [`CIR/model.py`](CIR/model.py) | Compone rappresentazione common, Transformer CIR e testa retrieval. |
 | CIR | [`CIR/pretraining.py`](CIR/pretraining.py) | Trasferisce `common.*`, Transformer completo e task embedding da CP a CIR. |
@@ -57,7 +57,7 @@ produce una probabilità di compatibilità. Il best checkpoint usa `val_auc` per
 default; può usare anche `val_accuracy` o `val_loss`.
 
 CIR mantiene profili feature e funzioni operative comuni al CP, ma sostituisce
-Focal Loss e metriche binarie con In-batch Triplet Margin Loss e ranking FITB.
+Focal Loss e metriche binarie con una loss di retrieval in-batch e il ranking FITB.
 Il best checkpoint è fisso sulla massima `val_fitb_accuracy`; validation registra
 anche `val_mrr` e `val_recall@2`.
 
@@ -98,7 +98,7 @@ ferma: backbone SentenceBERT in `classic` e `new_classic`; cache in
 
 ```mermaid
 flowchart LR
-    LOSS["In-batch Triplet Margin Loss"] --> HEAD["Testa retrieval condivisa<br/>(128 / 1024 / 1536) → 128"]
+    LOSS["Loss CIR selezionata con --loss"] --> HEAD["Testa retrieval condivisa<br/>(128 / 1024 / 1536) → 128"]
     HEAD --> CIR["Token + Transformer CIR<br/>128 / 1024 / 1536 feature"]
     CIR --> TOKEN["task_emb + embed_emb<br/>+ category_emb opzionale<br/>64 / 512 / 768 valori per embedding"]
     CIR --> COMMON["Normalizzazione + padding common<br/>128 / 1024 / 1536 feature per item"]
@@ -219,14 +219,15 @@ clipping, optimizer step, scheduler step e azzeramento gradienti.
 | Learning rate | `2e-5` | Valore massimo OneCycleLR. |
 | Scheduler | OneCycleLR | Cambia LR dopo ogni optimizer step. |
 | Gradient clipping | `1.0` | Limita norma globale dei gradienti CIR. |
+| `--loss` | `triplet` | Accetta anche `progressiva`, `join` e `infonce`. [Opzioni CIR](CIR/README.md#loss-metriche-e-best-model). |
 | Triplet margin | `2.0` | Distanza minima richiesta tra positivo e hardest negative. |
 | Spazio retrieval | 128 | Dimensione condivisa da query e item; normalizzazione disattiva. |
 
 Loss viene scalata sul numero reale di microbatch accumulati. Training usa
 `drop_last=True`: ultimo microbatch con meno di 64 esempi viene scartato,
 garantendo dimensione piena e negativi in-batch.
-AMP FP16 è opzionale su CUDA; DDP sincronizza gradienti tra processi, mentre
-hardest-negative mining resta locale al singolo processo.
+AMP FP16 è opzionale su CUDA. DDP sincronizza i gradienti tra processi e
+ogni processo calcola la loss sui candidati del proprio microbatch.
 
 ## Validazione e best model CP
 

@@ -2,7 +2,9 @@
 
 from .CIR import (
     ComplementaryItemTransformer,
+    InBatchInfoNCELoss,
     InBatchTripletMarginLoss,
+    JointInBatchRetrievalLoss,
     POLYVORE_CATEGORIES,
     PolyvoreCategoryEmbedding,
     ProgressiveInBatchTripletMarginLoss,
@@ -54,7 +56,9 @@ __all__ = [
     "MarqoFashionSigLIPTextEncoder",
     "MarqoFashionSigLIPVisualEncoder",
     "FocalLoss",
+    "InBatchInfoNCELoss",
     "InBatchTripletMarginLoss",
+    "JointInBatchRetrievalLoss",
     "ModelConfig",
     "MultimodalOutfitEncoder",
     "OutfitEmbeddingBatch",

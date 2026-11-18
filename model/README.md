@@ -11,6 +11,8 @@
 Tutta la configurazione del modello è centralizzata in `common/config.py`:
 Transformer dei task, encoder, focal loss CP, spazio di retrieval e triplet loss CIR
 condividono così un unico punto di accesso e validazione.
+Il flag di training `--loss` seleziona l'obiettivo CIR.
+[Loss CIR](CIR/README.md#calcolo-della-loss).
 
 ## Embedding dei task
 

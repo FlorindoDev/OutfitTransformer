@@ -16,7 +16,7 @@ from training.common.features import (
     FeatureMode,
 )
 
-from .config import CIRTrainingConfig
+from .config import CIR_LOSS_TYPES, CIRTrainingConfig
 from .data import build_retrieval_loaders
 from .distributed import close_distributed, initialize_distributed
 from .model import CIRTrainingModel
@@ -134,13 +134,17 @@ def parse_args(
         type=float,
         default=DEFAULT_CIR_CONFIG.triplet_margin,
     )
-    parser.add_argument(
+    training_loss = parser.add_mutually_exclusive_group()
+    training_loss.add_argument(
+        "--loss",
+        choices=tuple(CIR_LOSS_TYPES),
+        default=CIRTrainingConfig.loss,
+        help="training objective (default: triplet)",
+    )
+    training_loss.add_argument(
         "--progressive-triplet-loss",
         action="store_true",
-        help=(
-            "average triplet loss over up to three progressively reduced "
-            "contexts per target"
-        ),
+        help="legacy alias for --loss progressiva",
     )
     parser.add_argument(
         "--loss-reduction",
@@ -219,6 +223,7 @@ def parse_args(
         triplet_margin=arguments.triplet_margin,
         loss_reduction=arguments.loss_reduction,
         use_progressive_triplet_loss=arguments.progressive_triplet_loss,
+        loss=arguments.loss,
         retrieval_embedding_dim=arguments.retrieval_embedding_dim,
         normalize_embeddings=arguments.normalize_embeddings,
         use_category_embedding=arguments.category_emb,

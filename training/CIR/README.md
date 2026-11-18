@@ -17,9 +17,9 @@
 - [Artefatti](#artefatti)
 
 Training CIR legge gli outfit completi e sceglie un capo casuale come target a
-ogni accesso. Ottimizza per default la Triplet Margin Loss con negativi in-batch;
-`--progressive-triplet-loss` usa la media su contesti progressivamente ridotti. La
-validation usa le domande FITB fisse e ordina positivo e tre distrattori
+ogni accesso. La Triplet Margin Loss con negativi in-batch è il default.
+`--loss` permette di scegliere anche Triplet progressiva, InfoNCE pura e Joint.
+La validation usa domande FITB fisse e ordina il positivo e i tre distrattori
 ufficiali. Il best checkpoint usa sempre `val_fitb_accuracy`.
 
 ## File
@@ -30,7 +30,7 @@ ufficiali. Il best checkpoint usa sempre `val_fitb_accuracy`.
 | [`data.py`](data.py) | Costruisce coppie casuali di training e FITB fissi di validation, con input raw/precomputed e sampler DDP. |
 | [`distributed.py`](distributed.py) | Inizializza e chiude il runtime DDP, assegnando rank, world size, backend e device a ogni processo. |
 | [`model.py`](model.py) | Compone embedding common e modello CIR e produce gli embedding dei rami query e item. |
-| [`trainer.py`](trainer.py) | Gestisce forward, Triplet Loss, backpropagation, accumulo, AMP, DDP, validation, early stopping e checkpoint. |
+| [`trainer.py`](trainer.py) | Gestisce forward, loss selezionata, backpropagation, accumulo, AMP, DDP, validation, early stopping e checkpoint. |
 | [`plots.py`](plots.py) | Genera dopo ogni epoca i grafici cumulativi di loss e metriche FITB. |
 | [`pretraining.py`](pretraining.py) | Trasferisce nel CIR i pesi `common.*`, tutti i layer del Transformer CP e il task embedding. |
 | [`train_cir.py`](train_cir.py) | Espone la CLI e collega configurazione, dati, modello, inizializzazione e ciclo di training. |
@@ -117,12 +117,12 @@ flowchart TD
     ITEM_STATE["Stato finale dell'item<br/>N × (128 / 1024 / 1536)"]
     QUERY_HEAD["Testa di retrieval condivisa<br/>Linear: (128 / 1024 / 1536) → 128"]
     ITEM_HEAD["Stessa testa di retrieval<br/>stessi pesi: (128 / 1024 / 1536) → 128"]
-    QUERY_VECTOR["Embedding query q<br/>B × 128"]
+    QUERY_VECTOR["Embedding query q<br/>Q × 128"]
     ITEM_VECTOR["Embedding item p<br/>N × 128"]
 
     DISTANCE["Distanze euclidee"]
     TRAIN{"Fase"}
-    TRIPLET["Train<br/>hardest negative in-batch<br/>Triplet Margin Loss"]
+    LOSS["Train<br/>Loss in-batch selezionata con --loss"]
     FITB["Validation<br/>ranking: positivo + 3 distrattori<br/>FITB accuracy, MRR, Recall@2"]
 
     PARTIAL --> COMMON_QUERY
@@ -148,7 +148,7 @@ flowchart TD
     QUERY_VECTOR --> DISTANCE
     ITEM_VECTOR --> DISTANCE
     DISTANCE --> TRAIN
-    TRAIN --> TRIPLET
+    TRAIN --> LOSS
     TRAIN --> FITB
 ```
 
@@ -169,7 +169,7 @@ aggiuntiva; restano le normalizzazioni interne dei suoi layer.
 | Microbatch | 64 per processo/GPU |
 | Accumulo gradienti | 4 microbatch |
 | Batch effettivo | 256 per processo/GPU; con DDP viene moltiplicato per `world_size` |
-| Loss train | In-batch Triplet Margin Loss, margine `2.0`, reduction `mean` |
+| Loss train | `triplet` (In-batch Triplet Margin Loss), margine `2.0`, reduction `mean` |
 | Embedding retrieval | 128 dimensioni, non normalizzato |
 | Ottimizzatore | AdamW, LR massima `2e-5`, weight decay `0.01` |
 | Scheduler | OneCycleLR: `pct_start=0.3`, cosine, `div_factor=25`, `final_div_factor=10000` |
@@ -202,8 +202,9 @@ aggiuntiva; restano le normalizzazioni interne dei suoi layer.
 | `--gradient-accumulation-steps` | `4` | Microbatch accumulati prima di optimizer step. |
 | `--learning-rate` | `2e-5` | LR massimo OneCycleLR e LR AdamW. |
 | `--weight-decay` | `0.01` | Weight decay AdamW esplicito. |
-| `--triplet-margin` | `2.0` | Distanza minima richiesta tra positivo e hardest negative. |
-| `--progressive-triplet-loss` | disabilitato | Media della Triplet su fino a tre contesti dello stesso outfit, togliendo ogni volta un capo e mantenendo fisso il target. |
+| `--loss` | `triplet` | Seleziona `triplet`, `progressiva`, `join` o `infonce`. |
+| `--triplet-margin` | `2.0` | Margine delle componenti Triplet e di `val_loss` FITB. |
+| `--progressive-triplet-loss` | disabilitato | Alias storico da usare al posto di `--loss progressiva`. |
 | `--loss-reduction` | `mean` | Aggrega loss per microbatch con `mean` o `sum`. |
 | `--retrieval-embedding-dim` | `128` | Dimensione finale condivisa da query e item. |
 | `--normalize-embeddings` | disabilitato | Applica normalizzazione L2 agli embedding finali. |
@@ -311,24 +312,28 @@ flag e matrice; un resume deve usare stessa configurazione categoria.
 
 ## Loss, metriche e best model
 
-Durante train, ogni query confronta proprio positivo con positivi delle altre
-righe del microbatch. Hardest negative viene scelto dentro microbatch da 64, non
-nel batch accumulato da 256. Accumulo riduce memoria, ma non amplia pool negativi.
-Ultimo gruppo incompleto di accumulo usa scala corretta; ultimo microbatch train
-con meno di 64 elementi viene scartato per garantire almeno un negativo.
+| `--loss` | Obiettivo | Viste per outfit |
+|---|---|---|
+| `triplet` (default) | Triplet Margin Loss sul negativo più vicino | Una |
+| `progressiva` | Triplet Margin Loss, mediata sulle viste | Fino a tre |
+| `infonce` | InfoNCE pura su tutti i candidati, con temperatura `1.0` | Fino a tre |
+| `join` | `0.5 × InfoNCE + 0.5 × Triplet progressiva` | Fino a tre |
 
-Con `--progressive-triplet-loss`, il trainer mantiene lo stesso target per tutte
-le viste di un esempio. Parte dal contesto restituito dal dataset e toglie un
-capo casuale alla volta, per un massimo di due rimozioni aggiuntive. Le viste
-sono annidate e non contengono mai il target:
+Per ogni query i candidati sono i target del microbatch dello stesso processo.
+Con la configurazione predefinita il pool contiene 64 candidati anche quando
+si accumulano gradienti per 256 esempi. L'ultimo microbatch incompleto viene
+scartato. [Formule e dettagli delle loss](../../model/CIR/README.md#calcolo-della-loss).
+
+`progressiva`, `join` e `infonce` usano la stessa procedura per costruire le
+viste. Il trainer parte dal contesto restituito dal dataset e toglie un capo
+casuale alla volta, per un massimo di due rimozioni aggiuntive. Qui tutte le
+viste cercano le scarpe.
 
 ```text
 Outfit completo: maglia + pantaloni + borsa + scarpe
 Vista 1: maglia + pantaloni + borsa -> scarpe
 Vista 2: maglia + pantaloni         -> scarpe
 Vista 3: maglia                    -> scarpe
-
-loss_outfit = (Triplet(vista_1) + Triplet(vista_2) + Triplet(vista_3)) / 3
 ```
 
 Con `N` capi nell'outfit completo si usano `min(3, N - 1)` viste: rimane sempre
@@ -342,17 +347,19 @@ il proprio positivo con i positivi degli altri outfit del microbatch. Le viste
 dello stesso outfit non diventano negativi reciproci. Il target può cambiare al
 successivo accesso al dataset, come nel training predefinito.
 
-Il flag funziona con input raw e precomputed; le cache esistenti restano valide.
-Il nome della loss e il flag vengono salvati nella configurazione e nei
-checkpoint. Le viste aggiuntive aumentano il lavoro del ramo query e possono
-richiedere un microbatch più piccolo. Esempio con cache FashionCLIP predefinita:
+Il flag funziona con input raw e precomputed. `training.loss_name` registra
+l'opzione selezionata nel `config.json` e nei checkpoint.
+Gli esempi usano la cache FashionCLIP predefinita e una directory per loss.
 
 ```bash
-python -m training.CIR.train_cir --precomputed --progressive-triplet-loss --checkpoint-dir checkpoints/nondisjoint/cir_precomputed_progressive
+python -m training.CIR.train_cir --precomputed --loss progressiva --checkpoint-dir checkpoints/nondisjoint/cir_precomputed_progressive
+python -m training.CIR.train_cir --precomputed --loss infonce --checkpoint-dir checkpoints/nondisjoint/cir_precomputed_infonce
+python -m training.CIR.train_cir --precomputed --loss join --checkpoint-dir checkpoints/nondisjoint/cir_precomputed_join
 ```
 
-Per la loss standard basta omettere il flag. Validation e test mantengono una
-sola query FITB ufficiale per esempio, anche con la loss progressiva attiva.
+Per confrontare le loss a parità di viste, usa `progressiva` come controllo
+Triplet di `join` e `infonce`. Validation e test usano una query FITB ufficiale
+per esempio con tutte le modalità.
 
 Validation usa positivo e negativi ufficiali di ogni esempio FITB:
 
@@ -366,9 +373,9 @@ Ranking usa distanza euclidea crescente. Parità esatte vengono risolte in modo
 conservativo a favore dei candidati concorrenti, evitando FITB ottimistica con
 embedding collassati.
 
-`val_loss` usa lo stesso margine, ma hardest negative tra distrattori FITB
-espliciti; `train_loss` usa hardest negative in-batch. Entrambe servono per
-diagnosi, non per scegliere checkpoint.
+`train_loss` riporta l'obiettivo selezionato con `--loss`. `val_loss` misura
+la Triplet Margin Loss sul distrattore ufficiale FITB più vicino per tutte
+le modalità. La selezione del checkpoint usa `val_fitb_accuracy`.
 
 ## Preparazione embedding
 
@@ -479,7 +486,7 @@ python -m training.CIR.train_cir `
   --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP `
   --subset nondisjoint `
   --category-emb `
-  --progressive-triplet-loss `
+  --loss progressiva `
   --checkpoint-dir checkpoints/nondisjoint/cir_marqo_category_progressive
 ```
 
@@ -489,12 +496,12 @@ python -m training.CIR.train_cir \
   --embedding-root precomputed_embeddings/Marqo-marqo-fashionSigLIP \
   --subset nondisjoint \
   --category-emb \
-  --progressive-triplet-loss \
+  --loss progressiva \
   --checkpoint-dir checkpoints/nondisjoint/cir_marqo_category_progressive
 ```
 
-`--category-emb` indica al CIR la categoria del capo da recuperare;
-`--progressive-triplet-loss` mantiene quel target su fino a tre contesti
+`--category-emb` indica al CIR la categoria del capo da recuperare e
+`--loss progressiva` mantiene quel target su fino a tre contesti
 progressivamente ridotti. Sono richieste le cache Marqo `nondisjoint/train` e
 `nondisjoint/validation` sotto la root indicata.
 

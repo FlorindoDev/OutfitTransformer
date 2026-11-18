@@ -10,6 +10,10 @@
 - [Transformer CIR](#transformer-cir)
 - [Testa di retrieval](#testa-di-retrieval)
 - [Calcolo della loss](#calcolo-della-loss)
+  - [Triplet classica](#triplet-classica)
+  - [Triplet progressiva](#triplet-progressiva)
+  - [InfoNCE pura](#infonce-pura)
+  - [Joint InfoNCE e Triplet progressiva](#joint-infonce-e-triplet-progressiva)
 - [Condivisione con CP](#condivisione-con-cp)
 
 ## File
@@ -21,6 +25,7 @@
 | `head.py` | Proietta query e item nello stesso spazio vettoriale. |
 | `in_batch_triplet_margin_loss.py` | Calcola la triplet margin loss usando i negativi presenti nel batch. |
 | `progressive_in_batch_triplet_margin_loss.py` | Media della stessa penalità Triplet su più contesti per outfit, con un unico positivo condiviso. |
+| `in_batch_info_nce_loss.py` | Implementa InfoNCE pura e la combinazione con la Triplet progressiva. |
 | `__init__.py` | Espone l'API pubblica del package CIR. |
 
 ## Scopo
@@ -77,7 +82,7 @@ flowchart TD
     ITEM_VECTOR["Vettore item di retrieval<br/>B × 128"]
 
     DISTANCE["Distanze tra ogni query<br/>e tutti gli item del batch"]
-    LOSS["Triplet margin loss<br/>positivo vicino, negativi lontani"]
+    LOSS["Loss CIR selezionata con --loss<br/>positivo vicino, negativi lontani"]
 
     PARTIAL --> COMMON_QUERY
     TASK --> TOKEN
@@ -300,85 +305,106 @@ flowchart LR
     G --> H[Positivo vicino e negativi lontani]
 ```
 
-### Cosa succede nel batch
+### Triplet classica
 
-Immaginiamo un batch di tre esempi:
+La Triplet classica (`--loss triplet`) è la loss predefinita. Per ogni query $q$,
+misura quanto è vicino il capo corretto rispetto agli altri candidati.
 
-| Riga | Outfit parziale | Completamento corretto |
-|---|---|---|
-| 1 | `q1`: giacca + camicia | `p1`: jeans |
-| 2 | `q2`: abito | `p2`: décolleté |
-| 3 | `q3`: felpa + pantaloni | `p3`: sneaker |
+**Distanza euclidea.** Per confrontare l'embedding della query $q$ con quello
+di un capo $c$, si sommano i quadrati delle differenze tra le componenti e si
+fa la radice.
 
-Il modello trasforma i tre outfit parziali in query e i tre completamenti in
-vettori confrontabili. Una distanza piccola significa «sembrano una buona
-corrispondenza». Poi confronta ogni query con tutti e tre gli item:
+$$
+d(q,c) = \sqrt{\sum_k (q_k - c_k)^2}
+$$
 
-| | `p1` jeans | `p2` décolleté | `p3` sneaker |
+Nell'esempio, la query «giacca + camicia» è `q = (0, 0)` e i jeans sono
+`c = (3, 4)`. La loro distanza è $\sqrt{3^2 + 4^2} = 5$.
+
+Ogni riga mostra le distanze da una query ai tre capi del microbatch.
+Il **positivo** è il capo corretto per quella query. Il **negativo scelto**
+è il capo più vicino tra gli altri due.
+
+| Outfit parziale (query) | Jeans | Décolleté | Sneaker |
 |---|---:|---:|---:|
-| `q1` | **0,8 positivo** | 2,3 | **1,4 negativo più vicino** |
-| `q2` | **2,2 negativo più vicino** | **0,6 positivo** | 3,0 |
-| `q3` | **3,0 negativo più vicino** | 3,2 | **0,9 positivo** |
+| Giacca + camicia | **5 (positivo)** | 8 | **6 (negativo scelto)** |
+| Abito | **5 (negativo scelto)** | **6 (positivo)** | 8 |
+| Felpa + pantaloni | **5 (negativo scelto)** | 10 | **0 (positivo)** |
 
-La diagonale contiene gli abbinamenti corretti: `q1-p1`, `q2-p2` e `q3-p3`.
-Tutte le altre celle sono considerate abbinamenti sbagliati. Per ogni riga la
-loss guarda solo il negativo più vicino, cioè quello che il modello rischia
-maggiormente di confondere con la risposta corretta. Questo è il *hardest
-negative* del batch.
-
-### Quando scatta la penalità
-
-Non basta che il positivo sia un po' più vicino del negativo: tra i due deve
-esserci una distanza di sicurezza chiamata **margine**, pari a 2 per
-impostazione predefinita.
-
-Per `q1` il positivo dista 0,8 e il negativo più difficile 1,4. Il negativo è
-più lontano, ma non abbastanza: per rispettare il margine dovrebbe trovarsi
-almeno a `0,8 + 2 = 2,8`. La loss vale quindi:
+**Penalità:** $d_{\text{pos}}$ è la distanza dalla query al capo corretto.
+$d_{\text{neg}}$ è la più piccola distanza dalla query ai capi degli altri
+outfit del microbatch. Il margine $m$ vale 2 di default. La loss è zero quando
+il negativo è almeno $m$ più lontano del positivo.
 
 $$
-L = \max(0, 0{,}8 - 1{,}4 + 2) = 1{,}4
+\operatorname{Triplet} = \max(0,\; d_{\text{pos}} + m - d_{\text{neg}})
 $$
 
-Questa penalità spinge il modello ad avvicinare `q1` a `p1`, ad allontanarla da
-`p3`, o a fare entrambe le cose. Se invece il negativo fosse distante 3,1, il
-margine sarebbe già rispettato e la loss sarebbe zero.
+Nella prima riga i jeans distano 5 e le sneaker 6. Per rispettare il margine,
+le sneaker dovrebbero distare almeno $5 + 2 = 7$. La penalità è
+$\max(0, 5 + 2 - 6) = 1$.
+Per default si fa la media delle penalità degli outfit del microbatch.
 
-In generale:
+### Triplet progressiva
+
+Con `--loss progressiva` la prima vista usa tutto il contesto disponibile.
+Le successive tolgono un capo alla volta, fino a tre viste in tutto. Ogni
+vista cerca lo stesso capo corretto e usa il proprio negativo più vicino.
+
+Si fa prima la media delle $V$ viste di ciascun outfit e poi la media tra
+i $B$ outfit del microbatch.
 
 $$
-L = \max(0, d_{positivo} - d_{\text{negativo più vicino}} + margine)
+\begin{aligned}
+L_{\text{outfit}} &=
+\frac{\operatorname{Triplet}(\text{vista 1}) + \cdots + \operatorname{Triplet}(\text{vista } V)}{V} \\
+L_{\mathrm{ProgressiveTriplet}} &=
+\frac{L_{\text{outfit 1}} + \cdots + L_{\text{outfit } B}}{B}
+\end{aligned}
 $$
 
-La loss finale è normalmente la media delle penalità delle righe. Il batch deve
-contenere almeno due esempi, altrimenti non esiste un altro item da usare come
-negativo. Inoltre, «negativo» significa soltanto «non è la risposta associata a
-questa riga»: due prodotti duplicati o due capi comunque compatibili possono
-creare un falso negativo, motivo per cui composizione e pulizia del batch sono
-responsabilità del futuro training CIR.
+Per esempio, con tre penalità $1, 2, 0$ il primo outfit vale $(1+2+0)/3 = 1$.
+Se il secondo ha una sola vista con penalità $3$, la loss è $(1+3)/2=2$.
+Ogni outfit pesa allo stesso modo.
 
-### Loss progressiva opzionale
+Le modalità `progressiva`, `join` e `infonce` costruiscono le viste allo stesso modo.
+[Guida al training CIR](../../training/CIR/README.md#loss-metriche-e-best-model).
 
-`ProgressiveInBatchTripletMarginLoss` usa la stessa distanza euclidea, margine e
-scelta dell'hardest negative di `InBatchTripletMarginLoss`. Riceve:
+### InfoNCE pura
 
-- `query_embeddings`: `[Q, D]`, tutte le viste valide degli outfit;
-- `positive_embeddings`: `[B, D]`, un solo positivo per outfit;
-- `query_positive_indices`: `[Q]`, tensore `torch.long` sullo stesso device che
-  associa ogni query alla riga del suo positivo.
+`--loss infonce` usa `InBatchInfoNCELoss`. Per ogni vista $q$ calcola la
+distanza euclidea da ciascun target $p_j$ del microbatch. I logit sono
+$s_j = -\lVert q - p_j \rVert_2 / \tau$, con temperatura $\tau = 1{,}0$ nel
+training CIR. L'ordinamento dei logit riproduce quello per distanza crescente
+usato nel ranking FITB.
 
-Per esempio, tre viste del primo outfit e una del secondo usano indici
-`[0, 0, 0, 1]`. Il negativo viene scelto tra i `B - 1` target degli altri outfit,
-senza duplicare i positivi per ogni vista. Servono almeno due target e ogni
-target deve avere almeno una query. La media avviene prima tra le viste dello
-stesso outfit, poi tra gli outfit con `reduction="mean"`; `"sum"` somma le medie
-per outfit e `"none"` restituisce un vettore `[B]`.
+Con $y$ pari all'indice del target corretto, la loss della vista è la
+cross-entropy dei logit.
 
-La loss lavora sugli embedding; costruzione dei contesti e numero di viste
-restano nel trainer. Il flag `--progressive-triplet-loss` nel
-[training CIR](../../training/CIR/README.md#loss-metriche-e-best-model) genera
-fino a tre contesti annidati mantenendo lo stesso target e la stessa categoria.
-La loss standard rimane il default; il protocollo FITB di valutazione non cambia.
+$$
+L_{\mathrm{InfoNCE}}(q) = -\log \frac{\exp(s_y)}{\sum_{j=1}^{B} \exp(s_j)}
+$$
+
+Tutti i target competono nel denominatore, quindi ciascun negativo
+contribuisce alla penalità. L'aggregazione fa la media sulle viste di ogni
+outfit e poi applica la riduzione sul batch. La formulazione segue il
+[paper originale di InfoNCE](https://arxiv.org/abs/1807.03748).
+
+### Joint InfoNCE e Triplet progressiva
+
+`--loss join` usa `JointInBatchRetrievalLoss`. Le due componenti condividono
+viste, target e matrice delle distanze. La Triplet usa la distanza dal
+negativo più vicino e InfoNCE usa tutti i candidati del microbatch.
+
+$$
+L_{\mathrm{join}} = \alpha L_{\mathrm{InfoNCE}}
+  + (1 - \alpha) L_{\mathrm{ProgressiveTriplet}}
+$$
+
+Il training CIR usa $\alpha = 0{,}5$. Entrambe le componenti pesano ogni
+outfit allo stesso modo, tramite la media delle sue viste, e usano la stessa
+riduzione sul batch. Il margine della componente Triplet si imposta con
+`--triplet-margin`.
 
 ## Condivisione con CP
 

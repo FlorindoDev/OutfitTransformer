@@ -182,6 +182,10 @@ spazio retrieval, normalizzazione finale e uso delle categorie vengono
 ricavati dal checkpoint. I pesi della repo esterna hanno un formato diverso:
 la repo è il riferimento per il protocollo di valutazione.
 
+I checkpoint locali possono provenire da tutte le modalità `--loss` del
+training CIR. FITB e `--full-catalog` valutano gli embedding tramite distanza
+euclidea. [Opzioni di training CIR](../../training/CIR/README.md#loss-metriche-e-best-model).
+
 Sono supportati soltanto checkpoint allenati con l'architettura CIR attuale:
 token CIR normalizzato L2 e nessuna LayerNorm finale aggiuntiva. I checkpoint
 precedenti con `cir.encoder.norm.weight` e `cir.encoder.norm.bias` non sono

@@ -8,6 +8,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 from data import DEFAULT_DATASET_NAME, get_dataset_source
+from model.CIR import (
+    InBatchInfoNCELoss,
+    InBatchTripletMarginLoss,
+    JointInBatchRetrievalLoss,
+    ProgressiveInBatchTripletMarginLoss,
+)
+from model.CIR.in_batch_info_nce_loss import (
+    DEFAULT_INFO_NCE_TEMPERATURE,
+    DEFAULT_JOINT_ALPHA,
+)
 from model.common.config import (
     DEFAULT_CIR_CONFIG,
     ComplementaryItemConfig,
@@ -22,6 +32,13 @@ from training.common.features import (
 )
 
 LossReduction = Literal["mean", "sum"]
+CIRLoss = Literal["triplet", "progressiva", "join", "infonce"]
+CIR_LOSS_TYPES = {
+    "triplet": InBatchTripletMarginLoss,
+    "progressiva": ProgressiveInBatchTripletMarginLoss,
+    "join": JointInBatchRetrievalLoss,
+    "infonce": InBatchInfoNCELoss,
+}
 BEST_METRIC = "val_fitb_accuracy"
 
 MAX_GRAD_NORM = 1.0
@@ -72,6 +89,7 @@ class CIRTrainingConfig:
     pretrained_cp: Path | None = None
     resume: Path | None = None
     model: TransformerConfig | None = None
+    loss: CIRLoss = "triplet"
 
     def validate(self) -> None:
         source = get_dataset_source(self.dataset_name)
@@ -96,6 +114,10 @@ class CIRTrainingConfig:
             raise ValueError("loss_reduction must be 'mean' or 'sum'")
         if not isinstance(self.use_progressive_triplet_loss, bool):
             raise TypeError("use_progressive_triplet_loss must be boolean")
+        if self.loss not in CIR_LOSS_TYPES:
+            raise ValueError(f"loss must be one of {', '.join(CIR_LOSS_TYPES)}")
+        if self.use_progressive_triplet_loss and self.loss in {"join", "infonce"}:
+            raise ValueError("use_progressive_triplet_loss conflicts with loss")
         if self.retrieval_embedding_dim <= 0:
             raise ValueError("retrieval_embedding_dim must be positive")
         if not isinstance(self.normalize_embeddings, bool):
@@ -130,6 +152,10 @@ class CIRTrainingConfig:
     def best_metric(self) -> str:
         return BEST_METRIC
 
+    @property
+    def selected_loss(self) -> CIRLoss:
+        return "progressiva" if self.use_progressive_triplet_loss else self.loss
+
     @cached_property
     def model_config(self) -> TransformerConfig:
         if self.model is not None:
@@ -162,6 +188,7 @@ class CIRTrainingConfig:
         if world_size <= 0:
             raise ValueError("world_size must be positive")
         source = get_dataset_source(self.dataset_name)
+        loss = self.selected_loss
         return {
             "dataset": {
                 "name": source.descriptor.name,
@@ -209,12 +236,15 @@ class CIRTrainingConfig:
                     "final_div_factor": ONE_CYCLE_FINAL_DIV_FACTOR,
                 },
                 "max_grad_norm": MAX_GRAD_NORM,
-                "loss": (
-                    "ProgressiveInBatchTripletMarginLoss"
-                    if self.use_progressive_triplet_loss
-                    else "InBatchTripletMarginLoss"
+                "loss": CIR_LOSS_TYPES[loss].__name__,
+                "loss_name": loss,
+                "use_progressive_triplet_loss": loss == "progressiva",
+                "info_nce_temperature": (
+                    DEFAULT_INFO_NCE_TEMPERATURE
+                    if loss in {"join", "infonce"}
+                    else None
                 ),
-                "use_progressive_triplet_loss": self.use_progressive_triplet_loss,
+                "joint_alpha": DEFAULT_JOINT_ALPHA if loss == "join" else None,
                 "triplet_margin": self.triplet_margin,
                 "loss_reduction": self.loss_reduction,
                 "best_metric": BEST_METRIC,

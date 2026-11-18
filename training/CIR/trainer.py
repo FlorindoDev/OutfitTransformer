@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from metrics import retrieval_rank
-from model import InBatchTripletMarginLoss, ProgressiveInBatchTripletMarginLoss
+from model import InBatchInfoNCELoss
 from training.common import (
     copy_checkpoint,
     save_checkpoint,
@@ -29,6 +29,7 @@ from training.common import (
 
 from .config import (
     BEST_METRIC,
+    CIR_LOSS_TYPES,
     CIRTrainingConfig,
     MAX_GRAD_NORM,
     ONE_CYCLE_DIV_FACTOR,
@@ -133,15 +134,14 @@ def train(
     )
     model.to(runtime.device)
     training_model = _wrap_distributed(model, runtime)
-    criterion_type = (
-        ProgressiveInBatchTripletMarginLoss
-        if config.use_progressive_triplet_loss
-        else InBatchTripletMarginLoss
-    )
-    criterion = criterion_type(
-        margin=config.triplet_margin,
-        reduction=config.loss_reduction,
-    )
+    criterion_type = CIR_LOSS_TYPES[config.selected_loss]
+    if criterion_type is InBatchInfoNCELoss:
+        criterion = criterion_type(reduction=config.loss_reduction)
+    else:
+        criterion = criterion_type(
+            margin=config.triplet_margin,
+            reduction=config.loss_reduction,
+        )
     optimizer = AdamW(
         training_model.parameters(),
         lr=config.learning_rate,
@@ -291,6 +291,7 @@ def _train_epoch(
     totals = _EpochTotals()
     optimizer.zero_grad(set_to_none=True)
     batch_count = len(loader)
+    use_progressive_views = config.selected_loss != "triplet"
 
     for batch_index, batch in enumerate(loader, start=1):
         optimizer_step = _is_optimizer_step(
@@ -307,7 +308,7 @@ def _train_epoch(
             partial_outfits = batch.partial_outfits
             target_categories = batch.target_categories
             positive_indices = None
-            if config.use_progressive_triplet_loss:
+            if use_progressive_views:
                 partial_outfits, positive_indices = build_progressive_query_views(
                     partial_outfits,
                 )

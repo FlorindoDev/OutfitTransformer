@@ -139,9 +139,8 @@ answers; Recall@2 measures answers in the first two positions.
 The project reads fashion item images and descriptions, creates multimodal
 embeddings, and uses task-specific Transformers without positional embeddings
 for variable-length outfits. CP assigns a compatibility score; CIR produces
-embeddings for partial outfits and positive items and includes Triplet Loss,
-training, FITB metrics, checkpoints, and plots. CIR evaluation over the full
-catalog is not implemented yet.
+embeddings for partial outfits and positive items, trains with selectable
+in-batch losses, and supports FITB and full-catalog evaluation.
 
 For component details and responsibilities, see the [model overview](model/README.md)
 and [data pipeline](data/README.md).
@@ -191,7 +190,7 @@ flowchart TD
 
     O["L2-normalized CIR token<br/>[task_emb | embed_emb]<br/>+ optional category_emb"] --> Q["Encoder-only CIR Transformer<br/>6 layers · 16 heads"]
     H --> Q
-    Q --> R["Query/item embedding → In-batch Triplet Margin Loss<br/>and FITB ranking"]
+    Q --> R["Query/item embedding → Selected CIR training loss<br/>and FITB ranking"]
 
     classDef processing fill:#d5f5e3,stroke:#1e8449,color:#17202a;
     classDef input fill:#eeeeee,stroke:#616a6b,color:#17202a;
@@ -390,6 +389,11 @@ python -m training.CIR.train_cir \
 > See the [CIR README](training/CIR/README.md#inizializzazione-da-cp-e-resume) for details.
 
 Add `--category-emb` to condition queries on the missing item's category.
+Use `--loss triplet` (default), `--loss progressiva` (Progressive Triplet),
+`--loss join` (equal weights for InfoNCE and Progressive Triplet), or
+`--loss infonce` (pure InfoNCE). `progressiva`, `join`, and `infonce` use the
+same progressive views. [CIR loss formulas](model/CIR/README.md#calcolo-della-loss).
+
 The best checkpoint is always selected using `val_fitb_accuracy`; validation
 also records `val_mrr` and `val_recall@2`. For flags, DDP, mixed precision,
 and artifacts, see the [full CIR guide](training/CIR/README.md).
@@ -609,9 +613,8 @@ posto; Recall@2 quelle nei primi due posti.
 Il progetto legge immagini e descrizioni di articoli fashion, crea embedding
 multimodali e usa Transformer specifici senza positional embedding per i task
 su outfit di lunghezza variabile. Il task CP assegna uno score di compatibilità;
-il modulo CIR produce embedding per outfit parziali e item positivi e include
-Triplet Loss, training, metriche FITB, checkpoint e grafici. Evaluation CIR su
-catalogo completo non è ancora implementata.
+il modulo CIR produce embedding per outfit parziali e item positivi, offre
+loss in-batch selezionabili e supporta la valutazione FITB e a catalogo completo.
 
 Per approfondire componenti e responsabilità: [panoramica del modello](model/README.md)
 e [pipeline dei dati](data/README.md).
@@ -662,7 +665,7 @@ flowchart TD
 
     O["CIR token normalizzato L2<br/>[task_emb | embed_emb]<br/>+ category_emb opzionale"] --> Q["Transformer CIR encoder-only<br/>6 layer · 16 teste"]
     H --> Q
-    Q --> R["Query/item embedding → In-batch Triplet Margin Loss<br/>e ranking FITB"]
+    Q --> R["Query/item embedding → Loss CIR selezionata<br/>e ranking FITB"]
 
     classDef processing fill:#d5f5e3,stroke:#1e8449,color:#17202a;
     classDef input fill:#eeeeee,stroke:#616a6b,color:#17202a;
@@ -862,9 +865,14 @@ python -m training.CIR.train_cir \
 > architettura. Dettagli nel [README CIR](training/CIR/README.md#inizializzazione-da-cp-e-resume).
 
 Per condizionare query sulla categoria del capo mancante, aggiungere
-`--category-emb`. Best checkpoint usa sempre `val_fitb_accuracy`; validation
-registra anche `val_mrr` e `val_recall@2`. Flag, DDP, mixed precision e
-artefatti: [guida completa CIR](training/CIR/README.md).
+`--category-emb`. Il flag `--loss` accetta `triplet` (default), `progressiva`
+(Triplet progressiva), `join` (InfoNCE e Triplet progressiva con peso 0,5
+ciascuna) e `infonce` (InfoNCE pura). `progressiva`, `join` e `infonce` usano
+le stesse viste progressive. [Formule delle loss CIR](model/CIR/README.md#calcolo-della-loss).
+
+Il best checkpoint usa sempre `val_fitb_accuracy` e la validation
+registra anche `val_mrr` e `val_recall@2`.
+[Guida CIR con flag, DDP, mixed precision e artefatti](training/CIR/README.md).
 
 ### Valutazione CP
 
