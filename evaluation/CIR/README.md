@@ -9,6 +9,7 @@
 - [Preparazione](#preparazione)
 - [Compatibilita checkpoint](#compatibilita-checkpoint)
 - [Avvio](#avvio)
+- [Esportare le query sbagliate](#esportare-le-query-sbagliate)
 - [Flag principali](#flag-principali)
 
 ## Metriche
@@ -232,6 +233,31 @@ python -m evaluation.CIR.evaluate_cir \
   --output results/cir_validation.json
 ```
 
+## Esportare le query sbagliate
+
+Con `--save-errors` il report JSON contiene anche `errors`, con una voce per
+ogni query in cui il capo corretto è oltre il primo posto. `failed_metrics`
+elenca le metriche penalizzate per quella query. Include `mrr` per ogni errore
+e le metriche di accuratezza o recall il cui limite è inferiore a `positive_rank`.
+
+```bash
+python -m evaluation.CIR.evaluate_cir --checkpoint best.pt --save-errors --error-neighbors 5 --output results/cir_errors.json
+```
+
+- `example_id` ha il formato `retrieval:<indice>` e identifica la riga del file
+  `fill_in_blank` dello split, con indice a partire da zero.
+- `partial_item_ids` contiene gli ID Polyvore dei capi dell'outfit parziale nel
+  loro ordine. `positive_item_id` identifica il capo corretto.
+- `predicted_item_id` identifica il capo scelto dal modello. `predicted_distance`
+  è la sua distanza dalla query. A parità di distanza, un distrattore precede
+  il capo corretto, come nel calcolo delle metriche.
+- In FITB, `predicted_distractor_index` identifica la risposta esatta anche se
+  più risposte hanno lo stesso ID capo. È l'indice a partire da zero in
+  `answers`, dopo aver rimosso il token della risposta corretta.
+- `neighbors` contiene fino a N altri capi distinti, ordinati per distanza
+  euclidea dal capo scelto. In FITB la ricerca usa i candidati della query,
+  mentre con `--full-catalog` usa tutto il catalogo dello split.
+
 ## Flag principali
 
 | Flag | Default | Funzione |
@@ -239,6 +265,8 @@ python -m evaluation.CIR.evaluate_cir \
 | `--checkpoint` | richiesto | Checkpoint schema v1 prodotto dal training CIR. |
 | `--split` | `test` | Split `test` o `validation`. |
 | `--full-catalog` | disabilitato | Calcola il recall sul catalogo completo dello split. |
+| `--save-errors` | disabilitato | Aggiunge le query sbagliate al JSON del report. |
+| `--error-neighbors` | `5` | Numero massimo di vicini del capo scelto da salvare per errore. Con `0` la lista è vuota. |
 | `--embedding-root` | valore checkpoint | Sovrascrive root cache embedding. |
 | `--dataset-root` | valore checkpoint o `datasets/polyvore-outfits` | Cerca qui annotazioni e dati prima del fallback Hugging Face. |
 | `--output` | derivato dal checkpoint | Percorso JSON del report. |

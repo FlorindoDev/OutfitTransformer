@@ -19,10 +19,12 @@ from .evaluator import evaluate, evaluate_catalog
 
 
 class _TestModel(nn.Module):
-    def embed_queries(self, outfits, target_categories):
+    def embed_queries(
+        self, outfits: tuple[torch.Tensor, ...], target_categories: tuple[str, ...],
+    ) -> torch.Tensor:
         return torch.stack([outfit.mean(dim=0) for outfit in outfits])
 
-    def embed_items(self, outfits):
+    def embed_items(self, outfits: tuple[torch.Tensor, ...]) -> torch.Tensor:
         return torch.cat(outfits)
 
 
@@ -35,7 +37,7 @@ class CatalogEvaluationTest(unittest.TestCase):
         self.embedding_root = root / "embeddings"
         split_dir = dataset_root / "nondisjoint"
         split_dir.mkdir(parents=True)
-        self.item_vectors = {
+        self.item_vectors: dict[str, float] = {
             "query_left": -8,
             "query_right": 8,
             "positive": 2,
@@ -86,7 +88,9 @@ class CatalogEvaluationTest(unittest.TestCase):
         model = _TestModel()
         device = torch.device("cpu")
         fitb = build_retrieval_loader(self.config, split=DataSplit.TEST, token=False)
-        self.assertEqual(evaluate(model, fitb, device).recall_at_2, 1.0)
+        fitb_errors = []
+        self.assertEqual(evaluate(model, fitb, device, errors=fitb_errors).recall_at_2, 1.0)
+        self.assertEqual(fitb_errors, [])
 
         loaders = build_catalog_loaders(
             self.config, split=DataSplit.TEST, candidate_batch_size=3, token=False,
@@ -103,6 +107,49 @@ class CatalogEvaluationTest(unittest.TestCase):
             "recall_at_50": 1.0,
             "recall_at_100": 1.0,
         })
+
+    def test_reports_failed_metrics_and_neighbors_of_the_chosen_item(self):
+        self.item_vectors.update({
+            "negative_1": -2,
+            "negative_3": -4,
+            "unlisted_closer": -2.5,
+            "unlisted_tied": 2,
+        })
+        self._write_embeddings()
+        model = _TestModel()
+        device = torch.device("cpu")
+        fitb = build_retrieval_loader(self.config, split=DataSplit.TEST, token=False)
+        errors = []
+        metrics = evaluate(model, fitb, device, errors=errors, error_neighbors=1)
+        self.assertEqual(metrics, evaluate(model, fitb, device))
+        expected_query = {
+            "example_id": "retrieval:0",
+            "partial_item_ids": ("query_left", "query_right"),
+            "target_category": "unknown",
+            "positive_item_id": "positive",
+            "predicted_item_id": "negative_1",
+            "predicted_distance": 2.0,
+        }
+        self.assertEqual(errors, [{
+            **expected_query,
+            "positive_rank": 2,
+            "predicted_distractor_index": 0,
+            "failed_metrics": ["mrr", "fitb_accuracy"],
+            "neighbors": [{"item_id": "negative_3", "distance": 2.0}],
+        }])
+
+        loaders = build_catalog_loaders(
+            self.config, split=DataSplit.TEST, candidate_batch_size=3, token=False,
+        )
+        catalog_errors = []
+        metrics = evaluate_catalog(model, loaders, device, errors=catalog_errors, error_neighbors=1)
+        self.assertEqual(metrics, evaluate_catalog(model, loaders, device))
+        self.assertEqual(catalog_errors, [{
+            **expected_query,
+            "positive_rank": 3,
+            "failed_metrics": ["mrr", "recall_at_1", "recall_at_2"],
+            "neighbors": [{"item_id": "unlisted_closer", "distance": 0.5}],
+        }])
 
     def test_rejects_cache_missing_an_item_outside_fitb(self):
         del self.item_vectors["unlisted_closer"]

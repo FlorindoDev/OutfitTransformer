@@ -13,7 +13,7 @@ from training.common import resolve_device, seed_everything, write_json
 
 from .catalog_data import build_catalog_loaders
 from .checkpoint import load_cir_checkpoint, restore_cir_model
-from .config import CIREvaluationConfig
+from .config import DEFAULT_ERROR_NEIGHBORS, CIREvaluationConfig
 from .evaluator import CIREvaluationResult, evaluate, evaluate_catalog
 
 LOGGER = logging.getLogger("evaluation.CIR")
@@ -50,6 +50,7 @@ def run(
         distributed=False,
         model_config=checkpoint.model_config,
     )
+    errors = [] if config.save_errors else None
     if config.full_catalog:
         loaders = build_catalog_loaders(
             data_config,
@@ -57,7 +58,14 @@ def run(
             candidate_batch_size=config.candidate_batch_size,
             token=token,
         )
-        metrics = evaluate_catalog(model, loaders, device, log_every=config.log_every)
+        metrics = evaluate_catalog(
+            model,
+            loaders,
+            device,
+            log_every=config.log_every,
+            errors=errors,
+            error_neighbors=config.error_neighbors,
+        )
     else:
         loader = build_retrieval_loader(data_config, split=config.split, token=token)
         metrics = evaluate(
@@ -66,6 +74,8 @@ def run(
             device,
             candidate_batch_size=config.candidate_batch_size,
             log_every=config.log_every,
+            errors=errors,
+            error_neighbors=config.error_neighbors,
         )
     output_path = config.output_path or _default_output_path(
         checkpoint.path, checkpoint.dataset_name, checkpoint.subset, config.split,
@@ -82,6 +92,7 @@ def run(
         feature_mode=checkpoint.feature_mode,
         use_category_embedding=checkpoint.use_category_embedding,
         metrics=metrics,
+        errors=errors,
     )
     write_json(result.as_dict(), output_path)
     return result
@@ -110,6 +121,17 @@ def parse_args(
         action="store_true",
         help="rank all items in the selected split for each official FITB query",
     )
+    parser.add_argument(
+        "--save-errors",
+        action="store_true",
+        help="include failed queries and their predictions in the JSON report",
+    )
+    parser.add_argument(
+        "--error-neighbors",
+        type=int,
+        default=DEFAULT_ERROR_NEIGHBORS,
+        help="neighbors of each wrong prediction saved by --save-errors (default: %(default)s)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--pin-memory", action="store_true")
@@ -135,6 +157,8 @@ def parse_args(
         device=arguments.device,
         log_every=arguments.log_every,
         full_catalog=arguments.full_catalog,
+        save_errors=arguments.save_errors,
+        error_neighbors=arguments.error_neighbors,
     )
     config.validate()
     token: bool | str | None = (

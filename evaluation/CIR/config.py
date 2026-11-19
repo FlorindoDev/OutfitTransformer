@@ -7,6 +7,8 @@ from pathlib import Path
 
 from data import DataSplit
 
+DEFAULT_ERROR_NEIGHBORS = 5
+
 
 @dataclass(frozen=True)
 class CIREvaluationConfig:
@@ -26,6 +28,8 @@ class CIREvaluationConfig:
     device: str = "auto"
     log_every: int = 10
     full_catalog: bool = False
+    save_errors: bool = False
+    error_neighbors: int = DEFAULT_ERROR_NEIGHBORS
 
     def validate(self) -> None:
         if not self.checkpoint.is_file():
@@ -46,3 +50,5 @@ class CIREvaluationConfig:
             raise ValueError("device cannot be empty")
         if self.log_every <= 0:
             raise ValueError("log_every must be positive")
+        if self.error_neighbors < 0:
+            raise ValueError("error_neighbors cannot be negative")

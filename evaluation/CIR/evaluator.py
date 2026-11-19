@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from operator import itemgetter
 from pathlib import Path
 from typing import Any, Protocol
 
 import torch
 from torch import Tensor
 
-from data import DataSplit, ItemBatch
+from data import DataSplit, ItemBatch, RetrievalBatch
 from metrics import (
     RetrievalMetrics,
     mean_reciprocal_rank,
@@ -19,13 +20,19 @@ from metrics import (
     retrieval_metrics,
     retrieval_rank,
 )
-from training.CIR import CIRTrainingModel
-from training.CIR.data import as_single_item_outfits, flatten_retrieval_candidates
+from training.CIR.data import (
+    RetrievalEmbeddingBatch,
+    as_single_item_outfits,
+    flatten_retrieval_candidates,
+)
 from training.common.features import FeatureMode
 
-from .catalog_data import CatalogLoaders
+from .catalog_data import CatalogLoaders, CatalogQueryBatch
+from .config import DEFAULT_ERROR_NEIGHBORS
 
 LOGGER = logging.getLogger("evaluation.CIR")
+_FITB_CUTOFFS = {"fitb_accuracy": 1, "recall_at_2": 2}
+_CATALOG_CUTOFFS = {f"recall_at_{k}": k for k in (1, 2, 10, 30, 50, 100)}
 
 
 class BatchLoader(Protocol):
@@ -34,6 +41,18 @@ class BatchLoader(Protocol):
     def __iter__(self) -> Iterator[Any]: ...
 
     def __len__(self) -> int: ...
+
+
+class _EvaluationModel(Protocol):
+    """Model operations used by both CIR evaluation protocols."""
+
+    def to(self, device: torch.device, /) -> object: ...
+
+    def eval(self) -> object: ...
+
+    def embed_queries(self, outfits: Any, target_categories: tuple[str, ...], /) -> Tensor: ...
+
+    def embed_items(self, outfits: Any, /) -> Tensor: ...
 
 
 @dataclass(frozen=True)
@@ -68,6 +87,7 @@ class CIREvaluationResult:
     feature_mode: FeatureMode
     use_category_embedding: bool
     metrics: RetrievalMetrics | CatalogRetrievalMetrics
+    errors: list[dict[str, Any]] | None = None
 
     @property
     def protocol(self) -> str:
@@ -76,7 +96,7 @@ class CIREvaluationResult:
         return "polyvore_fitb"
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        report: dict[str, Any] = {
             "checkpoint": str(self.checkpoint),
             "checkpoint_epoch": self.checkpoint_epoch,
             "dataset": self.dataset_name,
@@ -90,22 +110,29 @@ class CIREvaluationResult:
             "tie_policy": "pessimistic",
             "metrics": self.metrics.as_dict(),
         }
+        if self.errors is not None:
+            report["errors"] = self.errors
+        return report
 
 
 @torch.inference_mode()
 def evaluate(
-    model: CIRTrainingModel,
+    model: _EvaluationModel,
     loader: BatchLoader,
     device: torch.device,
     *,
     candidate_batch_size: int = 512,
     log_every: int = 10,
+    errors: list[dict[str, Any]] | None = None,
+    error_neighbors: int = DEFAULT_ERROR_NEIGHBORS,
 ) -> RetrievalMetrics:
     """Rank official completions and aggregate metrics over every query."""
     if candidate_batch_size <= 0:
         raise ValueError("candidate_batch_size must be positive")
     if log_every <= 0:
         raise ValueError("log_every must be positive")
+    if error_neighbors < 0:
+        raise ValueError("error_neighbors cannot be negative")
     if len(loader) == 0:
         raise ValueError("evaluation loader cannot be empty")
 
@@ -122,28 +149,62 @@ def evaluate(
         if queries.shape[1] != candidates.shape[1]:
             raise ValueError("query and candidate embedding dimensions must match")
 
-        for query, group in zip(
-            queries.float(), candidates.split(candidate_counts), strict=True,
-        ):
+        groups = zip(queries.float(), candidates.split(candidate_counts), strict=True)
+        for row, (query, group) in enumerate(groups):
             distances = torch.linalg.vector_norm(group - query.unsqueeze(0), dim=1)
-            ranks.append(retrieval_rank(distances, positive_index=0))
+            rank = retrieval_rank(distances, positive_index=0)
+            ranks.append(rank)
+            if errors is not None and rank > 1:
+                errors.append(_fitb_error(batch, row, rank, group, distances, error_neighbors))
         if batch_index % log_every == 0 or batch_index == len(loader):
             LOGGER.info("batch=%d/%d", batch_index, len(loader))
 
     return retrieval_metrics(torch.tensor(ranks, dtype=torch.long))
 
 
+def _fitb_error(
+    batch: RetrievalBatch | RetrievalEmbeddingBatch,
+    row: int,
+    rank: int,
+    candidates: Tensor,
+    distances: Tensor,
+    neighbor_count: int,
+) -> dict[str, Any]:
+    item_ids = (batch.positive_item_ids[row], *batch.negative_item_ids[row])
+    # A missed query has a competitor at least as close as the correct item.
+    prediction = 1 + int(distances[1:].argmin().item())
+    predicted_item_id = item_ids[prediction]
+    neighbors = []
+    if neighbor_count:
+        from_prediction = torch.linalg.vector_norm(candidates - candidates[prediction], dim=1)
+        distance_by_id = dict(zip(item_ids, from_prediction.tolist(), strict=True))
+        del distance_by_id[predicted_item_id]
+        neighbors = sorted(distance_by_id.items(), key=itemgetter(1))[:neighbor_count]
+    error = _query_error(
+        batch, row, rank, _FITB_CUTOFFS,
+        predicted_item_id=predicted_item_id,
+        predicted_distance=float(distances[prediction].item()),
+        neighbors=neighbors,
+    )
+    error["predicted_distractor_index"] = prediction - 1
+    return error
+
+
 @torch.inference_mode()
 def evaluate_catalog(
-    model: CIRTrainingModel,
+    model: _EvaluationModel,
     loaders: CatalogLoaders,
     device: torch.device,
     *,
     log_every: int = 10,
+    errors: list[dict[str, Any]] | None = None,
+    error_neighbors: int = DEFAULT_ERROR_NEIGHBORS,
 ) -> CatalogRetrievalMetrics:
     """Encode each catalog item once and rank the relevant item for every query."""
     if log_every <= 0:
         raise ValueError("log_every must be positive")
+    if error_neighbors < 0:
+        raise ValueError("error_neighbors cannot be negative")
     if not len(loaders.candidates) or not len(loaders.queries):
         raise ValueError("catalog evaluation requires candidates and queries")
 
@@ -175,20 +236,34 @@ def evaluate_catalog(
             [[index_by_id[item_id]] for item_id in batch.positive_item_ids],
             device=queries.device,
         )
-        ranks.append(_catalog_ranks(queries.float(), catalog, positive_indices).cpu())
+        batch_ranks, predictions = _catalog_ranking(
+            queries.float(), catalog, positive_indices, collect_predictions=errors is not None,
+        )
+        batch_ranks = batch_ranks.cpu()
+        ranks.append(batch_ranks)
+        if errors is not None and predictions is not None:
+            errors.extend(_catalog_errors(
+                batch, batch_ranks, predictions, catalog, loaders.item_ids, error_neighbors,
+            ))
         if batch_index % log_every == 0 or batch_index == len(loaders.queries):
             LOGGER.info("query_batch=%d/%d", batch_index, len(loaders.queries))
 
     all_ranks = torch.cat(ranks)
     return CatalogRetrievalMetrics(
-        recall={k: recall_at_k(all_ranks, k) for k in (1, 2, 10, 30, 50, 100)},
+        recall={k: recall_at_k(all_ranks, k) for k in _CATALOG_CUTOFFS.values()},
         mrr=mean_reciprocal_rank(all_ranks),
         examples=all_ranks.numel(),
         catalog_items=len(loaders.item_ids),
     )
 
 
-def _catalog_ranks(queries: Tensor, catalog: Tensor, positive_indices: Tensor) -> Tensor:
+def _catalog_ranking(
+    queries: Tensor,
+    catalog: Tensor,
+    positive_indices: Tensor,
+    *,
+    collect_predictions: bool,
+) -> tuple[Tensor, tuple[Tensor, Tensor] | None]:
     if queries.shape[1] != catalog.shape[1]:
         raise ValueError("query and candidate embedding dimensions must match")
     distances = torch.cdist(queries, catalog)
@@ -196,11 +271,81 @@ def _catalog_ranks(queries: Tensor, catalog: Tensor, positive_indices: Tensor) -
         raise ValueError("catalog distances must contain only finite values")
     positive_distances = distances.gather(1, positive_indices)
     # The count includes the positive itself and puts tied competitors ahead of it.
-    return (distances <= positive_distances).sum(dim=1)
+    ranks = (distances <= positive_distances).sum(dim=1)
+    if collect_predictions:
+        # For misses, removing the positive also resolves its ties against it.
+        distances.scatter_(1, positive_indices, torch.inf)
+        return ranks, distances.min(dim=1)
+    return ranks, None
+
+
+def _catalog_errors(
+    batch: CatalogQueryBatch,
+    ranks: Tensor,
+    predictions: tuple[Tensor, Tensor],
+    catalog: Tensor,
+    item_ids: tuple[str, ...],
+    neighbor_count: int,
+) -> list[dict[str, Any]]:
+    ranks_by_row = ranks.tolist()
+    failed_rows = [row for row, rank in enumerate(ranks_by_row) if rank > 1]
+    if not failed_rows:
+        return []
+
+    predicted_distances, predicted_indices = predictions
+    predicted_indices = predicted_indices[failed_rows]
+    neighbor_count = min(neighbor_count, len(item_ids) - 1)
+    neighbors: list[list[tuple[str, float]]] = [[] for _ in failed_rows]
+    if neighbor_count:
+        from_prediction = torch.cdist(catalog[predicted_indices], catalog)
+        from_prediction.scatter_(1, predicted_indices.unsqueeze(1), torch.inf)
+        neighbor_distances, neighbor_indices = from_prediction.topk(neighbor_count, largest=False)
+        neighbors = [
+            [(item_ids[index], distance) for index, distance in zip(row_indices, row_values, strict=True)]
+            for row_indices, row_values in zip(
+                neighbor_indices.tolist(), neighbor_distances.tolist(), strict=True,
+            )
+        ]
+
+    return [
+        _query_error(
+            batch, row, ranks_by_row[row], _CATALOG_CUTOFFS,
+            predicted_item_id=item_ids[prediction],
+            predicted_distance=distance,
+            neighbors=nearby,
+        )
+        for row, prediction, distance, nearby in zip(
+            failed_rows, predicted_indices.tolist(), predicted_distances[failed_rows].tolist(),
+            neighbors, strict=True,
+        )
+    ]
+
+
+def _query_error(
+    batch: CatalogQueryBatch | RetrievalBatch | RetrievalEmbeddingBatch,
+    row: int,
+    rank: int,
+    cutoffs: Mapping[str, int],
+    *,
+    predicted_item_id: str,
+    predicted_distance: float,
+    neighbors: Iterable[tuple[str, float]],
+) -> dict[str, Any]:
+    return {
+        "example_id": batch.example_ids[row],
+        "partial_item_ids": batch.partial_item_ids[row],
+        "target_category": batch.target_categories[row],
+        "positive_item_id": batch.positive_item_ids[row],
+        "positive_rank": rank,
+        "predicted_item_id": predicted_item_id,
+        "predicted_distance": predicted_distance,
+        "failed_metrics": ["mrr", *(name for name, k in cutoffs.items() if rank > k)],
+        "neighbors": [{"item_id": item_id, "distance": distance} for item_id, distance in neighbors],
+    }
 
 
 def _embed_candidates(
-    model: CIRTrainingModel,
+    model: _EvaluationModel,
     items: tuple[Any, ...],
     batch_size: int,
 ) -> Tensor:

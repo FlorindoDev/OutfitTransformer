@@ -34,6 +34,8 @@ class CatalogQueryBatch(NamedTuple):
     outfits: tuple[Tensor | ItemBatch, ...]
     target_categories: tuple[str, ...]
     positive_item_ids: tuple[str, ...]
+    example_ids: tuple[str, ...]
+    partial_item_ids: tuple[tuple[str, ...], ...]
 
 
 @dataclass(frozen=True)
@@ -147,6 +149,8 @@ class _CatalogCollator:
             outfits=tuple(self._outfit(example.partial_item_ids) for example in examples),
             target_categories=tuple(example.target_category for example in examples),
             positive_item_ids=tuple(example.positive_item_id for example in examples),
+            example_ids=tuple(example.example_id for example in examples),
+            partial_item_ids=tuple(example.partial_item_ids for example in examples),
         )
 
     def _outfit(self, item_ids: tuple[str, ...]) -> Tensor | ItemBatch:

@@ -38,6 +38,9 @@ class RetrievalEmbeddingExample:
     positive_item: Tensor
     negative_items: tuple[Tensor, ...]
     target_category: str
+    partial_item_ids: tuple[str, ...] = ()
+    positive_item_id: str = ""
+    negative_item_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,9 @@ class RetrievalEmbeddingBatch:
     positive_items: tuple[Tensor, ...]
     negative_items: tuple[tuple[Tensor, ...], ...]
     target_categories: tuple[str, ...]
+    partial_item_ids: tuple[tuple[str, ...], ...] = ()
+    positive_item_ids: tuple[str, ...] = ()
+    negative_item_ids: tuple[tuple[str, ...], ...] = ()
 
     def pin_memory(self) -> "RetrievalEmbeddingBatch":
         return RetrievalEmbeddingBatch(
@@ -64,6 +70,9 @@ class RetrievalEmbeddingBatch:
                 for candidates in self.negative_items
             ),
             target_categories=self.target_categories,
+            partial_item_ids=self.partial_item_ids,
+            positive_item_ids=self.positive_item_ids,
+            negative_item_ids=self.negative_item_ids,
         )
 
 
@@ -163,6 +172,9 @@ class PrecomputedRetrievalDataset(
                 for item_id in example.negative_item_ids
             ),
             target_category=example.target_category,
+            partial_item_ids=example.partial_item_ids,
+            positive_item_id=example.positive_item_id,
+            negative_item_ids=example.negative_item_ids,
         )
 
 
@@ -291,6 +303,9 @@ def collate_retrieval_embeddings(
         target_categories=tuple(
             example.target_category for example in examples
         ),
+        partial_item_ids=tuple(example.partial_item_ids for example in examples),
+        positive_item_ids=tuple(example.positive_item_id for example in examples),
+        negative_item_ids=tuple(example.negative_item_ids for example in examples),
     )
 
 
