@@ -146,19 +146,31 @@ dall'outfit parziale.
 Il condizionamento per categoria è controllato da un flag, disattivato per
 impostazione predefinita.
 
-`category_emb` può essere immaginato come un vettore con 11 posizioni, una per
-ogni categoria Polyvore. In ogni posizione non si trova un singolo numero, ma un
-intero embedding allenabile di 512 valori. Matematicamente la sua struttura è
-quindi una matrice `11 × 512`:
+Con flag attivo abbiamo `category_emb`, Il modello mantiene una **tabella di embedding con 11 righe**, una per ogni
+categoria generale di Polyvore. Nella configurazione predefinita ogni riga
+contiene **un vettore allenabile di 512 valori**, per una matrice `11 × 512`.
+Gli indici di riga partono da zero.
 
-- le 11 righe rappresentano le categorie;
-- ogni riga contiene il vettore di 512 valori della relativa categoria;
-- i valori partono da piccoli numeri casuali e vengono appresi durante il
-  training.
+| Indice | Categoria Polyvore | Embedding della categoria |
+| ---: | --- | --- |
+| 0 | `accessories` | `weight[0]` |
+| 1 | `all-body` | `weight[1]` |
+| 2 | `bags` | `weight[2]` |
+| 3 | `bottoms` | `weight[3]` |
+| 4 | `hats` | `weight[4]` |
+| 5 | `jewellery` | `weight[5]` |
+| 6 | `outerwear` | `weight[6]` |
+| 7 | `scarves` | `weight[7]` |
+| 8 | `shoes` | `weight[8]` |
+| 9 | `sunglasses` | `weight[9]` |
+| 10 | `tops` | `weight[10]` |
 
-Per esempio, quando la categoria target è `shoes`, viene selezionata la riga
-associata alle scarpe. Quel vettore viene sommato a `embed_emb`, mentre
-`task_emb` resta la prima metà del token. Il token completo diventa:
+Per esempio, quando riceve la categoria `shoes`, il modello la converte
+nell'indice `8` e usa il vettore `weight[8]` come `category_emb`. Tutte le query
+che cercano scarpe condividono quel vettore. I valori partono da piccoli numeri
+casuali e vengono aggiornati durante il training tramite la loss di retrieval.
+
+Il modello somma `category_emb` a `embed_emb` nella seconda metà del token CIR.
 
 ```text
 L2([task_emb | embed_emb + category_emb])
